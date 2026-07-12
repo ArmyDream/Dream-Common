@@ -23,6 +23,7 @@ import com.dream.common.core.enums.Regex;
  * DesensitizeUtils.desensitize("HelloWorld", 2, 2, '*');
  * }</pre>
  *
+ * @author dream
  */
 public final class DesensitizeUtils {
 

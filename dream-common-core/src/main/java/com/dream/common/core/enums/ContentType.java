@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * HTTP 内容类型枚举
  *
+ * @author dream
  */
 public enum ContentType implements BaseEnum<String> {
 

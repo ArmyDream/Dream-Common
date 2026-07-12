@@ -18,6 +18,7 @@ package com.dream.common.core.enums;
  * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(CryptoEnum.class);
  * }</pre>
  *
+ * @author dream
  */
 public enum Crypto implements BaseEnum<String> {
 

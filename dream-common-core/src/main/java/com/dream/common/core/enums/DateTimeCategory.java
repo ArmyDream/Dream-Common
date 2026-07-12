@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 日期时间类别枚举
  * <p>
  * 用于按类别处理日期格式，而非具体格式字符串
+ *
+ * @author dream
  */
 public enum DateTimeCategory implements BaseEnum<String> {
 

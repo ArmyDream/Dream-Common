@@ -21,6 +21,7 @@ import java.nio.charset.StandardCharsets;
  * byte[] bytes = "Hello".getBytes(CharsetEnum.UTF_8.getCharset());
  * }</pre>
  *
+ * @author dream
  */
 public enum CharsetEnum implements BaseEnum<String> {
 

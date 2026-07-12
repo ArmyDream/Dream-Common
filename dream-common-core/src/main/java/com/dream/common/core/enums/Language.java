@@ -19,6 +19,7 @@ import java.util.Locale;
  * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(LanguageEnum.class);
  * }</pre>
  *
+ * @author dream
  */
 public enum Language implements BaseEnum<String> {
 

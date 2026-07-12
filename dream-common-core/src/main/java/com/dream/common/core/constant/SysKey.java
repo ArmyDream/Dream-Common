@@ -6,6 +6,7 @@ package com.dream.common.core.constant;
  * 统一管理系统中常用的键名常量
  * <p>
  *
+ * @author dream
  */
 public final class SysKey {
 

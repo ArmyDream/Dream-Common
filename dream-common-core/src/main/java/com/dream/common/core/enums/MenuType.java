@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 菜单类型枚举
+ *
+ * @author dream
  */
 public enum MenuType implements BaseEnum<String> {
 

@@ -32,6 +32,7 @@ import java.util.regex.Pattern;
  *   <li>{@link #isMobileRequest(HttpServletRequest)} —— 判断是否为移动端</li>
  * </ul>
  *
+ * @author dream
  */
 @Slf4j
 @SuppressWarnings("all")

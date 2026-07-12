@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 是否确认 枚举
+ *
+ * @author dream
  */
 public enum Confirm implements BaseEnum<String> {
 

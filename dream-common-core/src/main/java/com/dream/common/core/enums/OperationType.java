@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 操作类型枚举
  * <p>
  * 用于操作日志记录，配合 @Log 注解使用
+ *
+ * @author dream
  */
 public enum OperationType implements BaseEnum<String> {
 

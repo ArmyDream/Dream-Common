@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 登录方式枚举
  *
+ * @author dream
  */
 public enum LoginType implements BaseEnum<String> {
 

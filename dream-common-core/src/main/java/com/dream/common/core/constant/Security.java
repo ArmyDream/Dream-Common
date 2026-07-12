@@ -2,6 +2,8 @@ package com.dream.common.core.constant;
 
 /**
  * 安全/权限常量
+ *
+ * @author dream
  */
 public final class Security {
     private Security() {

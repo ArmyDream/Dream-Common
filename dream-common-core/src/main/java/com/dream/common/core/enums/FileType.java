@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 文件类型枚举
+ *
+ * @author dream
  */
 public enum FileType implements BaseEnum<String> {
 

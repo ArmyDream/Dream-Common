@@ -130,6 +130,8 @@ public @interface PreventDuplicate {
 
     /**
      * 拦截策略枚举
+     *
+     * @author dream
      */
     enum Strategy {
         /**

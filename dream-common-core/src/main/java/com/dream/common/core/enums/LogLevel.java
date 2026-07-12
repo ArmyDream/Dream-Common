@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 错误级别枚举
  *
+ * @author dream
  */
 public enum LogLevel implements BaseEnum<String> {
 

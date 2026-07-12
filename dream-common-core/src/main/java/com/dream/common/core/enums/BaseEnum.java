@@ -33,6 +33,8 @@ import java.util.stream.Collectors;
  * }</pre>
  *
  * @param <V> 枚举值的类型（通常为 String 或 Integer）
+ *
+ * @author dream
  */
 @SuppressWarnings("all")
 public interface BaseEnum<V extends Serializable> {

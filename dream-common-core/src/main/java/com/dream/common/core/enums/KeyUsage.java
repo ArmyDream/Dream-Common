@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 密钥用途枚举
+ *
+ * @author dream
  */
 public enum KeyUsage implements BaseEnum<String> {
 

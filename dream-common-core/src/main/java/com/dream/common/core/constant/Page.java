@@ -2,6 +2,8 @@ package com.dream.common.core.constant;
 
 /**
  * 分页常量
+ *
+ * @author dream
  */
 public final class Page {
     private Page() {

@@ -5,6 +5,7 @@ package com.dream.common.core.enums;
  * <p>
  * 用于系统字典管理，定义所有字典的分类
  *
+ * @author dream
  */
 public enum DictType implements BaseEnum<String> {
 

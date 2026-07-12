@@ -20,6 +20,8 @@ import com.github.f4b6a3.ulid.UlidCreator;
  *
  * @see <a href="https://github.com/f4b6a3/uuid-creator">uuid-creator</a>
  * @see <a href="https://github.com/f4b6a3/ulid-creator">ulid-creator</a>
+ *
+ * @author dream
  */
 public final class UuidGenerator implements IdGenerator<String> {
 

@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 支付方式枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_PAY_TYPE}
+ *
+ * @author dream
  */
 public enum PayType implements BaseEnum<String> {
 

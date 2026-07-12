@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 订单状态枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_ORDER_STATUS}
+ *
+ * @author dream
  */
 public enum OrderStatus implements BaseEnum<String> {
 

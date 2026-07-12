@@ -22,6 +22,7 @@ import com.dream.common.tool.utils.StringUtils;
  * <p>
  * <b>注意：本类不保存任何状态，每次调用需要传入当前序号值。</b>
  *
+ * @author dream
  */
 public final class SeqGenerator {
 

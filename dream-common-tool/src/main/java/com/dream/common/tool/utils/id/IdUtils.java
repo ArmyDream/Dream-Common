@@ -18,6 +18,8 @@ import java.time.format.DateTimeFormatter;
  *   <li><b>追求极致性能和紧凑格式</b>：使用 ULID</li>
  *   <li><b>需要数字型 ID</b>：使用雪花算法</li>
  * </ul>
+ *
+ * @author dream
  */
 public final class IdUtils {
 

@@ -27,6 +27,7 @@ import java.util.function.Supplier;
  *   <li>{@link #clear()} —— 清空全部缓存</li>
  * </ul>
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public final class CachesUtils {

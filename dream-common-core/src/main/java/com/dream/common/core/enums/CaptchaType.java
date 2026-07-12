@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 验证码类型枚举
  *
+ * @author dream
  */
 public enum CaptchaType implements BaseEnum<String> {
 

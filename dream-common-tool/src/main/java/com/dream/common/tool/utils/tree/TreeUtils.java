@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
  * List<TreeNode> tree = TreeUtils.buildTree(dictList);
  * }</pre>
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 @Slf4j

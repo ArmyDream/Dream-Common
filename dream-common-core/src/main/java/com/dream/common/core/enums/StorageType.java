@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 文件存储 枚举
+ *
+ * @author dream
  */
 public enum StorageType implements BaseEnum<String> {
 

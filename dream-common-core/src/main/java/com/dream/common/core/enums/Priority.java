@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 优先级枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_PRIORITY}
+ *
+ * @author dream
  */
 public enum Priority implements BaseEnum<String> {
 

@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 角色类型枚举
+ *
+ * @author dream
  */
 public enum RoleType implements BaseEnum<String> {
 

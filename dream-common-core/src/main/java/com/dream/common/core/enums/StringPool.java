@@ -9,6 +9,7 @@ package com.dream.common.core.enums;
  * {@link #fromValue(String)} 方法会返回第一个匹配的枚举。
  * 如果需要精确匹配，请直接引用枚举常量而非使用 fromValue()。
  *
+ * @author dream
  */
 public enum StringPool implements BaseEnum<String> {
 

@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 通知状态枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_NOTIFY_STATUS}
+ *
+ * @author dream
  */
 public enum NotifyStatus implements BaseEnum<String> {
 

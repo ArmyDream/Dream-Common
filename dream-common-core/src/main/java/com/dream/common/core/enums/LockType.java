@@ -5,6 +5,7 @@ package com.dream.common.core.enums;
  * <p>
  * 配合 Redisson 使用
  *
+ * @author dream
  */
 public enum LockType implements BaseEnum<String> {
 

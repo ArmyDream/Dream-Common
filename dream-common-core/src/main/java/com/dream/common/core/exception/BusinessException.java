@@ -10,6 +10,7 @@ import java.text.MessageFormat;
  * 用于业务逻辑层抛出异常，携带错误码和参数化消息
  * <p>
  *
+ * @author dream
  */
 public class BusinessException extends RuntimeException {
 

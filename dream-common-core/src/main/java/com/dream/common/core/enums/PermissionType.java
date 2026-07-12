@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 权限类型枚举
+ *
+ * @author dream
  */
 public enum PermissionType implements BaseEnum<String> {
 

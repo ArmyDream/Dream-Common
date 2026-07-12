@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 支付状态枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_PAY_STATUS}
+ *
+ * @author dream
  */
 public enum PayStatus implements BaseEnum<String> {
 

@@ -5,6 +5,7 @@ package com.dream.common.core.enums;
  * <p>
  * 用于敏感数据展示时的脱敏处理
  *
+ * @author dream
  */
 public enum DesensitizeType implements BaseEnum<String> {
 

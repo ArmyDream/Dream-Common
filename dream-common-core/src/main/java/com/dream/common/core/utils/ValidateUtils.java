@@ -25,6 +25,7 @@ import java.util.List;
  * );
  * }</pre>
  *
+ * @author dream
  */
 public final class ValidateUtils {
 

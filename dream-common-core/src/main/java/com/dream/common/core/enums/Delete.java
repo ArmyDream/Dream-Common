@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 未删除  已删除 枚举
+ *
+ * @author dream
  */
 public enum Delete implements BaseEnum<String> {
 

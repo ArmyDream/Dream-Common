@@ -6,6 +6,8 @@ package com.dream.common.tool.utils.id;
  * 统一 ID 生成规范，便于扩展和替换
  *
  * @param <T> ID 类型
+ *
+ * @author dream
  */
 public interface IdGenerator<T> {
 

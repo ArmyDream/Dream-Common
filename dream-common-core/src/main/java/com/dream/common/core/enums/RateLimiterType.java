@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 限流类型枚举
  *
+ * @author dream
  */
 public enum RateLimiterType implements BaseEnum<String> {
 

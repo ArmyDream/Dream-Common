@@ -17,6 +17,7 @@ package com.dream.common.core.enums;
  * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(ValidateTypeEnum.class);
  * }</pre>
  *
+ * @author dream
  */
 public enum ValidateType implements BaseEnum<String> {
 

@@ -4,6 +4,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * 业务常量
+ *
+ * @author dream
  */
 public final class Business {
     private Business() {

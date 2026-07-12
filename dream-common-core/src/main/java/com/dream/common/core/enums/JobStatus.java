@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 任务状态 枚举
+ *
+ * @author dream
  */
 public enum JobStatus implements BaseEnum<String> {
 

@@ -24,6 +24,7 @@ import java.util.Collection;
  *   <li>{@link #format(Object, String)} —— 格式化输出</li>
  * </ul>
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public final class MathUtils {

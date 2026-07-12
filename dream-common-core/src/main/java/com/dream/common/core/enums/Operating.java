@@ -3,6 +3,8 @@ package com.dream.common.core.enums;
 
 /**
  * 操作系统枚举
+ *
+ * @author dream
  */
 public enum Operating implements BaseEnum<String> {
 

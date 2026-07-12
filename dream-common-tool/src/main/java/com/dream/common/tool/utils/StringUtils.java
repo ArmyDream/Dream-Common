@@ -32,6 +32,10 @@ import java.util.stream.Stream;
  *
  */
 //@SuppressWarnings("all")
+/**
+ *
+ * @author dream
+ */
 public final class StringUtils extends org.apache.commons.lang3.StringUtils {
 
     // ==================== 常量 ====================

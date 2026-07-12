@@ -2,6 +2,8 @@ package com.dream.common.core.constant;
 
 /**
  * 文件相关常量
+ *
+ * @author dream
  */
 public final class File {
     private File() {}

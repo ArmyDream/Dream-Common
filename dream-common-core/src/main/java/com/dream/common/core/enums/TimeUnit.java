@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 时间单位枚举
  *
+ * @author dream
  */
 public enum TimeUnit implements BaseEnum<String> {
 

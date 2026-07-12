@@ -8,6 +8,7 @@ import java.util.List;
  * 由业务模块实现，用于从数据库/缓存/外部系统加载字典数据。
  * 微服务环境下，各服务可独立实现，自行决定是否使用缓存。
  *
+ * @author dream
  */
 public interface DictProvider {
 

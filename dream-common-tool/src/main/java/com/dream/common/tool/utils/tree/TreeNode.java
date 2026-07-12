@@ -16,6 +16,7 @@ import java.util.List;
  *   <li>实现 {@link Serializable}，支持序列化传输</li>
  * </ul>
  *
+ * @author dream
  */
 public class TreeNode extends LinkedHashMap<String, Object> implements Serializable {
 

@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 成功状态 枚举
+ *
+ * @author dream
  */
 public enum LogStatus implements BaseEnum<String> {
 

@@ -24,6 +24,10 @@ import java.util.List;
         children = "children",
         sort = "sort"
 )
+/**
+ *
+ * @author dream
+ */
 public class DictItem implements Serializable {
 
     private static final long serialVersionUID = 1L;

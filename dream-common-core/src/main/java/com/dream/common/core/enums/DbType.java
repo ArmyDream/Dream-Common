@@ -7,6 +7,7 @@ package com.dream.common.core.enums;
  * <p>
  * 用于：多数据源切换、代码生成、SQL方言适配、分页插件配置等场景
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public enum DbType implements BaseEnum<String> {

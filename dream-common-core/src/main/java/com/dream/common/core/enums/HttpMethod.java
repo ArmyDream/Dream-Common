@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * HTTP 请求方法枚举
+ *
+ * @author dream
  */
 public enum HttpMethod implements BaseEnum<String> {
 

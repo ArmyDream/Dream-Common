@@ -2,6 +2,8 @@ package com.dream.common.core.constant;
 
 /**
  * HTTP 相关常量
+ *
+ * @author dream
  */
 public final class Http {
     private Http() {

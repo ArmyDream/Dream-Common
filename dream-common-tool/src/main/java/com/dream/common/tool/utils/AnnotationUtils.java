@@ -23,6 +23,7 @@ import java.util.*;
  * 注意：本类依赖 {@link ReflectionUtils} 进行反射操作，
  * 使用前请确保目标类有无参构造器（用于实例化场景）。
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public final class AnnotationUtils {

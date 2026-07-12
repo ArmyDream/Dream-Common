@@ -3,6 +3,7 @@ package com.dream.common.core.enums;
 /**
  * 网络协议枚举
  *
+ * @author dream
  */
 public enum Protocol implements BaseEnum<String> {
 

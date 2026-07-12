@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
  *   <li>单节点每毫秒可生成 4096 个 ID</li>
  *   <li>支持时钟回拨自动等待</li>
  * </ul>
+ *
+ * @author dream
  */
 public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
 

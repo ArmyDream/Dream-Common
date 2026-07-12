@@ -29,6 +29,7 @@ import java.util.Objects;
  * R.error(500, "系统错误");
  * }</pre>
  *
+ * @author dream
  */
 public class R<T> implements Serializable {
 

@@ -5,6 +5,7 @@ package com.dream.common.core.enums;
  * <p>
  * 用于查询条件拼接、规则引擎等场景
  *
+ * @author dream
  */
 public enum LogicalOperator implements BaseEnum<String> {
 

@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 通知类型 枚举
+ *
+ * @author dream
  */
 public enum NotifyType implements BaseEnum<String> {
 

@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 审核状态枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_AUDIT_STATUS}
+ *
+ * @author dream
  */
 public enum AuditStatus implements BaseEnum<String> {
 

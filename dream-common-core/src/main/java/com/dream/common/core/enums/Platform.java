@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 平台类型枚举
+ *
+ * @author dream
  */
 public enum Platform implements BaseEnum<String> {
 

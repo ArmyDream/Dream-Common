@@ -8,6 +8,7 @@ package com.dream.common.core.enums;
  * <p>
  * 使用场景：动态查询构建、规则引擎、前端查询条件解析等
  *
+ * @author dream
  */
 public enum ConditionType implements BaseEnum<String> {
 

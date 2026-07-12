@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 排序方向枚举
+ *
+ * @author dream
  */
 public enum SortDirection implements BaseEnum<String> {
 

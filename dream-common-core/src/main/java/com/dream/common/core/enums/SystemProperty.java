@@ -19,6 +19,7 @@ import java.util.function.Supplier;
  *   <li>提供 forceRefresh() 方法支持强制刷新缓存</li>
  * </ul>
  *
+ * @author dream
  */
 public enum SystemProperty implements BaseEnum<String> {
 

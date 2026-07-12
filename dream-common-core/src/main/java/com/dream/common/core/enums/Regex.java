@@ -17,6 +17,7 @@ package com.dream.common.core.enums;
  * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(RegexEnum.class);
  * }</pre>
  *
+ * @author dream
  */
 public enum Regex implements BaseEnum<String> {
 

@@ -17,6 +17,7 @@ package com.dream.common.core.enums;
  *   <li>8000~8999：通用业务错误</li>
  * </ul>
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public enum ResponseCode implements BaseEnum<Integer> {

@@ -4,6 +4,8 @@ package com.dream.common.core.enums;
  * 用户类型枚举
  * <p>
  * 对应字典类型：{@link DictType#SYS_USER_TYPE}
+ *
+ * @author dream
  */
 public enum UserType implements BaseEnum<String> {
 

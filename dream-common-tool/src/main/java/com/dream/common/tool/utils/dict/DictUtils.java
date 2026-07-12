@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
  * }
  * }</pre>
  *
+ * @author dream
  */
 @Slf4j
 public final class DictUtils {

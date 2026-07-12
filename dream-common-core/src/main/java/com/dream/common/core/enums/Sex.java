@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 性别 枚举
+ *
+ * @author dream
  */
 public enum Sex implements BaseEnum<String> {
 

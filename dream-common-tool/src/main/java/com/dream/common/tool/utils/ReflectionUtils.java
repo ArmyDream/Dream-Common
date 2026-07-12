@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
  * 注意：本类所有反射操作均会绕过访问控制（{@code setAccessible(true)}），
  * 适用于工具类场景，生产环境请谨慎评估安全策略。
  *
+ * @author dream
  */
 @SuppressWarnings("all")
 public final class ReflectionUtils {

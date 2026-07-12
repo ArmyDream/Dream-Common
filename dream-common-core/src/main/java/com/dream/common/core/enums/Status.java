@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 启用、停用 枚举
+ *
+ * @author dream
  */
 public enum Status implements BaseEnum<String> {
 

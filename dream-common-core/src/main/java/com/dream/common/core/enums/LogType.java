@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 日志类型枚举
+ *
+ * @author dream
  */
 public enum LogType implements BaseEnum<String> {
 

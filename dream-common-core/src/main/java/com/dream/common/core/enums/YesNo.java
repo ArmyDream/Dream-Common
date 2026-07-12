@@ -2,6 +2,8 @@ package com.dream.common.core.enums;
 
 /**
  * 是否枚举
+ *
+ * @author dream
  */
 public enum YesNo implements BaseEnum<String> {
 
