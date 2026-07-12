@@ -1,5 +1,7 @@
 package com.dream.common.core.enums;
 
+import com.dream.common.core.utils.ValidateUtils;
+
 /**
  * 正则表达式枚举
  * <p>
@@ -19,6 +21,7 @@ package com.dream.common.core.enums;
  *
  * @author dream
  */
+@SuppressWarnings({"unused", "WeakerAccess"})
 public enum Regex implements BaseEnum<String> {
 
     // ==================== 联系方式 ====================
@@ -62,7 +65,7 @@ public enum Regex implements BaseEnum<String> {
      * <p>
      * 规则：2位登记管理机关 + 6位组织机构代码 + 10位其他
      */
-    USCC("统一社会信用代码", "^[0-9A-HJ-NPQRTUWXY]{2}\\d{6}[0-9A-HJ-NPQRTUWXY]{10}$",
+    CREDIT("统一社会信用代码", "^[0-9A-HJ-NPQRTUWXY]{2}\\d{6}[0-9A-HJ-NPQRTUWXY]{10}$",
             "18位统一社会信用代码"),
 
     // ==================== 网络 ====================
@@ -172,7 +175,7 @@ public enum Regex implements BaseEnum<String> {
             "12-19位数字"),
 
     /**
-     * 用户名（4-16位字母、数字、下划线）
+     * 用户名（4-16 位字母、数字、下划线）
      */
     USERNAME("用户名", "^[a-zA-Z0-9_]{4,16}$",
             "4-16位字母、数字、下划线"),
@@ -226,7 +229,7 @@ public enum Regex implements BaseEnum<String> {
             case EMAIL:
                 return "#52C41A";
             case ID_CARD:
-            case USCC:
+            case CREDIT:
                 return "#FAAD14";
             case URL:
             case IPV4:
@@ -246,10 +249,9 @@ public enum Regex implements BaseEnum<String> {
                 return "#2F54EB";
             case CAR_NUMBER:
                 return "#FF6B00";
-            case BANK_CARD:
-                return "#8C8C8C";
             case USERNAME:
                 return "#00A3E0";
+            case BANK_CARD:
             default:
                 return "#8C8C8C";
         }
@@ -297,10 +299,7 @@ public enum Regex implements BaseEnum<String> {
      * @return 匹配返回 true
      */
     public static boolean matches(String input, String regex) {
-        if (input == null || regex == null) {
-            return false;
-        }
-        return input.matches(regex);
+        return ValidateUtils.matches(input, regex);
     }
 
     public static Regex fromValue(String value) {

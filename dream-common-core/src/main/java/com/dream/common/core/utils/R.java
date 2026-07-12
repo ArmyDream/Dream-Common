@@ -31,6 +31,7 @@ import java.util.Objects;
  *
  * @author dream
  */
+@SuppressWarnings({"unused", "WeakerAccess"})
 public class R<T> implements Serializable {
 
     private static final long serialVersionUID = 1L;

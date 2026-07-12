@@ -25,6 +25,7 @@ import com.dream.common.core.enums.Regex;
  *
  * @author dream
  */
+@SuppressWarnings({"unused", "WeakerAccess"})
 public final class DesensitizeUtils {
 
     private DesensitizeUtils() {

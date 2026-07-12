@@ -27,6 +27,7 @@ import java.util.List;
  *
  * @author dream
  */
+@SuppressWarnings({"unused", "WeakerAccess"})
 public final class ValidateUtils {
 
     private ValidateUtils() {
@@ -79,11 +80,11 @@ public final class ValidateUtils {
     /**
      * 校验统一社会信用代码
      *
-     * @param uscc 统一社会信用代码
+     * @param credit 统一社会信用代码
      * @return 合法返回 true
      */
-    public static boolean isUscc(String uscc) {
-        return matches(uscc, Regex.USCC);
+    public static boolean isCredit(String credit) {
+        return matches(credit, Regex.CREDIT);
     }
 
     // ==================== 网络 ====================
@@ -175,7 +176,7 @@ public final class ValidateUtils {
     }
 
     /**
-     * 校验用户名（4-16位字母、数字、下划线）
+     * 校验用户名（4-16 位字母、数字、下划线）
      *
      * @param username 用户名
      * @return 合法返回 true
@@ -276,7 +277,7 @@ public final class ValidateUtils {
     /**
      * 判断字符串长度是否在指定范围内
      *
-     * @param str   字符串
+     * @param str    字符串
      * @param minLen 最小长度（含）
      * @param maxLen 最大长度（含）
      * @return 在范围内返回 true
