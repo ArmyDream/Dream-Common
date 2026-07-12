@@ -4,6 +4,7 @@ import com.dream.common.core.constant.Business;
 import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.Expiry;
+import lombok.extern.slf4j.Slf4j;
 import org.checkerframework.checker.index.qual.NonNegative;
 import org.checkerframework.checker.nullness.qual.NonNull;
 
@@ -29,6 +30,7 @@ import java.util.function.Supplier;
  *
  * @author dream
  */
+@Slf4j
 @SuppressWarnings("all")
 public final class CachesUtils {
 
@@ -142,10 +144,14 @@ public final class CachesUtils {
      */
     public static <T> void set(String key, T value, long expire, TimeUnit timeUnit) {
         if (StringUtils.isBlank(key)) {
+            log.warn("设置缓存失败：key 为空");
             return;
         }
         CacheObject<T> cacheObject = new CacheObject<>(value, expire, timeUnit);
         CAFFEINE.put(key, cacheObject);
+        if (log.isDebugEnabled()) {
+            log.debug("设置缓存成功: key={}, expire={}, timeUnit={}", key, expire, timeUnit != null ? timeUnit : DEFAULT_TIME_UNIT);
+        }
     }
 
     /**
@@ -194,9 +200,13 @@ public final class CachesUtils {
      */
     public static <T> boolean setIfAbsent(String key, T value, long expire, TimeUnit timeUnit) {
         if (StringUtils.isBlank(key)) {
+            log.warn("设置缓存失败：key 为空");
             return false;
         }
         if (contains(key)) {
+            if (log.isDebugEnabled()) {
+                log.debug("缓存已存在，跳过设置: key={}", key);
+            }
             return false;
         }
         set(key, value, expire, timeUnit);
@@ -235,10 +245,14 @@ public final class CachesUtils {
      */
     public static <T> void batchSet(Map<String, T> map, long expire, TimeUnit timeUnit) {
         if (map == null || map.isEmpty()) {
+            log.warn("批量设置缓存失败：map 为空");
             return;
         }
         for (Map.Entry<String, T> entry : map.entrySet()) {
             set(entry.getKey(), entry.getValue(), expire, timeUnit);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("批量设置缓存成功: count={}, expire={}", map.size(), expire);
         }
     }
 
@@ -258,7 +272,13 @@ public final class CachesUtils {
         }
         CacheObject<?> cacheObject = CAFFEINE.getIfPresent(key);
         if (cacheObject == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("缓存未命中: key={}", key);
+            }
             return null;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("缓存命中: key={}", key);
         }
         return (T) cacheObject.data;
     }
@@ -278,7 +298,13 @@ public final class CachesUtils {
         }
         CacheObject<?> cacheObject = CAFFEINE.getIfPresent(key);
         if (cacheObject == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("缓存未命中，返回默认值: key={}", key);
+            }
             return defaultValue;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("缓存命中: key={}", key);
         }
         return (T) cacheObject.data;
     }
@@ -299,16 +325,26 @@ public final class CachesUtils {
     @SuppressWarnings("unchecked")
     public static <T> T getOrCreate(String key, Supplier<T> supplier, long expire, TimeUnit timeUnit) {
         if (StringUtils.isBlank(key) || supplier == null) {
+            log.warn("获取或创建缓存失败：key 或 supplier 为空");
             return null;
         }
         CacheObject<?> existing = CAFFEINE.getIfPresent(key);
         if (existing != null) {
+            if (log.isDebugEnabled()) {
+                log.debug("缓存命中，直接返回: key={}", key);
+            }
             return (T) existing.data;
         }
         // supplier 生成值
+        log.debug("缓存未命中，执行 supplier 加载: key={}", key);
         T value = supplier.get();
         if (value != null) {
             set(key, value, expire, timeUnit);
+            if (log.isDebugEnabled()) {
+                log.debug("缓存加载并设置成功: key={}", key);
+            }
+        } else {
+            log.warn("缓存加载失败，supplier 返回 null: key={}", key);
         }
         return value;
     }
@@ -339,7 +375,12 @@ public final class CachesUtils {
             return result;
         }
         for (String key : keys) {
-            result.put(key, (T) get(key));
+            T value = get(key);
+            result.put(key, value);
+        }
+        if (log.isDebugEnabled()) {
+            long hitCount = result.values().stream().filter(Objects::nonNull).count();
+            log.debug("批量获取缓存完成: total={}, hit={}, miss={}", keys.size(), hitCount, keys.size() - hitCount);
         }
         return result;
     }
@@ -363,6 +404,9 @@ public final class CachesUtils {
                 result.put(key, (T) cacheObject.data);
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("批量获取缓存（仅存在）完成: total={}, found={}", keys.size(), result.size());
+        }
         return result;
     }
 
@@ -378,7 +422,11 @@ public final class CachesUtils {
         if (StringUtils.isBlank(key)) {
             return false;
         }
-        return CAFFEINE.getIfPresent(key) != null;
+        boolean exists = CAFFEINE.getIfPresent(key) != null;
+        if (log.isDebugEnabled()) {
+            log.debug("缓存存在检查: key={}, exists={}", key, exists);
+        }
+        return exists;
     }
 
     /**
@@ -387,7 +435,11 @@ public final class CachesUtils {
      * @return 缓存条目数
      */
     public static long size() {
-        return CAFFEINE.estimatedSize();
+        long size = CAFFEINE.estimatedSize();
+        if (log.isDebugEnabled()) {
+            log.debug("获取缓存条目数: size={}", size);
+        }
+        return size;
     }
 
     /**
@@ -405,7 +457,11 @@ public final class CachesUtils {
      * @return key 列表
      */
     public static List<String> getKeys() {
-        return new ArrayList<>(CAFFEINE.asMap().keySet());
+        List<String> keys = new ArrayList<>(CAFFEINE.asMap().keySet());
+        if (log.isDebugEnabled()) {
+            log.debug("获取所有缓存 key: count={}", keys.size());
+        }
+        return keys;
     }
 
     /**
@@ -427,6 +483,9 @@ public final class CachesUtils {
                 keys.add(key);
             }
         });
+        if (log.isDebugEnabled()) {
+            log.debug("按前缀获取缓存 key: prefix={}, count={}", keyPrefix, keys.size());
+        }
         return keys;
     }
 
@@ -439,9 +498,13 @@ public final class CachesUtils {
      */
     public static void delete(String key) {
         if (StringUtils.isBlank(key)) {
+            log.warn("删除缓存失败：key 为空");
             return;
         }
         CAFFEINE.invalidate(key);
+        if (log.isDebugEnabled()) {
+            log.debug("删除缓存成功: key={}", key);
+        }
     }
 
     /**
@@ -451,9 +514,13 @@ public final class CachesUtils {
      */
     public static void deleteKeys(String... keys) {
         if (keys == null || keys.length == 0) {
+            log.warn("批量删除缓存失败：keys 为空");
             return;
         }
         CAFFEINE.invalidateAll(Arrays.asList(keys));
+        if (log.isDebugEnabled()) {
+            log.debug("批量删除缓存成功: count={}", keys.length);
+        }
     }
 
     /**
@@ -463,9 +530,13 @@ public final class CachesUtils {
      */
     public static void deleteKeys(Collection<String> keys) {
         if (keys == null || keys.isEmpty()) {
+            log.warn("批量删除缓存失败：keys 为空");
             return;
         }
         CAFFEINE.invalidateAll(keys);
+        if (log.isDebugEnabled()) {
+            log.debug("批量删除缓存成功: count={}", keys.size());
+        }
     }
 
     /**
@@ -478,11 +549,19 @@ public final class CachesUtils {
      */
     public static void deletePrefix(String keyPrefix) {
         if (StringUtils.isBlank(keyPrefix)) {
+            log.warn("按前缀删除缓存失败：keyPrefix 为空");
             return;
         }
         final List<String> keys = getKeys(keyPrefix);
         if (!keys.isEmpty()) {
             CAFFEINE.invalidateAll(keys);
+            if (log.isDebugEnabled()) {
+                log.debug("按前缀删除缓存成功: prefix={}, count={}", keyPrefix, keys.size());
+            }
+        } else {
+            if (log.isDebugEnabled()) {
+                log.debug("按前缀删除缓存: 无匹配缓存, prefix={}", keyPrefix);
+            }
         }
     }
 
@@ -490,7 +569,11 @@ public final class CachesUtils {
      * 清空全部缓存
      */
     public static void clear() {
+        long beforeSize = CAFFEINE.estimatedSize();
         CAFFEINE.invalidateAll();
+        if (log.isDebugEnabled()) {
+            log.debug("清空全部缓存成功: beforeSize={}", beforeSize);
+        }
     }
 
     // ==================== 统计与维护 ====================
@@ -502,7 +585,12 @@ public final class CachesUtils {
      * 此方法可在需要时主动触发（如定时任务调用）。
      */
     public static void cleanUp() {
+        long beforeSize = CAFFEINE.estimatedSize();
         CAFFEINE.cleanUp();
+        long afterSize = CAFFEINE.estimatedSize();
+        if (log.isDebugEnabled() && beforeSize != afterSize) {
+            log.debug("执行缓存清理: beforeSize={}, afterSize={}, removed={}", beforeSize, afterSize, beforeSize - afterSize);
+        }
     }
 
     /**
@@ -511,6 +599,9 @@ public final class CachesUtils {
      * @return 缓存的 ConcurrentMap 视图
      */
     public static ConcurrentMap<String, CacheObject<?>> asMap() {
+        if (log.isDebugEnabled()) {
+            log.debug("获取底层 ConcurrentMap");
+        }
         return CAFFEINE.asMap();
     }
 }

@@ -15,8 +15,8 @@
 
     <modules>
         <module>dream-common-core</module>
-        <module>dream-common-framework</module>
         <module>dream-common-tool</module>
+        <module>dream-common-framework</module>
     </modules>
 
     <properties>
@@ -36,15 +36,16 @@
 
             <dependency>
                 <groupId>com.dream</groupId>
-                <artifactId>dream-common-framework</artifactId>
+                <artifactId>dream-common-tool</artifactId>
                 <version>${dream.version}</version>
             </dependency>
 
             <dependency>
                 <groupId>com.dream</groupId>
-                <artifactId>dream-common-tool</artifactId>
+                <artifactId>dream-common-framework</artifactId>
                 <version>${dream.version}</version>
             </dependency>
+
         </dependencies>
 
     </dependencyManagement>

@@ -184,6 +184,13 @@ public final class ValidateUtils {
         return matches(username, Regex.USERNAME);
     }
 
+    /**
+     * 是否中文
+     */
+    public static boolean isChinese(String str) {
+        return matches(str, Regex.CHINESE);
+    }
+
     // ==================== 其他 ====================
 
     /**

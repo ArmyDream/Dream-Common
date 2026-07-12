@@ -1,5 +1,6 @@
 package com.dream.common.tool.utils;
 
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.lang3.ClassUtils;
 
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
  *
  * @author dream
  */
+@Slf4j
 @SuppressWarnings("all")
 public final class ReflectionUtils {
 
@@ -55,10 +57,17 @@ public final class ReflectionUtils {
      */
     public static Class<?> getSuperClass(Class<?> clazz) {
         if (clazz == null || clazz == Object.class) {
+            if (log.isDebugEnabled()) {
+                log.debug("getSuperClass: clazz 为 null 或 Object.class");
+            }
             return null;
         }
         Class<?> superClass = clazz.getSuperclass();
-        return (superClass == Object.class) ? null : superClass;
+        Class<?> result = (superClass == Object.class) ? null : superClass;
+        if (log.isDebugEnabled()) {
+            log.debug("getSuperClass: {} → {}", clazz.getName(), result != null ? result.getName() : "null");
+        }
+        return result;
     }
 
     /**
@@ -73,12 +82,18 @@ public final class ReflectionUtils {
     public static List<Class<?>> getAllSuperClasses(Class<?> clazz) {
         List<Class<?>> list = new ArrayList<>();
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllSuperClasses: clazz 为 null");
+            }
             return list;
         }
         Class<?> current = clazz.getSuperclass();
         while (current != null && current != Object.class) {
             list.add(current);
             current = current.getSuperclass();
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getAllSuperClasses: {} 的继承链长度为 {}", clazz.getName(), list.size());
         }
         return list;
     }
@@ -91,9 +106,16 @@ public final class ReflectionUtils {
      */
     public static List<Class<?>> getAllInterfaces(Class<?> clazz) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllInterfaces: clazz 为 null");
+            }
             return new ArrayList<>();
         }
-        return new ArrayList<>(ClassUtils.getAllInterfaces(clazz));
+        List<Class<?>> result = new ArrayList<>(ClassUtils.getAllInterfaces(clazz));
+        if (log.isDebugEnabled()) {
+            log.debug("getAllInterfaces: {} 实现了 {} 个接口", clazz.getName(), result.size());
+        }
+        return result;
     }
 
     /**
@@ -105,9 +127,16 @@ public final class ReflectionUtils {
      */
     public static boolean isAssignable(Class<?> source, Class<?> target) {
         if (source == null || target == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("isAssignable: source={}, target={}", source, target);
+            }
             return false;
         }
-        return ClassUtils.isAssignable(source, target, true);
+        boolean result = ClassUtils.isAssignable(source, target, true);
+        if (log.isDebugEnabled()) {
+            log.debug("isAssignable: {} → {} = {}", source.getName(), target.getName(), result);
+        }
+        return result;
     }
 
     // ==================== 字段操作 ====================
@@ -121,6 +150,9 @@ public final class ReflectionUtils {
      */
     public static Field getField(Class<?> clazz, String fieldName) {
         if (clazz == null || fieldName == null || fieldName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("getField: clazz={}, fieldName={}", clazz, fieldName);
+            }
             return null;
         }
         String cacheKey = clazz.getName() + "#" + fieldName;
@@ -134,10 +166,16 @@ public final class ReflectionUtils {
                 Field field = current.getDeclaredField(fieldName);
                 field.setAccessible(true);
                 FIELD_CACHE.put(cacheKey, field);
+                if (log.isDebugEnabled()) {
+                    log.debug("getField: 找到字段 {}#{}", clazz.getName(), fieldName);
+                }
                 return field;
             } catch (NoSuchFieldException ignored) {
                 current = current.getSuperclass();
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getField: 未找到字段 {}#{}", clazz.getName(), fieldName);
         }
         return null;
     }
@@ -151,6 +189,9 @@ public final class ReflectionUtils {
     public static List<Field> getAllFields(Class<?> clazz) {
         List<Field> fields = new ArrayList<>();
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllFields: clazz 为 null");
+            }
             return fields;
         }
         Set<String> seen = new HashSet<>();
@@ -164,6 +205,9 @@ public final class ReflectionUtils {
             }
             current = current.getSuperclass();
         }
+        if (log.isDebugEnabled()) {
+            log.debug("getAllFields: {} 共有 {} 个字段", clazz.getName(), fields.size());
+        }
         return fields;
     }
 
@@ -176,11 +220,19 @@ public final class ReflectionUtils {
      */
     public static List<Field> getFieldsWithAnnotation(Class<?> clazz, Class<? extends Annotation> annotationClass) {
         if (clazz == null || annotationClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldsWithAnnotation: clazz={}, annotationClass={}", clazz, annotationClass);
+            }
             return new ArrayList<>();
         }
-        return getAllFields(clazz).stream()
+        List<Field> result = getAllFields(clazz).stream()
                 .filter(f -> f.isAnnotationPresent(annotationClass))
                 .collect(Collectors.toList());
+        if (log.isDebugEnabled()) {
+            log.debug("getFieldsWithAnnotation: {} 中有 {} 个字段标注了 {}",
+                    clazz.getName(), result.size(), annotationClass.getSimpleName());
+        }
+        return result;
     }
 
     /**
@@ -196,21 +248,38 @@ public final class ReflectionUtils {
      */
     public static Object getFieldValue(Object obj, String fieldName) {
         if (obj == null || fieldName == null || fieldName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldValue: obj={}, fieldName={}", obj, fieldName);
+            }
             return null;
         }
         // 支持嵌套字段（点分隔）
         if (fieldName.contains(".")) {
             String[] parts = fieldName.split("\\.", 2);
             Object nested = getFieldValue(obj, parts[0]);
-            return (nested == null) ? null : getFieldValue(nested, parts[1]);
+            if (nested == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("getFieldValue: 嵌套字段 {} 为 null", parts[0]);
+                }
+                return null;
+            }
+            return getFieldValue(nested, parts[1]);
         }
         try {
             Field field = getField(obj.getClass(), fieldName);
             if (field == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("getFieldValue: 未找到字段 {}", fieldName);
+                }
                 return null;
             }
-            return field.get(obj);
+            Object value = field.get(obj);
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldValue: {}.{} = {}", obj.getClass().getSimpleName(), fieldName, value);
+            }
+            return value;
         } catch (IllegalAccessException e) {
+            log.error("无法读取字段 [{}]", fieldName, e);
             throw new RuntimeException("无法读取字段 [" + fieldName + "]", e);
         }
     }
@@ -227,16 +296,27 @@ public final class ReflectionUtils {
      */
     public static boolean setFieldValue(Object obj, String fieldName, Object value) {
         if (obj == null || fieldName == null || fieldName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("setFieldValue: obj={}, fieldName={}", obj, fieldName);
+            }
             return false;
         }
         try {
             Field field = getField(obj.getClass(), fieldName);
             if (field == null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("setFieldValue: 未找到字段 {}", fieldName);
+                }
                 return false;
             }
-            field.set(obj, convertValue(value, field.getType()));
+            Object converted = convertValue(value, field.getType());
+            field.set(obj, converted);
+            if (log.isDebugEnabled()) {
+                log.debug("setFieldValue: {}.{} = {}", obj.getClass().getSimpleName(), fieldName, converted);
+            }
             return true;
         } catch (IllegalAccessException e) {
+            log.error("无法设置字段 [{}]", fieldName, e);
             throw new RuntimeException("无法设置字段 [" + fieldName + "]", e);
         }
     }
@@ -252,6 +332,9 @@ public final class ReflectionUtils {
     public static Map<String, Object> getFieldValues(Object obj) {
         Map<String, Object> map = new LinkedHashMap<>();
         if (obj == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldValues: obj 为 null");
+            }
             return map;
         }
         for (Field field : getAllFields(obj.getClass())) {
@@ -260,9 +343,14 @@ public final class ReflectionUtils {
                 continue;
             }
             try {
-                map.put(field.getName(), field.get(obj));
-            } catch (IllegalAccessException ignored) {
+                Object value = field.get(obj);
+                map.put(field.getName(), value);
+            } catch (IllegalAccessException e) {
+                log.warn("读取字段值失败: {}", field.getName(), e);
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getFieldValues: {} 共读取 {} 个字段", obj.getClass().getSimpleName(), map.size());
         }
         return map;
     }
@@ -279,6 +367,9 @@ public final class ReflectionUtils {
      */
     public static Method getMethod(Class<?> clazz, String methodName, Class<?>... paramTypes) {
         if (clazz == null || methodName == null || methodName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethod: clazz={}, methodName={}", clazz, methodName);
+            }
             return null;
         }
         Class<?> current = clazz;
@@ -286,6 +377,9 @@ public final class ReflectionUtils {
             try {
                 Method method = current.getDeclaredMethod(methodName, paramTypes);
                 method.setAccessible(true);
+                if (log.isDebugEnabled()) {
+                    log.debug("getMethod: 找到方法 {}.{}", clazz.getName(), methodName);
+                }
                 return method;
             } catch (NoSuchMethodException ignored) {
                 current = current.getSuperclass();
@@ -293,8 +387,15 @@ public final class ReflectionUtils {
         }
         // 尝试从公共方法中查找（含接口默认方法）
         try {
-            return clazz.getMethod(methodName, paramTypes);
+            Method method = clazz.getMethod(methodName, paramTypes);
+            if (log.isDebugEnabled()) {
+                log.debug("getMethod: 从公共方法找到 {}.{}", clazz.getName(), methodName);
+            }
+            return method;
         } catch (NoSuchMethodException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethod: 未找到方法 {}.{}", clazz.getName(), methodName);
+            }
             return null;
         }
     }
@@ -309,6 +410,9 @@ public final class ReflectionUtils {
      */
     public static List<Method> getMethodsByName(Class<?> clazz, String methodName, int argCount) {
         if (clazz == null || methodName == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodsByName: clazz={}, methodName={}", clazz, methodName);
+            }
             return new ArrayList<>();
         }
         List<Method> result = new ArrayList<>();
@@ -316,6 +420,9 @@ public final class ReflectionUtils {
             if (method.getName().equals(methodName) && method.getParameterCount() == argCount) {
                 result.add(method);
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getMethodsByName: {}.{} 找到 {} 个匹配方法", clazz.getName(), methodName, result.size());
         }
         return result;
     }
@@ -331,6 +438,9 @@ public final class ReflectionUtils {
     public static List<Method> getAllMethods(Class<?> clazz) {
         List<Method> methods = new ArrayList<>();
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllMethods: clazz 为 null");
+            }
             return methods;
         }
         Set<String> seen = new HashSet<>();
@@ -345,6 +455,9 @@ public final class ReflectionUtils {
             }
             current = current.getSuperclass();
         }
+        if (log.isDebugEnabled()) {
+            log.debug("getAllMethods: {} 共有 {} 个方法", clazz.getName(), methods.size());
+        }
         return methods;
     }
 
@@ -357,11 +470,19 @@ public final class ReflectionUtils {
      */
     public static List<Method> getMethodsWithAnnotation(Class<?> clazz, Class<? extends Annotation> annotationClass) {
         if (clazz == null || annotationClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodsWithAnnotation: clazz={}, annotationClass={}", clazz, annotationClass);
+            }
             return new ArrayList<>();
         }
-        return getAllMethods(clazz).stream()
+        List<Method> result = getAllMethods(clazz).stream()
                 .filter(m -> m.isAnnotationPresent(annotationClass))
                 .collect(Collectors.toList());
+        if (log.isDebugEnabled()) {
+            log.debug("getMethodsWithAnnotation: {} 中有 {} 个方法标注了 {}",
+                    clazz.getName(), result.size(), annotationClass.getSimpleName());
+        }
+        return result;
     }
 
     /**
@@ -379,23 +500,36 @@ public final class ReflectionUtils {
      */
     public static Object invokeMethod(Object obj, String methodName, Object... args) {
         if (methodName == null || methodName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeMethod: methodName 为空");
+            }
             return null;
         }
         Class<?> clazz = (obj != null) ? obj.getClass() : null;
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeMethod: obj 为 null，无法获取类");
+            }
             return null;
         }
         Class<?>[] paramTypes = getParameterTypes(args);
         Method method = findMatchingMethod(clazz, methodName, paramTypes);
         if (method == null) {
+            log.error("未找到方法 [{}]，类：{}", methodName, clazz.getName());
             throw new RuntimeException("未找到方法 [" + methodName + "]，类：" + clazz.getName());
         }
         try {
-            return method.invoke(obj, args);
+            Object result = method.invoke(obj, args);
+            if (log.isDebugEnabled()) {
+                log.debug("invokeMethod: {}.{} 调用成功，返回 {}", clazz.getSimpleName(), methodName, result);
+            }
+            return result;
         } catch (IllegalAccessException e) {
+            log.error("无权访问方法 [{}]", methodName, e);
             throw new RuntimeException("无权访问方法 [" + methodName + "]", e);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
+            log.error("调用方法 [{}] 异常", methodName, cause);
             throw new RuntimeException("调用方法 [" + methodName + "] 异常：" + cause.getMessage(), cause);
         }
     }
@@ -409,6 +543,9 @@ public final class ReflectionUtils {
      */
     public static Object invokeGetter(Object obj, String fieldName) {
         if (obj == null || fieldName == null || fieldName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeGetter: obj={}, fieldName={}", obj, fieldName);
+            }
             return null;
         }
         String capitalized = fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
@@ -419,6 +556,7 @@ public final class ReflectionUtils {
             getter = getMethod(obj.getClass(), getterName);
         }
         if (getter == null) {
+            log.error("未找到 getter 方法 [get/is{}] 字段：{}", capitalized, fieldName);
             throw new RuntimeException("未找到 getter 方法 [get/is" + capitalized + "]");
         }
         return invokeMethod(obj, getterName);
@@ -434,15 +572,24 @@ public final class ReflectionUtils {
      */
     public static boolean invokeSetter(Object obj, String fieldName, Object value) {
         if (obj == null || fieldName == null || fieldName.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeSetter: obj={}, fieldName={}", obj, fieldName);
+            }
             return false;
         }
         String capitalized = fieldName.substring(0, 1).toUpperCase() + fieldName.substring(1);
         String setterName = "set" + capitalized;
         List<Method> setters = getMethodsByName(obj.getClass(), setterName, 1);
         if (setters.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeSetter: 未找到 setter 方法 {}", setterName);
+            }
             return false;
         }
         invokeMethod(obj, setterName, value);
+        if (log.isDebugEnabled()) {
+            log.debug("invokeSetter: {}.{} 调用成功", obj.getClass().getSimpleName(), setterName);
+        }
         return true;
     }
 
@@ -456,18 +603,28 @@ public final class ReflectionUtils {
      */
     public static Object invokeStaticMethod(Class<?> clazz, String methodName, Object... args) {
         if (clazz == null || methodName == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("invokeStaticMethod: clazz={}, methodName={}", clazz, methodName);
+            }
             return null;
         }
         Class<?>[] paramTypes = getParameterTypes(args);
         Method method = findMatchingMethod(clazz, methodName, paramTypes);
         if (method == null || !Modifier.isStatic(method.getModifiers())) {
+            log.error("未找到静态方法 [{}]，类：{}", methodName, clazz.getName());
             throw new RuntimeException("未找到静态方法 [" + methodName + "]，类：" + clazz.getName());
         }
         try {
-            return method.invoke(null, args);
+            Object result = method.invoke(null, args);
+            if (log.isDebugEnabled()) {
+                log.debug("invokeStaticMethod: {}.{} 调用成功，返回 {}", clazz.getSimpleName(), methodName, result);
+            }
+            return result;
         } catch (IllegalAccessException e) {
+            log.error("无权访问静态方法 [{}]", methodName, e);
             throw new RuntimeException("无权访问静态方法 [" + methodName + "]", e);
         } catch (InvocationTargetException e) {
+            log.error("调用静态方法 [{}] 异常", methodName, e.getCause());
             throw new RuntimeException("调用静态方法 [" + methodName + "] 异常", e.getCause());
         }
     }
@@ -483,13 +640,22 @@ public final class ReflectionUtils {
      */
     public static <T> Constructor<T> getConstructor(Class<T> clazz, Class<?>... paramTypes) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getConstructor: clazz 为 null");
+            }
             return null;
         }
         try {
             Constructor<T> constructor = clazz.getDeclaredConstructor(paramTypes);
             constructor.setAccessible(true);
+            if (log.isDebugEnabled()) {
+                log.debug("getConstructor: 找到构造器 {}({})", clazz.getName(), paramTypes);
+            }
             return constructor;
         } catch (NoSuchMethodException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("getConstructor: 未找到构造器 {}({})", clazz.getName(), paramTypes);
+            }
             return null;
         }
     }
@@ -502,12 +668,18 @@ public final class ReflectionUtils {
      */
     public static <T> List<Constructor<T>> getAllConstructors(Class<T> clazz) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllConstructors: clazz 为 null");
+            }
             return new ArrayList<>();
         }
         List<Constructor<T>> list = new ArrayList<>();
         for (Constructor<T> c : (Constructor<T>[]) clazz.getDeclaredConstructors()) {
             c.setAccessible(true);
             list.add(c);
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getAllConstructors: {} 共有 {} 个构造器", clazz.getName(), list.size());
         }
         return list;
     }
@@ -523,15 +695,24 @@ public final class ReflectionUtils {
      */
     public static <T> T newInstance(Class<T> clazz) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("newInstance: clazz 为 null");
+            }
             return null;
         }
         try {
             Constructor<T> constructor = clazz.getDeclaredConstructor();
             constructor.setAccessible(true);
-            return constructor.newInstance();
+            T instance = constructor.newInstance();
+            if (log.isDebugEnabled()) {
+                log.debug("newInstance: 创建 {} 实例成功", clazz.getName());
+            }
+            return instance;
         } catch (NoSuchMethodException e) {
+            log.error("类 [{}] 没有无参构造器", clazz.getName(), e);
             throw new RuntimeException("类 [" + clazz.getName() + "] 没有无参构造器", e);
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            log.error("创建实例 [{}] 失败", clazz.getName(), e);
             throw new RuntimeException("创建实例 [" + clazz.getName() + "] 失败", e);
         }
     }
@@ -545,6 +726,9 @@ public final class ReflectionUtils {
      */
     public static <T> T newInstance(Class<T> clazz, Object... args) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("newInstance: clazz 为 null");
+            }
             return null;
         }
         if (ArrayUtils.isEmpty(args)) {
@@ -553,11 +737,17 @@ public final class ReflectionUtils {
         Class<?>[] paramTypes = getParameterTypes(args);
         Constructor<T> constructor = findMatchingConstructor(clazz, paramTypes);
         if (constructor == null) {
+            log.error("未找到匹配的构造器，类：{}，参数类型：{}", clazz.getName(), paramTypes);
             throw new RuntimeException("未找到匹配的构造器，类：" + clazz.getName());
         }
         try {
-            return constructor.newInstance(args);
+            T instance = constructor.newInstance(args);
+            if (log.isDebugEnabled()) {
+                log.debug("newInstance: 使用有参构造器创建 {} 实例成功", clazz.getName());
+            }
+            return instance;
         } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
+            log.error("创建实例 [{}] 失败", clazz.getName(), e);
             throw new RuntimeException("创建实例 [" + clazz.getName() + "] 失败", e);
         }
     }
@@ -573,15 +763,24 @@ public final class ReflectionUtils {
      */
     public static <A extends Annotation> A getAnnotation(Class<?> clazz, Class<A> annotationClass) {
         if (clazz == null || annotationClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAnnotation: clazz={}, annotationClass={}", clazz, annotationClass);
+            }
             return null;
         }
         Class<?> current = clazz;
         while (current != null && current != Object.class) {
             A annotation = current.getAnnotation(annotationClass);
             if (annotation != null) {
+                if (log.isDebugEnabled()) {
+                    log.debug("getAnnotation: 在 {} 上找到注解 {}", current.getName(), annotationClass.getSimpleName());
+                }
                 return annotation;
             }
             current = current.getSuperclass();
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getAnnotation: 未在 {} 上找到注解 {}", clazz.getName(), annotationClass.getSimpleName());
         }
         return null;
     }
@@ -595,9 +794,17 @@ public final class ReflectionUtils {
      */
     public static <A extends Annotation> A getFieldAnnotation(Field field, Class<A> annotationClass) {
         if (field == null || annotationClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldAnnotation: field={}, annotationClass={}", field, annotationClass);
+            }
             return null;
         }
-        return field.getAnnotation(annotationClass);
+        A annotation = field.getAnnotation(annotationClass);
+        if (log.isDebugEnabled()) {
+            log.debug("getFieldAnnotation: 字段 {} 是否有注解 {}: {}",
+                    field.getName(), annotationClass.getSimpleName(), annotation != null);
+        }
+        return annotation;
     }
 
     /**
@@ -609,9 +816,17 @@ public final class ReflectionUtils {
      */
     public static <A extends Annotation> A getMethodAnnotation(Method method, Class<A> annotationClass) {
         if (method == null || annotationClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodAnnotation: method={}, annotationClass={}", method, annotationClass);
+            }
             return null;
         }
-        return method.getAnnotation(annotationClass);
+        A annotation = method.getAnnotation(annotationClass);
+        if (log.isDebugEnabled()) {
+            log.debug("getMethodAnnotation: 方法 {} 是否有注解 {}: {}",
+                    method.getName(), annotationClass.getSimpleName(), annotation != null);
+        }
+        return annotation;
     }
 
     /**
@@ -622,6 +837,9 @@ public final class ReflectionUtils {
      */
     public static List<Annotation> getAllAnnotations(Class<?> clazz) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getAllAnnotations: clazz 为 null");
+            }
             return new ArrayList<>();
         }
         Map<Class<? extends Annotation>, Annotation> map = new LinkedHashMap<>();
@@ -632,7 +850,11 @@ public final class ReflectionUtils {
             }
             current = current.getSuperclass();
         }
-        return new ArrayList<>(map.values());
+        List<Annotation> result = new ArrayList<>(map.values());
+        if (log.isDebugEnabled()) {
+            log.debug("getAllAnnotations: {} 共有 {} 个注解", clazz.getName(), result.size());
+        }
+        return result;
     }
 
     /**
@@ -643,7 +865,12 @@ public final class ReflectionUtils {
      * @return true 表示存在该注解
      */
     public static boolean isAnnotationPresent(Class<?> clazz, Class<? extends Annotation> annotationClass) {
-        return getAnnotation(clazz, annotationClass) != null;
+        boolean result = getAnnotation(clazz, annotationClass) != null;
+        if (log.isDebugEnabled()) {
+            log.debug("isAnnotationPresent: {} 是否标注 {}: {}",
+                    clazz.getName(), annotationClass.getSimpleName(), result);
+        }
+        return result;
     }
 
     /**
@@ -654,9 +881,16 @@ public final class ReflectionUtils {
      */
     public static Annotation[][] getParameterAnnotations(Method method) {
         if (method == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getParameterAnnotations: method 为 null");
+            }
             return new Annotation[0][];
         }
-        return method.getParameterAnnotations();
+        Annotation[][] result = method.getParameterAnnotations();
+        if (log.isDebugEnabled()) {
+            log.debug("getParameterAnnotations: {} 有 {} 个参数", method.getName(), result.length);
+        }
+        return result;
     }
 
     // ==================== 泛型操作 ====================
@@ -673,13 +907,23 @@ public final class ReflectionUtils {
      */
     public static Class<?>[] getSuperClassGenericType(Class<?> clazz) {
         if (clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getSuperClassGenericType: clazz 为 null");
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         Type type = clazz.getGenericSuperclass();
         if (!(type instanceof ParameterizedType)) {
+            if (log.isDebugEnabled()) {
+                log.debug("getSuperClassGenericType: {} 无泛型参数", clazz.getName());
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
-        return extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        Class<?>[] result = extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        if (log.isDebugEnabled()) {
+            log.debug("getSuperClassGenericType: {} 的泛型参数为 {}", clazz.getName(), Arrays.toString(result));
+        }
+        return result;
     }
 
     /**
@@ -692,9 +936,16 @@ public final class ReflectionUtils {
     public static Class<?> getSuperClassGenericType(Class<?> clazz, int index) {
         Class<?>[] types = getSuperClassGenericType(clazz);
         if (index < 0 || index >= types.length) {
+            if (log.isDebugEnabled()) {
+                log.debug("getSuperClassGenericType: 索引 {} 超出范围", index);
+            }
             return null;
         }
-        return types[index];
+        Class<?> result = types[index];
+        if (log.isDebugEnabled()) {
+            log.debug("getSuperClassGenericType: {} 的泛型参数[{}] = {}", clazz.getName(), index, result);
+        }
+        return result;
     }
 
     /**
@@ -710,15 +961,26 @@ public final class ReflectionUtils {
      */
     public static Class<?>[] getInterfaceGenericType(Class<?> clazz, Class<?> interfaceClass) {
         if (clazz == null || interfaceClass == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getInterfaceGenericType: clazz={}, interfaceClass={}", clazz, interfaceClass);
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         for (Type type : clazz.getGenericInterfaces()) {
             if (type instanceof ParameterizedType) {
                 ParameterizedType pt = (ParameterizedType) type;
                 if (pt.getRawType().equals(interfaceClass)) {
-                    return extractRawTypes(pt.getActualTypeArguments());
+                    Class<?>[] result = extractRawTypes(pt.getActualTypeArguments());
+                    if (log.isDebugEnabled()) {
+                        log.debug("getInterfaceGenericType: {} 的接口泛型参数为 {}",
+                                clazz.getName(), Arrays.toString(result));
+                    }
+                    return result;
                 }
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("getInterfaceGenericType: {} 未实现接口 {}", clazz.getName(), interfaceClass.getName());
         }
         return ArrayUtils.EMPTY_CLASS_ARRAY;
     }
@@ -731,13 +993,23 @@ public final class ReflectionUtils {
      */
     public static Class<?>[] getFieldGenericType(Field field) {
         if (field == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldGenericType: field 为 null");
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         Type type = field.getGenericType();
         if (!(type instanceof ParameterizedType)) {
+            if (log.isDebugEnabled()) {
+                log.debug("getFieldGenericType: 字段 {} 非泛型字段", field.getName());
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
-        return extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        Class<?>[] result = extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        if (log.isDebugEnabled()) {
+            log.debug("getFieldGenericType: 字段 {} 的泛型参数为 {}", field.getName(), Arrays.toString(result));
+        }
+        return result;
     }
 
     /**
@@ -748,13 +1020,24 @@ public final class ReflectionUtils {
      */
     public static Class<?>[] getMethodGenericReturnType(Method method) {
         if (method == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodGenericReturnType: method 为 null");
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         Type type = method.getGenericReturnType();
         if (!(type instanceof ParameterizedType)) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodGenericReturnType: 方法 {} 返回值非泛型", method.getName());
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
-        return extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        Class<?>[] result = extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        if (log.isDebugEnabled()) {
+            log.debug("getMethodGenericReturnType: 方法 {} 返回值泛型参数为 {}",
+                    method.getName(), Arrays.toString(result));
+        }
+        return result;
     }
 
     /**
@@ -766,17 +1049,31 @@ public final class ReflectionUtils {
      */
     public static Class<?>[] getMethodGenericParameterType(Method method, int paramIndex) {
         if (method == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodGenericParameterType: method 为 null");
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         Type[] paramTypes = method.getGenericParameterTypes();
         if (paramIndex < 0 || paramIndex >= paramTypes.length) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodGenericParameterType: 索引 {} 超出参数范围", paramIndex);
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
         Type type = paramTypes[paramIndex];
         if (!(type instanceof ParameterizedType)) {
+            if (log.isDebugEnabled()) {
+                log.debug("getMethodGenericParameterType: 参数 {} 非泛型", paramIndex);
+            }
             return ArrayUtils.EMPTY_CLASS_ARRAY;
         }
-        return extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        Class<?>[] result = extractRawTypes(((ParameterizedType) type).getActualTypeArguments());
+        if (log.isDebugEnabled()) {
+            log.debug("getMethodGenericParameterType: 方法 {} 参数[{}] 泛型参数为 {}",
+                    method.getName(), paramIndex, Arrays.toString(result));
+        }
+        return result;
     }
 
     // ==================== 对象与 Map 互转 ====================
@@ -803,6 +1100,9 @@ public final class ReflectionUtils {
     public static Map<String, Object> objectToMap(Object obj, boolean includeNull) {
         Map<String, Object> map = new LinkedHashMap<>();
         if (obj == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("objectToMap: obj 为 null");
+            }
             return map;
         }
         for (Field field : getAllFields(obj.getClass())) {
@@ -815,8 +1115,13 @@ public final class ReflectionUtils {
                 if (includeNull || value != null) {
                     map.put(field.getName(), value);
                 }
-            } catch (IllegalAccessException ignored) {
+            } catch (IllegalAccessException e) {
+                log.warn("读取字段值失败: {}", field.getName(), e);
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("objectToMap: {} 转换为 Map，包含 {} 个字段",
+                    obj.getClass().getSimpleName(), map.size());
         }
         return map;
     }
@@ -834,11 +1139,21 @@ public final class ReflectionUtils {
      */
     public static <T> T mapToObject(Map<String, Object> map, Class<T> clazz) {
         if (map == null || map.isEmpty() || clazz == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("mapToObject: map={}, clazz={}", map, clazz);
+            }
             return null;
         }
         T obj = newInstance(clazz);
+        int successCount = 0;
         for (Map.Entry<String, Object> entry : map.entrySet()) {
-            setFieldValue(obj, entry.getKey(), entry.getValue());
+            if (setFieldValue(obj, entry.getKey(), entry.getValue())) {
+                successCount++;
+            }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("mapToObject: Map 转 {} 成功，设置 {} 个字段",
+                    clazz.getSimpleName(), successCount);
         }
         return obj;
     }
@@ -874,6 +1189,9 @@ public final class ReflectionUtils {
      */
     public static int copyProperties(Object source, Object target, String... ignoreFields) {
         if (source == null || target == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("copyProperties: source={}, target={}", source, target);
+            }
             return 0;
         }
         Set<String> ignoreSet = (ignoreFields != null)
@@ -902,6 +1220,10 @@ public final class ReflectionUtils {
             } catch (IllegalAccessException ignored) {
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("copyProperties: {} → {}，成功拷贝 {} 个字段",
+                    source.getClass().getSimpleName(), target.getClass().getSimpleName(), count);
+        }
         return count;
     }
 
@@ -914,7 +1236,11 @@ public final class ReflectionUtils {
      * @return true 表示 static
      */
     public static boolean isStatic(Field field) {
-        return field != null && Modifier.isStatic(field.getModifiers());
+        boolean result = field != null && Modifier.isStatic(field.getModifiers());
+        if (log.isDebugEnabled()) {
+            log.debug("isStatic: {} = {}", field != null ? field.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -924,7 +1250,11 @@ public final class ReflectionUtils {
      * @return true 表示 final
      */
     public static boolean isFinal(Field field) {
-        return field != null && Modifier.isFinal(field.getModifiers());
+        boolean result = field != null && Modifier.isFinal(field.getModifiers());
+        if (log.isDebugEnabled()) {
+            log.debug("isFinal: {} = {}", field != null ? field.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -934,7 +1264,11 @@ public final class ReflectionUtils {
      * @return true 表示 public
      */
     public static boolean isPublic(Field field) {
-        return field != null && Modifier.isPublic(field.getModifiers());
+        boolean result = field != null && Modifier.isPublic(field.getModifiers());
+        if (log.isDebugEnabled()) {
+            log.debug("isPublic: {} = {}", field != null ? field.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -944,7 +1278,11 @@ public final class ReflectionUtils {
      * @return true 表示 abstract
      */
     public static boolean isAbstract(Class<?> clazz) {
-        return clazz != null && Modifier.isAbstract(clazz.getModifiers());
+        boolean result = clazz != null && Modifier.isAbstract(clazz.getModifiers());
+        if (log.isDebugEnabled()) {
+            log.debug("isAbstract: {} = {}", clazz != null ? clazz.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -954,7 +1292,11 @@ public final class ReflectionUtils {
      * @return true 表示接口
      */
     public static boolean isInterface(Class<?> clazz) {
-        return clazz != null && clazz.isInterface();
+        boolean result = clazz != null && clazz.isInterface();
+        if (log.isDebugEnabled()) {
+            log.debug("isInterface: {} = {}", clazz != null ? clazz.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -964,7 +1306,11 @@ public final class ReflectionUtils {
      * @return true 表示枚举
      */
     public static boolean isEnum(Class<?> clazz) {
-        return clazz != null && clazz.isEnum();
+        boolean result = clazz != null && clazz.isEnum();
+        if (log.isDebugEnabled()) {
+            log.debug("isEnum: {} = {}", clazz != null ? clazz.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -974,7 +1320,11 @@ public final class ReflectionUtils {
      * @return true 表示数组类型
      */
     public static boolean isArray(Class<?> clazz) {
-        return clazz != null && clazz.isArray();
+        boolean result = clazz != null && clazz.isArray();
+        if (log.isDebugEnabled()) {
+            log.debug("isArray: {} = {}", clazz != null ? clazz.getName() : "null", result);
+        }
+        return result;
     }
 
     /**
@@ -984,7 +1334,11 @@ public final class ReflectionUtils {
      * @return true 表示基本类型或包装类
      */
     public static boolean isPrimitiveOrWrapper(Class<?> clazz) {
-        return clazz != null && (clazz.isPrimitive() || ClassUtils.isPrimitiveWrapper(clazz));
+        boolean result = clazz != null && (clazz.isPrimitive() || ClassUtils.isPrimitiveWrapper(clazz));
+        if (log.isDebugEnabled()) {
+            log.debug("isPrimitiveOrWrapper: {} = {}", clazz != null ? clazz.getName() : "null", result);
+        }
+        return result;
     }
 
     // ==================== 内部工具方法 ====================

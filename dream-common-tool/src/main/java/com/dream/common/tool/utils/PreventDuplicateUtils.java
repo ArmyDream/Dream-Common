@@ -2,6 +2,7 @@ package com.dream.common.tool.utils;
 
 import com.dream.common.core.annotation.PreventDuplicate;
 import com.dream.common.core.enums.StringPool;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.lang.reflect.Method;
@@ -10,25 +11,31 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 注解工具类
+ * 防重复提交工具类
  * <p>
- * 封装 {@link com.dream.common.core.annotation} 中各注解的解析与辅助操作：
+ * 封装 {@link PreventDuplicate} 注解的解析与辅助操作：
  * <ul>
- *   <li>{@link PreventDuplicate} —— 防重复提交：Key 构建、过期时间计算、字段提取</li>
+ *   <li>{@link #getPreventDuplicate(Method)} —— 获取方法上的注解</li>
+ *   <li>{@link #getExpireMillis(PreventDuplicate)} —— 获取过期时间（毫秒）</li>
+ *   <li>{@link #getExpireSeconds(PreventDuplicate)} —— 获取过期时间（秒）</li>
+ *   <li>{@link #buildPreventDuplicateKey(PreventDuplicate, String, String, String, String, Object...)}
+ *           —— 构建防重复 Key</li>
+ *   <li>{@link #isSilentStrategy(PreventDuplicate)} —— 判断是否为静默模式</li>
+ *   <li>{@link #getPreventDuplicateMessage(PreventDuplicate)} —— 获取提示信息</li>
  * </ul>
- * <p>
- * 注意：本类依赖 {@link ReflectionUtils} 进行反射操作，
- * 使用前请确保目标类有无参构造器（用于实例化场景）。
  *
  * @author dream
  */
+@Slf4j
 @SuppressWarnings("all")
 public final class PreventDuplicateUtils {
+
+    /** 默认防重复提示信息 */
+    private static final String DEFAULT_MESSAGE = "请勿重复提交！";
 
     private PreventDuplicateUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
-
 
     // ==================== PreventDuplicate 操作 ====================
 
@@ -39,7 +46,15 @@ public final class PreventDuplicateUtils {
      * @return 注解实例；未标注返回 null
      */
     public static PreventDuplicate getPreventDuplicate(Method method) {
-        return ReflectionUtils.getMethodAnnotation(method, PreventDuplicate.class);
+        if (method == null) {
+            log.warn("getPreventDuplicate: method 为 null");
+            return null;
+        }
+        PreventDuplicate annotation = ReflectionUtils.getMethodAnnotation(method, PreventDuplicate.class);
+        if (log.isDebugEnabled()) {
+            log.debug("获取防重复注解: method={}, hasAnnotation={}", method.getName(), annotation != null);
+        }
+        return annotation;
     }
 
     /**
@@ -50,9 +65,15 @@ public final class PreventDuplicateUtils {
      */
     public static long getExpireMillis(PreventDuplicate annotation) {
         if (annotation == null) {
+            log.warn("getExpireMillis: annotation 为 null");
             return 0L;
         }
-        return annotation.timeUnit().toMillis(annotation.expire());
+        long millis = annotation.timeUnit().toMillis(annotation.expire());
+        if (log.isDebugEnabled()) {
+            log.debug("获取防重复过期时间: expire={}, timeUnit={}, millis={}ms",
+                    annotation.expire(), annotation.timeUnit(), millis);
+        }
+        return millis;
     }
 
     /**
@@ -63,9 +84,15 @@ public final class PreventDuplicateUtils {
      */
     public static long getExpireSeconds(PreventDuplicate annotation) {
         if (annotation == null) {
+            log.warn("getExpireSeconds: annotation 为 null");
             return 0L;
         }
-        return TimeUnit.MILLISECONDS.toSeconds(getExpireMillis(annotation));
+        long seconds = TimeUnit.MILLISECONDS.toSeconds(getExpireMillis(annotation));
+        if (log.isDebugEnabled()) {
+            log.debug("获取防重复过期时间: expire={}, timeUnit={}, seconds={}s",
+                    annotation.expire(), annotation.timeUnit(), seconds);
+        }
+        return seconds;
     }
 
     /**
@@ -95,8 +122,10 @@ public final class PreventDuplicateUtils {
                                                   String className, String methodName,
                                                   String userId, String ip, Object... args) {
         if (annotation == null) {
+            log.warn("buildPreventDuplicateKey: annotation 为 null，返回空字符串");
             return StringUtils.EMPTY;
         }
+
         List<String> parts = new ArrayList<>();
 
         // 1. 前缀
@@ -133,7 +162,12 @@ public final class PreventDuplicateUtils {
             }
         }
 
-        return String.join(StringPool.COLON.getValue(), parts);
+        String key = String.join(StringPool.COLON.getValue(), parts);
+        if (log.isDebugEnabled()) {
+            log.debug("构建防重复 Key: className={}, methodName={}, userId={}, ip={}, fields={}, key={}",
+                    className, methodName, userId, ip, fields, key);
+        }
+        return key;
     }
 
     /**
@@ -143,7 +177,15 @@ public final class PreventDuplicateUtils {
      * @return true 表示静默丢弃（不抛异常）
      */
     public static boolean isSilentStrategy(PreventDuplicate annotation) {
-        return annotation != null && annotation.strategy() == PreventDuplicate.Strategy.SILENT;
+        if (annotation == null) {
+            log.warn("isSilentStrategy: annotation 为 null，返回 false");
+            return false;
+        }
+        boolean silent = annotation.strategy() == PreventDuplicate.Strategy.SILENT;
+        if (log.isDebugEnabled()) {
+            log.debug("防重复策略判断: strategy={}, isSilent={}", annotation.strategy(), silent);
+        }
+        return silent;
     }
 
     /**
@@ -154,9 +196,35 @@ public final class PreventDuplicateUtils {
      */
     public static String getPreventDuplicateMessage(PreventDuplicate annotation) {
         if (annotation == null) {
-            return "请勿重复提交！";
+            log.warn("getPreventDuplicateMessage: annotation 为 null，返回默认提示");
+            return DEFAULT_MESSAGE;
         }
-        return annotation.message();
+        String message = annotation.message();
+        if (log.isDebugEnabled()) {
+            log.debug("获取防重复提示信息: message={}", message);
+        }
+        return message;
     }
 
+    /**
+     * 检查是否重复提交（业务层调用）
+     *
+     * @param annotation 注解实例
+     * @param className  类名
+     * @param methodName 方法名
+     * @param userId     用户 ID
+     * @param ip         请求 IP
+     * @param args       方法参数
+     * @return 构建的 Key，用于缓存判断
+     */
+    public static String buildKeyAndLog(PreventDuplicate annotation,
+                                        String className, String methodName,
+                                        String userId, String ip, Object... args) {
+        String key = buildPreventDuplicateKey(annotation, className, methodName, userId, ip, args);
+        if (log.isDebugEnabled()) {
+            log.debug("防重复提交 Key 构建完成: key={}, expireMs={}",
+                    key, annotation != null ? getExpireMillis(annotation) : 0);
+        }
+        return key;
+    }
 }

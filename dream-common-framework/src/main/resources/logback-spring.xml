@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--<configuration scan="true" scanPeriod="30 seconds">-->
+<!--<configuration scan="true" scanPeriod="5 minutes">-->
+<configuration >
+
+    <!-- ==================== 基础属性（从 application.yml 读取） ==================== -->
+
+    <!-- 应用名称 -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="dream"/>
+
+    <!-- 日志路径 -->
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="logs/${APP_NAME}"/>
+
+    <!-- 文件滚动：单文件上限 -->
+    <springProperty scope="context" name="MAX_FILE_SIZE" source="logging.logback.rollingpolicy.max-file-size"
+                    defaultValue="200MB"/>
+
+    <!-- 文件滚动：保留天数 -->
+    <springProperty scope="context" name="MAX_HISTORY" source="logging.logback.rollingpolicy.max-history"
+                    defaultValue="30"/>
+
+    <!-- 文件滚动：所有归档文件总大小上限 -->
+    <springProperty scope="context" name="TOTAL_SIZE_CAP" source="logging.logback.rollingpolicy.total-size-cap"
+                    defaultValue="10GB"/>
+
+    <!-- root 日志级别 -->
+    <springProperty scope="context" name="ROOT_LEVEL" source="logging.level.root" defaultValue="INFO"/>
+
+    <!-- 业务包名（自定义配置） -->
+    <springProperty scope="context" name="BIZ_PACKAGE" source="logging.custom.package" defaultValue="com.dream"/>
+
+    <!-- 业务包日志级别 -->
+    <springProperty scope="context" name="BIZ_LEVEL" source="logging.level.biz" defaultValue="INFO"/>
+
+    <!-- 是否启用控制台（自定义配置） -->
+    <springProperty scope="context" name="CONSOLE_ENABLED" source="logging.custom.console" defaultValue="true"/>
+
+    <contextName>${APP_NAME}</contextName>
+
+    <!-- ==================== 日志格式 ==================== -->
+
+    <!--
+    控制台格式（带颜色）
+    颜色方案：
+      时间    → 绿色(%green)
+      线程    → 红色(%red)
+      级别    → 高亮（ERROR 红、WARN 黄、INFO 蓝、DEBUG 绿）
+      类名    → 青色(%cyan)
+      链路ID  → 品红(%magenta)
+      消息    → 默认白
+    -->
+
+    <!-- 控制台格式（带颜色） -->
+    <property name="CONSOLE_PATTERN"
+              value="%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %red([%thread]) %highlight(%-5level) %cyan(%logger{36}) %magenta([%X{traceId:-}]) - %msg%n"/>
+
+    <!-- 文件格式（无颜色） -->
+    <property name="FILE_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{36} - %msg%n"/>
+
+    <!-- ==================== Appender：控制台 ==================== -->
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ==================== Appender：全量日志文件 ==================== -->
+
+    <appender name="FILE_ALL" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}.log</file>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ==================== Appender：ERROR 日志文件 ==================== -->
+
+    <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-error.log</file>
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ==================== Appender：WARN 日志文件 ==================== -->
+
+    <appender name="FILE_WARN" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-warn.log</file>
+        <filter class="ch.qos.logback.classic.filter.LevelFilter">
+            <level>WARN</level>
+            <onMatch>ACCEPT</onMatch>
+            <onMismatch>DENY</onMismatch>
+        </filter>
+        <encoder>
+            <pattern>${FILE_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-warn.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
+            <maxHistory>${MAX_HISTORY}</maxHistory>
+            <totalSizeCap>2GB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ==================== 异步 Appender（生产环境） ==================== -->
+
+    <appender name="ASYNC_ALL" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>1024</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="FILE_ALL"/>
+    </appender>
+
+    <appender name="ASYNC_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="FILE_ERROR"/>
+    </appender>
+
+    <appender name="ASYNC_WARN" class="ch.qos.logback.classic.AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="FILE_WARN"/>
+    </appender>
+
+    <!-- ==================== 框架日志抑制 ==================== -->
+
+    <!--<logger name="org.springframework" level="WARN"/>
+    <logger name="org.springframework.boot" level="INFO"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.apache" level="WARN"/>
+    <logger name="com.baomidou" level="WARN"/>
+    <logger name="com.alibaba" level="WARN"/>
+    <logger name="com.zaxxer" level="WARN"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.mybatis" level="WARN"/>
+    <logger name="springfox" level="WARN"/>-->
+
+    <!-- ==================== 环境隔离 ==================== -->
+
+    <!--
+        【开发/测试环境】
+        控制台 + 文件输出，业务包 DEBUG
+    -->
+    <springProfile name="dev,test,sit,pre,fat,staging">
+        <root level="${ROOT_LEVEL}">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE_ALL"/>
+            <appender-ref ref="FILE_ERROR"/>
+            <appender-ref ref="FILE_WARN"/>
+        </root>
+
+        <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
+    </springProfile>
+
+    <!--
+        【生产/UAT 环境】
+        仅异步文件输出，业务包 INFO
+    -->
+    <springProfile name="prod,production,uat,dr">
+        <root level="${ROOT_LEVEL}">
+            <appender-ref ref="ASYNC_ALL"/>
+            <appender-ref ref="ASYNC_ERROR"/>
+            <appender-ref ref="ASYNC_WARN"/>
+        </root>
+
+        <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
+    </springProfile>
+
+    <!--
+        【默认配置】（兜底）
+    -->
+    <root level="${ROOT_LEVEL}">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE_ALL"/>
+        <appender-ref ref="FILE_ERROR"/>
+        <appender-ref ref="FILE_WARN"/>
+    </root>
+
+    <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
+
+</configuration>

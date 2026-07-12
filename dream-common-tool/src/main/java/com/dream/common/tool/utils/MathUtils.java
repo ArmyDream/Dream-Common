@@ -1,5 +1,7 @@
 package com.dream.common.tool.utils;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
@@ -26,6 +28,7 @@ import java.util.Collection;
  *
  * @author dream
  */
+@Slf4j
 @SuppressWarnings("all")
 public final class MathUtils {
 
@@ -80,6 +83,9 @@ public final class MathUtils {
      */
     public static BigDecimal toBigDecimal(Object value) {
         if (value == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("toBigDecimal: value 为 null，返回 BigDecimal.ZERO");
+            }
             return BigDecimal.ZERO;
         }
         if (value instanceof BigDecimal) {
@@ -88,11 +94,15 @@ public final class MathUtils {
         if (value instanceof String) {
             String str = ((String) value).trim();
             if (StringUtils.isBlank(str)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("toBigDecimal: 字符串为空，返回 BigDecimal.ZERO");
+                }
                 return BigDecimal.ZERO;
             }
             try {
                 return new BigDecimal(str);
             } catch (NumberFormatException e) {
+                log.warn("toBigDecimal: 字符串转 BigDecimal 失败: {}", str, e);
                 return BigDecimal.ZERO;
             }
         }
@@ -116,6 +126,7 @@ public final class MathUtils {
             }
             return new BigDecimal(str);
         } catch (NumberFormatException e) {
+            log.warn("toBigDecimal: 对象转 BigDecimal 失败: {}", value, e);
             return BigDecimal.ZERO;
         }
     }
@@ -134,6 +145,7 @@ public final class MathUtils {
         try {
             return toBigDecimal(value);
         } catch (Exception e) {
+            log.warn("toBigDecimal 转换失败，使用默认值: {}", defaultValue, e);
             return defaultValue;
         }
     }
@@ -152,6 +164,9 @@ public final class MathUtils {
             new BigDecimal(str.trim());
             return true;
         } catch (NumberFormatException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("isNumber: 非法数值: {}", str);
+            }
             return false;
         }
     }
@@ -175,6 +190,9 @@ public final class MathUtils {
                 sum = sum.add(toBigDecimal(v));
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("add: {} + {} = {}", v1, values, sum);
+        }
         return sum;
     }
 
@@ -193,6 +211,9 @@ public final class MathUtils {
                     sum = sum.add(v);
                 }
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("add: {} + {} = {}", v1, values, sum);
         }
         return sum;
     }
@@ -216,6 +237,9 @@ public final class MathUtils {
                 result = result.subtract(toBigDecimal(v));
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("subtract: {} - {} = {}", v1, values, result);
+        }
         return result;
     }
 
@@ -234,6 +258,9 @@ public final class MathUtils {
                     result = result.subtract(v);
                 }
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("subtract: {} - {} = {}", v1, values, result);
         }
         return result;
     }
@@ -257,6 +284,9 @@ public final class MathUtils {
                 result = result.multiply(toBigDecimal(v));
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("multiply: {} * {} = {}", v1, values, result);
+        }
         return result;
     }
 
@@ -275,6 +305,9 @@ public final class MathUtils {
                     result = result.multiply(v);
                 }
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("multiply: {} * {} = {}", v1, values, result);
         }
         return result;
     }
@@ -321,9 +354,14 @@ public final class MathUtils {
     public static BigDecimal divide(Object v1, Object v2, int scale, RoundingMode roundingMode) {
         BigDecimal divisor = toBigDecimal(v2);
         if (divisor.compareTo(BigDecimal.ZERO) == 0) {
+            log.error("除法运算失败：除数为零");
             throw new IllegalArgumentException("Divisor cannot be zero");
         }
-        return toBigDecimal(v1).divide(divisor, scale, roundingMode);
+        BigDecimal result = toBigDecimal(v1).divide(divisor, scale, roundingMode);
+        if (log.isDebugEnabled()) {
+            log.debug("divide: {} / {} = {} (scale={}, roundingMode={})", v1, v2, result, scale, roundingMode);
+        }
+        return result;
     }
 
     // ==================== 精度控制 ====================
@@ -348,7 +386,11 @@ public final class MathUtils {
      * @return 舍入后的值
      */
     public static BigDecimal round(Object value, int scale, RoundingMode roundingMode) {
-        return toBigDecimal(value).setScale(scale, roundingMode);
+        BigDecimal result = toBigDecimal(value).setScale(scale, roundingMode);
+        if (log.isDebugEnabled()) {
+            log.debug("round: {} → {} (scale={}, roundingMode={})", value, result, scale, roundingMode);
+        }
+        return result;
     }
 
     /**
@@ -369,7 +411,11 @@ public final class MathUtils {
      * @return 截断后的值
      */
     public static BigDecimal truncate(Object value, int scale) {
-        return toBigDecimal(value).setScale(scale, RoundingMode.DOWN);
+        BigDecimal result = toBigDecimal(value).setScale(scale, RoundingMode.DOWN);
+        if (log.isDebugEnabled()) {
+            log.debug("truncate: {} → {} (scale={})", value, result, scale);
+        }
+        return result;
     }
 
     /**
@@ -380,7 +426,11 @@ public final class MathUtils {
      * @return 向上取整后的值
      */
     public static BigDecimal ceil(Object value, int scale) {
-        return toBigDecimal(value).setScale(scale, RoundingMode.UP);
+        BigDecimal result = toBigDecimal(value).setScale(scale, RoundingMode.UP);
+        if (log.isDebugEnabled()) {
+            log.debug("ceil: {} → {} (scale={})", value, result, scale);
+        }
+        return result;
     }
 
     /**
@@ -391,7 +441,11 @@ public final class MathUtils {
      * @return 向下取整后的值
      */
     public static BigDecimal floor(Object value, int scale) {
-        return toBigDecimal(value).setScale(scale, RoundingMode.DOWN);
+        BigDecimal result = toBigDecimal(value).setScale(scale, RoundingMode.DOWN);
+        if (log.isDebugEnabled()) {
+            log.debug("floor: {} → {} (scale={})", value, result, scale);
+        }
+        return result;
     }
 
     // ==================== 比较运算 ====================
@@ -404,43 +458,83 @@ public final class MathUtils {
      * @return 1: v1 &gt; v2, 0: v1 == v2, -1: v1 &lt; v2
      */
     public static int compare(Object v1, Object v2) {
-        return toBigDecimal(v1).compareTo(toBigDecimal(v2));
+        int result = toBigDecimal(v1).compareTo(toBigDecimal(v2));
+        if (log.isDebugEnabled()) {
+            log.debug("compare: {} vs {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean eq(Object v1, Object v2) {
-        return compare(v1, v2) == EQ;
+        boolean result = compare(v1, v2) == EQ;
+        if (log.isDebugEnabled()) {
+            log.debug("eq: {} == {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean neq(Object v1, Object v2) {
-        return compare(v1, v2) != EQ;
+        boolean result = compare(v1, v2) != EQ;
+        if (log.isDebugEnabled()) {
+            log.debug("neq: {} != {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean gt(Object v1, Object v2) {
-        return compare(v1, v2) == GT;
+        boolean result = compare(v1, v2) == GT;
+        if (log.isDebugEnabled()) {
+            log.debug("gt: {} > {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean gte(Object v1, Object v2) {
-        return compare(v1, v2) >= EQ;
+        boolean result = compare(v1, v2) >= EQ;
+        if (log.isDebugEnabled()) {
+            log.debug("gte: {} >= {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean lt(Object v1, Object v2) {
-        return compare(v1, v2) == LT;
+        boolean result = compare(v1, v2) == LT;
+        if (log.isDebugEnabled()) {
+            log.debug("lt: {} < {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean lte(Object v1, Object v2) {
-        return compare(v1, v2) <= EQ;
+        boolean result = compare(v1, v2) <= EQ;
+        if (log.isDebugEnabled()) {
+            log.debug("lte: {} <= {} = {}", v1, v2, result);
+        }
+        return result;
     }
 
     public static boolean isZero(Object value) {
-        return compare(value, 0) == EQ;
+        boolean result = compare(value, 0) == EQ;
+        if (log.isDebugEnabled()) {
+            log.debug("isZero: {} = {}", value, result);
+        }
+        return result;
     }
 
     public static boolean isPositive(Object value) {
-        return compare(value, 0) == GT;
+        boolean result = compare(value, 0) == GT;
+        if (log.isDebugEnabled()) {
+            log.debug("isPositive: {} = {}", value, result);
+        }
+        return result;
     }
 
     public static boolean isNegative(Object value) {
-        return compare(value, 0) == LT;
+        boolean result = compare(value, 0) == LT;
+        if (log.isDebugEnabled()) {
+            log.debug("isNegative: {} = {}", value, result);
+        }
+        return result;
     }
 
     // ==================== 聚合统计 ====================
@@ -459,6 +553,9 @@ public final class MathUtils {
         for (Object v : values) {
             total = total.add(toBigDecimal(v));
         }
+        if (log.isDebugEnabled()) {
+            log.debug("sum: {} = {}", values, total);
+        }
         return total;
     }
 
@@ -469,6 +566,9 @@ public final class MathUtils {
         BigDecimal total = BigDecimal.ZERO;
         for (Object v : values) {
             total = total.add(toBigDecimal(v));
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("sum: {} 个元素求和 = {}", values.size(), total);
         }
         return total;
     }
@@ -484,7 +584,11 @@ public final class MathUtils {
             return BigDecimal.ZERO;
         }
         BigDecimal sum = sum(values);
-        return divide(sum, values.length, DEF_DIV_SCALE, DEF_ROUND_MODE);
+        BigDecimal result = divide(sum, values.length, DEF_DIV_SCALE, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("avg: {} 个元素平均值 = {}", values.length, result);
+        }
+        return result;
     }
 
     public static BigDecimal avg(Collection<?> values) {
@@ -492,7 +596,11 @@ public final class MathUtils {
             return BigDecimal.ZERO;
         }
         BigDecimal sum = sum(values);
-        return divide(sum, values.size(), DEF_DIV_SCALE, DEF_ROUND_MODE);
+        BigDecimal result = divide(sum, values.size(), DEF_DIV_SCALE, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("avg: {} 个元素平均值 = {}", values.size(), result);
+        }
+        return result;
     }
 
     /**
@@ -508,6 +616,9 @@ public final class MathUtils {
             if (compare(v, max) == GT) {
                 max = v;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("max: 最大值 = {}", max);
         }
         return max;
     }
@@ -526,15 +637,26 @@ public final class MathUtils {
                 min = v;
             }
         }
+        if (log.isDebugEnabled()) {
+            log.debug("min: 最小值 = {}", min);
+        }
         return min;
     }
 
     public static BigDecimal abs(Object value) {
-        return toBigDecimal(value).abs();
+        BigDecimal result = toBigDecimal(value).abs();
+        if (log.isDebugEnabled()) {
+            log.debug("abs: {} → {}", value, result);
+        }
+        return result;
     }
 
     public static BigDecimal negate(Object value) {
-        return toBigDecimal(value).negate();
+        BigDecimal result = toBigDecimal(value).negate();
+        if (log.isDebugEnabled()) {
+            log.debug("negate: {} → {}", value, result);
+        }
+        return result;
     }
 
     // ==================== 百分比 ====================
@@ -548,11 +670,16 @@ public final class MathUtils {
     public static BigDecimal percent(Object divisor, Object dividend, int scale) {
         BigDecimal dvd = toBigDecimal(dividend);
         if (isZero(dvd)) {
+            log.warn("percent: 被除数为零，返回 BigDecimal.ZERO");
             return BigDecimal.ZERO;
         }
-        return divide(toBigDecimal(divisor), dvd, scale + DEF_SCALE, DEF_ROUND_MODE)
+        BigDecimal result = divide(toBigDecimal(divisor), dvd, scale + DEF_SCALE, DEF_ROUND_MODE)
                 .multiply(ONE_HUNDRED)
                 .setScale(scale, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("percent: {} / {} * 100 = {}% (scale={})", divisor, dividend, result, scale);
+        }
+        return result;
     }
 
     public static BigDecimal percent(Object divisor, Object dividend) {
@@ -565,11 +692,16 @@ public final class MathUtils {
     public static BigDecimal permillage(Object divisor, Object dividend, int scale) {
         BigDecimal dvd = toBigDecimal(dividend);
         if (isZero(dvd)) {
+            log.warn("permillage: 被除数为零，返回 BigDecimal.ZERO");
             return BigDecimal.ZERO;
         }
-        return divide(toBigDecimal(divisor), dvd, scale + 3, DEF_ROUND_MODE)
+        BigDecimal result = divide(toBigDecimal(divisor), dvd, scale + 3, DEF_ROUND_MODE)
                 .multiply(ONE_THOUSAND)
                 .setScale(scale, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("permillage: {} / {} * 1000 = {} (scale={})", divisor, dividend, result, scale);
+        }
+        return result;
     }
 
     /**
@@ -582,12 +714,17 @@ public final class MathUtils {
     public static BigDecimal growthRate(Object newValue, Object oldValue, int scale) {
         BigDecimal old = toBigDecimal(oldValue);
         if (isZero(old)) {
+            log.warn("growthRate: 旧值为零，返回 BigDecimal.ZERO");
             return BigDecimal.ZERO;
         }
-        return subtract(newValue, old)
+        BigDecimal result = subtract(newValue, old)
                 .divide(old, scale + DEF_SCALE, DEF_ROUND_MODE)
                 .multiply(ONE_HUNDRED)
                 .setScale(scale, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("growthRate: ({}) / {} * 100% = {}%", subtract(newValue, old), old, result);
+        }
+        return result;
     }
 
     // ==================== 格式化 ====================
@@ -605,7 +742,11 @@ public final class MathUtils {
         }
         DecimalFormat df = new DecimalFormat(format);
         df.setRoundingMode(DEF_ROUND_MODE);
-        return df.format(toBigDecimal(value));
+        String result = df.format(toBigDecimal(value));
+        if (log.isDebugEnabled()) {
+            log.debug("format: {} 格式化为 {} (pattern={})", value, result, format);
+        }
+        return result;
     }
 
     /**
@@ -628,7 +769,11 @@ public final class MathUtils {
         if (value == null) {
             return "";
         }
-        return MONEY_FORMAT.format(toBigDecimal(value));
+        String result = MONEY_FORMAT.format(toBigDecimal(value));
+        if (log.isDebugEnabled()) {
+            log.debug("formatCurrency: {} → {}", value, result);
+        }
+        return result;
     }
 
     /**
@@ -641,7 +786,11 @@ public final class MathUtils {
         if (value == null) {
             return "";
         }
-        return PERCENT_FORMAT.format(toBigDecimal(value));
+        String result = PERCENT_FORMAT.format(toBigDecimal(value));
+        if (log.isDebugEnabled()) {
+            log.debug("formatPercent: {} → {}", value, result);
+        }
+        return result;
     }
 
     /**
@@ -652,7 +801,11 @@ public final class MathUtils {
      * </pre>
      */
     public static String toPlainString(Object value) {
-        return toBigDecimal(value).stripTrailingZeros().toPlainString();
+        String result = toBigDecimal(value).stripTrailingZeros().toPlainString();
+        if (log.isDebugEnabled()) {
+            log.debug("toPlainString: {} → {}", value, result);
+        }
+        return result;
     }
 
     // ==================== 单位换算 ====================
@@ -664,7 +817,11 @@ public final class MathUtils {
      * </pre>
      */
     public static BigDecimal centsToYuan(Object cents) {
-        return divide(cents, ONE_HUNDRED, DEF_SCALE, DEF_ROUND_MODE);
+        BigDecimal result = divide(cents, ONE_HUNDRED, DEF_SCALE, DEF_ROUND_MODE);
+        if (log.isDebugEnabled()) {
+            log.debug("centsToYuan: {} 分 → {} 元", cents, result);
+        }
+        return result;
     }
 
     /**
@@ -674,9 +831,13 @@ public final class MathUtils {
      * </pre>
      */
     public static long yuanToCents(Object yuan) {
-        return multiply(toBigDecimal(yuan), ONE_HUNDRED)
+        long result = multiply(toBigDecimal(yuan), ONE_HUNDRED)
                 .setScale(0, DEF_ROUND_MODE)
                 .longValue();
+        if (log.isDebugEnabled()) {
+            log.debug("yuanToCents: {} 元 → {} 分", yuan, result);
+        }
+        return result;
     }
 
     // ==================== 范围限定 ====================
@@ -693,13 +854,18 @@ public final class MathUtils {
         BigDecimal v = toBigDecimal(value);
         BigDecimal mn = toBigDecimal(min);
         BigDecimal mx = toBigDecimal(max);
+        BigDecimal result;
         if (compare(v, mn) == LT) {
-            return mn;
+            result = mn;
+        } else if (compare(v, mx) == GT) {
+            result = mx;
+        } else {
+            result = v;
         }
-        if (compare(v, mx) == GT) {
-            return mx;
+        if (log.isDebugEnabled()) {
+            log.debug("clamp: {} 限定在 [{} , {}] → {}", value, min, max, result);
         }
-        return v;
+        return result;
     }
 
     // ==================== 其他 ====================

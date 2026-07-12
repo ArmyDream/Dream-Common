@@ -2,6 +2,7 @@ package com.dream.common.tool.utils;
 
 import com.dream.common.core.constant.Business;
 import com.dream.common.core.enums.StringPool;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.lang.reflect.Array;
@@ -15,7 +16,7 @@ import java.util.stream.Stream;
 /**
  * 字符串工具类
  * <p>
- * 继承自 {@link com.dream.common.tool.utils.StringUtils}，扩展以下能力：
+ * 继承自 {@link org.apache.commons.lang3.StringUtils}，扩展以下能力：
  * <ul>
  *   <li>{@link #isEmpty(Object)} —— Object 深度判空（null/空串/空集合/空Map/空数组/空Optional）</li>
  *   <li>{@link #existEmpty(Collection)} —— 判断集合/数组中是否存在空元素</li>
@@ -24,42 +25,18 @@ import java.util.stream.Stream;
  *   <li>{@link #truncate(String, int)} —— 截断、命名转换、填充等处理</li>
  *   <li>{@link #toStr(Object)} / {@link #toInt(Object, Integer)} —— 类型安全转换</li>
  *   <li>{@link #buildCacheKey(String...)} / {@link #buildRedisKey(String, String, Object...)} —— 缓存 Key 构建</li>
- *   <li>{@link #isChinese(String)} / {@link #format(String, Object...)} / {@link #stripHtml(String)} —— 业务工具</li>
  * </ul>
  * <p>
- * 注意：父类 {@link com.dream.common.tool.utils.StringUtils} 已提供的常用方法（如 isBlank、equals、contains 等）
+ * 注意：父类 {@link org.apache.commons.lang3.StringUtils} 已提供的常用方法（如 isBlank、equals、contains 等）
  * 本类不再重复定义，请直接调用父类方法。
- *
- */
-//@SuppressWarnings("all")
-/**
  *
  * @author dream
  */
+@Slf4j
+@SuppressWarnings("all")
 public final class StringUtils extends org.apache.commons.lang3.StringUtils {
 
     // ==================== 常量 ====================
-
-    /** 通用脱敏替换符（4个星号） */
-    private static final String REPLACE_MASK = "****";
-    /** 身份证脱敏替换符（8个星号） */
-    private static final String ID_CARD_MASK = "********";
-    /** 手机号保留前缀长度 */
-    private static final int MOBILE_PREFIX_LEN = 3;
-    /** 手机号保留后缀长度 */
-    private static final int MOBILE_SUFFIX_LEN = 4;
-    /** 身份证保留前缀长度 */
-    private static final int ID_CARD_PREFIX_LEN = 6;
-    /** 身份证保留后缀长度 */
-    private static final int ID_CARD_SUFFIX_LEN = 4;
-    /** 银行卡保留前缀长度 */
-    private static final int BANK_CARD_PREFIX_LEN = 4;
-    /** 银行卡保留后缀长度 */
-    private static final int BANK_CARD_SUFFIX_LEN = 4;
-    /** 邮箱用户名最小长度（低于此长度使用短脱敏） */
-    private static final int EMAIL_MIN_USERNAME_LEN = 2;
-    /** 中文字符正则 */
-    private static final String CHINESE_REGEX = "^[\\u4e00-\\u9fa5]+$";
 
     // ==================== 金额大写转换常量 ====================
 
@@ -107,23 +84,50 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean isEmpty(Object obj) {
         if (obj == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: obj 为 null，返回 true");
+            }
             return true;
         }
         if (obj instanceof CharSequence) {
             String str = obj.toString();
-            return str.isEmpty() || str.trim().isEmpty();
+            boolean empty = str.isEmpty() || str.trim().isEmpty();
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: CharSequence=[{}], result={}", str, empty);
+            }
+            return empty;
         }
         if (obj instanceof Collection) {
-            return ((Collection<?>) obj).isEmpty();
+            boolean empty = ((Collection<?>) obj).isEmpty();
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: Collection size={}, result={}", ((Collection<?>) obj).size(), empty);
+            }
+            return empty;
         }
         if (obj instanceof Map) {
-            return ((Map<?, ?>) obj).isEmpty();
+            boolean empty = ((Map<?, ?>) obj).isEmpty();
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: Map size={}, result={}", ((Map<?, ?>) obj).size(), empty);
+            }
+            return empty;
         }
         if (obj.getClass().isArray()) {
-            return Array.getLength(obj) == 0;
+            int len = Array.getLength(obj);
+            boolean empty = len == 0;
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: Array length={}, result={}", len, empty);
+            }
+            return empty;
         }
         if (obj instanceof Optional) {
-            return !((Optional<?>) obj).isPresent();
+            boolean empty = !((Optional<?>) obj).isPresent();
+            if (log.isDebugEnabled()) {
+                log.debug("isEmpty: Optional isPresent={}, result={}", ((Optional<?>) obj).isPresent(), empty);
+            }
+            return empty;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("isEmpty: obj={}, result=false", obj.getClass().getSimpleName());
         }
         return false;
     }
@@ -136,7 +140,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @see #isEmpty(Object)
      */
     public static boolean isNotEmpty(Object obj) {
-        return !isEmpty(obj);
+        boolean result = !isEmpty(obj);
+        if (log.isDebugEnabled()) {
+            log.debug("isNotEmpty: result={}", result);
+        }
+        return result;
     }
 
     /**
@@ -147,12 +155,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean isAllEmpty(Object... objs) {
         if (ArrayUtils.isEmpty(objs)) {
+            if (log.isDebugEnabled()) {
+                log.debug("isAllEmpty: objs 为空数组，返回 true");
+            }
             return true;
         }
         for (Object obj : objs) {
             if (isNotEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("isAllEmpty: 发现非空对象，返回 false");
+                }
                 return false;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("isAllEmpty: 所有对象均为空，返回 true");
         }
         return true;
     }
@@ -165,12 +182,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean isAnyNotEmpty(Object... objs) {
         if (ArrayUtils.isEmpty(objs)) {
+            if (log.isDebugEnabled()) {
+                log.debug("isAnyNotEmpty: objs 为空数组，返回 false");
+            }
             return false;
         }
         for (Object obj : objs) {
             if (isNotEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("isAnyNotEmpty: 发现非空对象，返回 true");
+                }
                 return true;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("isAnyNotEmpty: 所有对象均为空，返回 false");
         }
         return false;
     }
@@ -183,12 +209,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean isAllNotEmpty(Object... objs) {
         if (ArrayUtils.isEmpty(objs)) {
+            if (log.isDebugEnabled()) {
+                log.debug("isAllNotEmpty: objs 为空数组，返回 false");
+            }
             return false;
         }
         for (Object obj : objs) {
             if (isEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("isAllNotEmpty: 发现空对象，返回 false");
+                }
                 return false;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("isAllNotEmpty: 所有对象均非空，返回 true");
         }
         return true;
     }
@@ -201,12 +236,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean isAnyEmpty(Object... objs) {
         if (ArrayUtils.isEmpty(objs)) {
+            if (log.isDebugEnabled()) {
+                log.debug("isAnyEmpty: objs 为空数组，返回 true");
+            }
             return true;
         }
         for (Object obj : objs) {
             if (isEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("isAnyEmpty: 发现空对象，返回 true");
+                }
                 return true;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("isAnyEmpty: 所有对象均非空，返回 false");
         }
         return false;
     }
@@ -228,12 +272,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean existEmpty(Collection<?> collection) {
         if (collection == null || collection.isEmpty()) {
+            if (log.isDebugEnabled()) {
+                log.debug("existEmpty: collection 为空，返回 false");
+            }
             return false;
         }
         for (Object obj : collection) {
             if (isEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("existEmpty: 发现空元素，返回 true");
+                }
                 return true;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("existEmpty: 无空元素，返回 false");
         }
         return false;
     }
@@ -247,12 +300,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean existEmpty(Object... array) {
         if (ArrayUtils.isEmpty(array)) {
+            if (log.isDebugEnabled()) {
+                log.debug("existEmpty: array 为空，返回 false");
+            }
             return false;
         }
         for (Object obj : array) {
             if (isEmpty(obj)) {
+                if (log.isDebugEnabled()) {
+                    log.debug("existEmpty: 发现空元素，返回 true");
+                }
                 return true;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("existEmpty: 无空元素，返回 false");
         }
         return false;
     }
@@ -268,22 +330,49 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean hasObject(Object obj, boolean trim) {
         if (obj == null) {
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: obj 为 null，返回 false");
+            }
             return false;
         }
         if (obj instanceof CharSequence) {
-            return trim ? isNotBlank((CharSequence) obj) : isNotEmpty((CharSequence) obj);
+            boolean result = trim ? isNotBlank((CharSequence) obj) : isNotEmpty((CharSequence) obj);
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: CharSequence=[{}], trim={}, result={}", obj, trim, result);
+            }
+            return result;
         }
         if (obj instanceof Collection) {
-            return !((Collection<?>) obj).isEmpty();
+            boolean result = !((Collection<?>) obj).isEmpty();
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: Collection size={}, result={}", ((Collection<?>) obj).size(), result);
+            }
+            return result;
         }
         if (obj instanceof Map) {
-            return !((Map<?, ?>) obj).isEmpty();
+            boolean result = !((Map<?, ?>) obj).isEmpty();
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: Map size={}, result={}", ((Map<?, ?>) obj).size(), result);
+            }
+            return result;
         }
         if (obj.getClass().isArray()) {
-            return Array.getLength(obj) > 0;
+            int len = Array.getLength(obj);
+            boolean result = len > 0;
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: Array length={}, result={}", len, result);
+            }
+            return result;
         }
         if (obj instanceof Optional) {
-            return ((Optional<?>) obj).isPresent();
+            boolean result = ((Optional<?>) obj).isPresent();
+            if (log.isDebugEnabled()) {
+                log.debug("hasObject: Optional isPresent={}, result={}", result, result);
+            }
+            return result;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("hasObject: obj={}, result=true", obj.getClass().getSimpleName());
         }
         return true;
     }
@@ -325,7 +414,13 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static <T> T ofNullable(T value, T defaultValue) {
         if (isEmpty(value)) {
+            if (log.isDebugEnabled()) {
+                log.debug("ofNullable: value 为空，返回默认值 {}", defaultValue);
+            }
             return defaultValue;
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("ofNullable: value 非空，返回原值 {}", value);
         }
         return value;
     }
@@ -386,6 +481,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以逗号拼接（跳过空值）
      * <p>示例：{@code joinComma("a", "b", null, "c") → "a,b,c"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinComma(String... parts) {
         return joinWithSeparator(parts, StringPool.COMMA);
@@ -394,6 +492,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以逗号空格拼接（跳过空值）
      * <p>示例：{@code joinCommaSpace("a", "b") → "a, b"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinCommaSpace(String... parts) {
         return joinWithSeparator(parts, StringPool.COMMA_SPACE);
@@ -402,6 +503,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以点号拼接（跳过空值）
      * <p>示例：{@code joinDot("com", "example", "api") → "com.example.api"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinDot(String... parts) {
         return joinWithSeparator(parts, StringPool.DOT);
@@ -410,6 +514,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以冒号拼接（跳过空值），常用于构建缓存 Key
      * <p>示例：{@code joinColon("user", "info", "1") → "user:info:1"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinColon(String... parts) {
         return joinWithSeparator(parts, StringPool.COLON);
@@ -418,6 +525,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以斜杠拼接（跳过空值），常用于构建路径
      * <p>示例：{@code joinSlash("home", "user", "file.txt") → "home/user/file.txt"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinSlash(String... parts) {
         return joinWithSeparator(parts, StringPool.SLASH);
@@ -426,6 +536,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以竖线拼接（跳过空值）
      * <p>示例：{@code joinPipe("a", "b", "c") → "a|b|c"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinPipe(String... parts) {
         return joinWithSeparator(parts, StringPool.PIPE);
@@ -434,6 +547,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以下划线拼接（跳过空值），常用于数据库字段名拼接
      * <p>示例：{@code joinUnderscore("user", "name") → "user_name"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinUnderscore(String... parts) {
         return joinWithSeparator(parts, StringPool.UNDERSCORE);
@@ -442,6 +558,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 以中划线拼接（跳过空值），常用于 UUID、订单号等
      * <p>示例：{@code joinDash("2026", "07", "11") → "2026-07-11"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinDash(String... parts) {
         return joinWithSeparator(parts, StringPool.DASH);
@@ -450,6 +569,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     /**
      * 直接拼接（无分隔符，跳过空值）
      * <p>示例：{@code joinEmpty("Hello", " ", "World") → "Hello World"}
+     *
+     * @param parts 待拼接字符串数组
+     * @return 拼接后的字符串
      */
     public static String joinEmpty(String... parts) {
         return joinWithSeparator(parts, StringPool.EMPTY);
@@ -464,46 +586,95 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     private static String joinWithSeparator(String[] parts, StringPool separator) {
         if (ArrayUtils.isEmpty(parts)) {
+            if (log.isDebugEnabled()) {
+                log.debug("joinWithSeparator: parts 为空，返回空字符串");
+            }
             return EMPTY;
         }
-        return Stream.of(parts)
+        String result = Stream.of(parts)
                 .filter(StringUtils::isNotBlank)
                 .collect(Collectors.joining(separator.getValue()));
+        if (log.isDebugEnabled()) {
+            log.debug("joinWithSeparator: separator={}, result={}", separator.getValue(), result);
+        }
+        return result;
     }
 
     // ==================== 基于 StringPool 的快捷分割 ====================
 
-    /** 按逗号分割 <p>示例：{@code splitComma("a,b,c") → ["a","b","c"]} */
+    /**
+     * 按逗号分割
+     * <p>示例：{@code splitComma("a,b,c") → ["a","b","c"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitComma(String str) {
         return splitWithSeparator(str, StringPool.COMMA);
     }
 
-    /** 按竖线分割 <p>示例：{@code splitPipe("a|b|c") → ["a","b","c"]} */
+    /**
+     * 按竖线分割
+     * <p>示例：{@code splitPipe("a|b|c") → ["a","b","c"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitPipe(String str) {
         return splitWithSeparator(str, StringPool.PIPE);
     }
 
-    /** 按点号分割 <p>示例：{@code splitDot("com.example.api") → ["com","example","api"]} */
+    /**
+     * 按点号分割
+     * <p>示例：{@code splitDot("com.example.api") → ["com","example","api"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitDot(String str) {
         return splitWithSeparator(str, StringPool.DOT);
     }
 
-    /** 按冒号分割 <p>示例：{@code splitColon("user:info:1") → ["user","info","1"]} */
+    /**
+     * 按冒号分割
+     * <p>示例：{@code splitColon("user:info:1") → ["user","info","1"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitColon(String str) {
         return splitWithSeparator(str, StringPool.COLON);
     }
 
-    /** 按斜杠分割 <p>示例：{@code splitSlash("home/user/file") → ["home","user","file"]} */
+    /**
+     * 按斜杠分割
+     * <p>示例：{@code splitSlash("home/user/file") → ["home","user","file"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitSlash(String str) {
         return splitWithSeparator(str, StringPool.SLASH);
     }
 
-    /** 按下划线分割 <p>示例：{@code splitUnderscore("user_name") → ["user","name"]} */
+    /**
+     * 按下划线分割
+     * <p>示例：{@code splitUnderscore("user_name") → ["user","name"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitUnderscore(String str) {
         return splitWithSeparator(str, StringPool.UNDERSCORE);
     }
 
-    /** 按中划线分割 <p>示例：{@code splitDash("2026-07-11") → ["2026","07","11"]} */
+    /**
+     * 按中划线分割
+     * <p>示例：{@code splitDash("2026-07-11") → ["2026","07","11"]}
+     *
+     * @param str 待分割字符串
+     * @return 分割结果数组
+     */
     public static String[] splitDash(String str) {
         return splitWithSeparator(str, StringPool.DASH);
     }
@@ -517,9 +688,16 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     private static String[] splitWithSeparator(String str, StringPool separator) {
         if (isBlank(str)) {
+            if (log.isDebugEnabled()) {
+                log.debug("splitWithSeparator: str 为空白，返回空数组");
+            }
             return ArrayUtils.EMPTY_STRING_ARRAY;
         }
-        return split(str, separator.getValue());
+        String[] result = split(str, separator.getValue());
+        if (log.isDebugEnabled()) {
+            log.debug("splitWithSeparator: separator={}, result={}", separator.getValue(), Arrays.toString(result));
+        }
+        return result;
     }
 
     // ==================== 字符串处理 ====================
@@ -541,12 +719,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static String truncate(String str, int maxLength) {
         if (isBlank(str) || maxLength <= 0 || str.length() <= maxLength) {
+            if (log.isDebugEnabled()) {
+                log.debug("truncate: 无需截断, str={}, maxLength={}", str, maxLength);
+            }
             return str;
         }
+        String result;
         if (maxLength < 3) {
-            return str.substring(0, maxLength);
+            result = str.substring(0, maxLength);
+        } else {
+            result = str.substring(0, maxLength - 3) + StringPool.HTML_HELLIP.getValue();
         }
-        return str.substring(0, maxLength - 3) + StringPool.HTML_HELLIP.getValue();
+        if (log.isDebugEnabled()) {
+            log.debug("truncate: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -558,9 +745,16 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static String truncatePlain(String str, int maxLength) {
         if (isBlank(str) || maxLength <= 0 || str.length() <= maxLength) {
+            if (log.isDebugEnabled()) {
+                log.debug("truncatePlain: 无需截断, str={}, maxLength={}", str, maxLength);
+            }
             return str;
         }
-        return str.substring(0, maxLength);
+        String result = str.substring(0, maxLength);
+        if (log.isDebugEnabled()) {
+            log.debug("truncatePlain: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -578,7 +772,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         while (beginIdx < str.length() && Character.isWhitespace(str.charAt(beginIdx))) {
             beginIdx++;
         }
-        return str.substring(beginIdx);
+        String result = str.substring(beginIdx);
+        if (log.isDebugEnabled()) {
+            log.debug("trimLeft: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -596,7 +794,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         while (endIdx >= 0 && Character.isWhitespace(str.charAt(endIdx))) {
             endIdx--;
         }
-        return str.substring(0, endIdx + 1);
+        String result = str.substring(0, endIdx + 1);
+        if (log.isDebugEnabled()) {
+            log.debug("trimRight: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -638,7 +840,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
                 sb.append(c);
             }
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("camelToUnderline: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -666,7 +872,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
                 upperNext = false;
             }
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("underlineToCamel: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -683,7 +893,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         }
         char[] chars = camel.toCharArray();
         chars[0] = Character.toUpperCase(chars[0]);
-        return new String(chars);
+        String result = new String(chars);
+        if (log.isDebugEnabled()) {
+            log.debug("underlineToPascal: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -710,7 +924,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             sb.append(padChar);
         }
         sb.append(str);
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("padLeft: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -737,7 +955,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         for (int i = str.length(); i < totalLen; i++) {
             sb.append(padChar);
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("padRight: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -751,7 +973,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         if (str == null) {
             return null;
         }
-        return new StringBuilder(str).reverse().toString();
+        String result = new StringBuilder(str).reverse().toString();
+        if (log.isDebugEnabled()) {
+            log.debug("reverse: {} → {}", str, result);
+        }
+        return result;
     }
 
     /**
@@ -768,21 +994,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         if (isBlank(html)) {
             return html;
         }
-        return html.replaceAll("<[^>]*>", EMPTY).trim();
-    }
-
-    /**
-     * 判断字符串是否全为中文
-     * <p>示例：{@code isChinese("你好") → true，isChinese("Hello") → false}
-     *
-     * @param str 待判断字符串
-     * @return true 表示全为中文字符
-     */
-    public static boolean isChinese(String str) {
-        if (isBlank(str)) {
-            return false;
+        String result = html.replaceAll("<[^>]*>", EMPTY).trim();
+        if (log.isDebugEnabled()) {
+            log.debug("stripHtml: {} → {}", html, result);
         }
-        return str.matches(CHINESE_REGEX);
+        return result;
     }
 
     /**
@@ -798,8 +1014,14 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         }
         for (char c : str.toCharArray()) {
             if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN) {
+                if (log.isDebugEnabled()) {
+                    log.debug("containsChinese: {} → true", str);
+                }
                 return true;
             }
+        }
+        if (log.isDebugEnabled()) {
+            log.debug("containsChinese: {} → false", str);
         }
         return false;
     }
@@ -824,7 +1046,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      */
     public static boolean lengthBetween(String str, int minLen, int maxLen) {
         int len = length(str);
-        return len >= minLen && len <= maxLen;
+        boolean result = len >= minLen && len <= maxLen;
+        if (log.isDebugEnabled()) {
+            log.debug("lengthBetween: str={}, len={}, result={}", str, len, result);
+        }
+        return result;
     }
 
     // ==================== 类型安全转换 ====================
@@ -912,12 +1138,14 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             if (s.isEmpty()) {
                 return defaultVal;
             }
-            // 处理含小数点的字符串，截取整数部分
             if (s.contains(StringPool.DOT.getValue())) {
                 s = s.substring(0, s.indexOf(StringPool.DOT.getValue()));
             }
             return Integer.parseInt(s);
         } catch (NumberFormatException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("toInt: 转换失败, obj={}, default={}", obj, defaultVal);
+            }
             return defaultVal;
         }
     }
@@ -957,6 +1185,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             }
             return Long.parseLong(s);
         } catch (NumberFormatException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("toLong: 转换失败, obj={}, default={}", obj, defaultVal);
+            }
             return defaultVal;
         }
     }
@@ -993,6 +1224,9 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             }
             return Double.parseDouble(s);
         } catch (NumberFormatException e) {
+            if (log.isDebugEnabled()) {
+                log.debug("toDouble: 转换失败, obj={}, default={}", obj, defaultVal);
+            }
             return defaultVal;
         }
     }
@@ -1103,9 +1337,13 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         if (ArrayUtils.isEmpty(parts)) {
             return EMPTY;
         }
-        return Stream.of(parts)
+        String result = Stream.of(parts)
                 .filter(StringUtils::isNotBlank)
                 .collect(Collectors.joining(StringPool.COLON.getValue()));
+        if (log.isDebugEnabled()) {
+            log.debug("buildCacheKey: {}", result);
+        }
+        return result;
     }
 
     /**
@@ -1136,7 +1374,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
                 sb.append(StringPool.COLON.getValue()).append(param);
             }
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("buildRedisKey: {}", result);
+        }
+        return result;
     }
 
     /**
@@ -1173,7 +1415,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
                 i++;
             }
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("format: template={}, result={}", template, result);
+        }
+        return result;
     }
 
     /**
@@ -1307,7 +1553,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
                 sb.append(c);
             }
         }
-        return sb.toString();
+        String result = sb.toString();
+        if (log.isDebugEnabled()) {
+            log.debug("pads: obj={}, size={}, result={}", obj, size, result);
+        }
+        return result;
     }
 
     /**
@@ -1327,7 +1577,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 无连字符的 UUID 字符串
      */
     public static String simpleUuid() {
-        return uuid().replace(StringPool.DASH.getValue(), EMPTY);
+        String result = uuid().replace(StringPool.DASH.getValue(), EMPTY);
+        if (log.isDebugEnabled()) {
+            log.debug("simpleUuid: {}", result);
+        }
+        return result;
     }
 
     /**
@@ -1337,7 +1591,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 6位随机数字字符串
      */
     public static String generateVerifyCode() {
-        return String.valueOf((int) ((Math.random() * 9 + 1) * Math.pow(10, 5)));
+        String result = String.valueOf((int) ((Math.random() * 9 + 1) * Math.pow(10, 5)));
+        if (log.isDebugEnabled()) {
+            log.debug("generateVerifyCode: {}", result);
+        }
+        return result;
     }
 
     /**
@@ -1419,11 +1677,15 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             }
             s.insert(0, p.toString().replaceAll("(零.)*零$", EMPTY).replaceAll("^$", "零") + UNIT[0][i]);
         }
-        return head + s.toString()
+        String result = head + s.toString()
                 .replaceAll("(零.)*零元", "元")
                 .replaceFirst("(零.)+", EMPTY)
                 .replaceAll("(零.)+", "零")
                 .replaceAll("^整$", "零元整");
+        if (log.isDebugEnabled()) {
+            log.debug("digitUppercase: {} → {}", dou, result);
+        }
+        return result;
     }
 
     /**
@@ -1492,7 +1754,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             }
         }
         regex.append("$");
-        return url.matches(regex.toString());
+        boolean result = url.matches(regex.toString());
+        if (log.isDebugEnabled()) {
+            log.debug("isMatch: pattern={}, url={}, result={}", pattern, url, result);
+        }
+        return result;
     }
 
 }

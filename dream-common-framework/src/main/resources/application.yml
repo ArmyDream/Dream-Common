@@ -1,0 +1,22 @@
+# application.yml
+spring:
+  application:
+    name: dream-common
+
+# ====================== ↓↓↓↓↓↓ 日志 log4j ↓↓↓↓↓↓ ======================
+
+logging:
+  custom:
+    package: com.dream # 自定义包
+    console: true # 控制台输出
+  level: # 日志级别  TRACE, DEBUG, INFO, WARN, ERROR, FATAL, OFF
+    root: INFO
+    biz: INFO
+  config: classpath:logback-spring.xml
+  file:
+    path: logs/${spring.application.name}
+  logback:
+    rollingpolicy:
+      max-history: 30
+      max-file-size: 200MB
+      total-size-cap: 10GB

@@ -175,7 +175,12 @@ public enum Regex implements BaseEnum<String> {
      * 用户名（4-16位字母、数字、下划线）
      */
     USERNAME("用户名", "^[a-zA-Z0-9_]{4,16}$",
-            "4-16位字母、数字、下划线");
+            "4-16位字母、数字、下划线"),
+
+    /**
+     * 中文
+     */
+    CHINESE("中文", "^[\\u4e00-\\u9fa5]+$", "中文");
 
     private final String label;
     private final String regex;
