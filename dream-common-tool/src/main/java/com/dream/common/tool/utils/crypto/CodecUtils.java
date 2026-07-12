@@ -1,4 +1,4 @@
-package com.dream.common.framework.utils.crypto;
+package com.dream.common.tool.utils.crypto;
 
 import com.dream.common.core.enums.CharsetEnum;
 import com.dream.common.core.exception.BusinessException;
