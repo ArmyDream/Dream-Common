@@ -36,6 +36,7 @@ logs/
 rebel.xml
 .flattened*.xml
 .qoder
+Question.md
 
 **/src/main/**/*.jar
 

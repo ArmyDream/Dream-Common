@@ -1,0 +1,1494 @@
+package com.dream.common.tool.utils;
+
+import com.dream.common.core.constant.Business;
+import com.dream.common.core.enums.StringPool;
+import org.apache.commons.lang3.ArrayUtils;
+
+import java.lang.reflect.Array;
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+/**
+ * 字符串工具类
+ * <p>
+ * 继承自 {@link com.dream.common.tool.utils.StringUtils}，扩展以下能力：
+ * <ul>
+ *   <li>{@link #isEmpty(Object)} —— Object 深度判空（null/空串/空集合/空Map/空数组/空Optional）</li>
+ *   <li>{@link #existEmpty(Collection)} —— 判断集合/数组中是否存在空元素</li>
+ *   <li>{@link #ofNullable(Object, Object)} —— 为空时返回默认值</li>
+ *   <li>{@link #joinComma(String...)} —— 基于 {@link StringPool} 的快捷拼接与分割</li>
+ *   <li>{@link #truncate(String, int)} —— 截断、命名转换、填充等处理</li>
+ *   <li>{@link #toStr(Object)} / {@link #toInt(Object, Integer)} —— 类型安全转换</li>
+ *   <li>{@link #buildCacheKey(String...)} / {@link #buildRedisKey(String, String, Object...)} —— 缓存 Key 构建</li>
+ *   <li>{@link #isChinese(String)} / {@link #format(String, Object...)} / {@link #stripHtml(String)} —— 业务工具</li>
+ * </ul>
+ * <p>
+ * 注意：父类 {@link com.dream.common.tool.utils.StringUtils} 已提供的常用方法（如 isBlank、equals、contains 等）
+ * 本类不再重复定义，请直接调用父类方法。
+ *
+ */
+//@SuppressWarnings("all")
+public final class StringUtils extends org.apache.commons.lang3.StringUtils {
+
+    // ==================== 常量 ====================
+
+    /** 通用脱敏替换符（4个星号） */
+    private static final String REPLACE_MASK = "****";
+    /** 身份证脱敏替换符（8个星号） */
+    private static final String ID_CARD_MASK = "********";
+    /** 手机号保留前缀长度 */
+    private static final int MOBILE_PREFIX_LEN = 3;
+    /** 手机号保留后缀长度 */
+    private static final int MOBILE_SUFFIX_LEN = 4;
+    /** 身份证保留前缀长度 */
+    private static final int ID_CARD_PREFIX_LEN = 6;
+    /** 身份证保留后缀长度 */
+    private static final int ID_CARD_SUFFIX_LEN = 4;
+    /** 银行卡保留前缀长度 */
+    private static final int BANK_CARD_PREFIX_LEN = 4;
+    /** 银行卡保留后缀长度 */
+    private static final int BANK_CARD_SUFFIX_LEN = 4;
+    /** 邮箱用户名最小长度（低于此长度使用短脱敏） */
+    private static final int EMAIL_MIN_USERNAME_LEN = 2;
+    /** 中文字符正则 */
+    private static final String CHINESE_REGEX = "^[\\u4e00-\\u9fa5]+$";
+
+    // ==================== 金额大写转换常量 ====================
+
+    /** 数字金额大写转换常量 */
+    private static final String[] FRACTION = {"角", "分"};
+    private static final String[] DIGIT = {"零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"};
+    private static final String[][] UNIT = {{"元", "万", "亿"}, {"", "拾", "佰", "仟"}};
+    /** 金额最大值（亿元） */
+    private static final double MAX_MONEY = 999999999.99;
+    private static final double MIN_MONEY = -999999999.99;
+
+    private StringUtils() {
+        throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
+    }
+
+    // ==================== Object 深度判空 ====================
+
+    /**
+     * 判断对象是否为空（深度判空）
+     * <p>
+     * 依次判断以下情况，满足其一即返回 true：
+     * <ul>
+     *   <li>{@code null}</li>
+     *   <li>{@code CharSequence}：空字符串或全空白字符</li>
+     *   <li>{@code Collection}：{@code isEmpty()} 为 true</li>
+     *   <li>{@code Map}：{@code isEmpty()} 为 true</li>
+     *   <li>{@code Array}：{@code length == 0}</li>
+     *   <li>{@code Optional}：{@code !isPresent()}</li>
+     * </ul>
+     *
+     * <pre>
+     * StringUtils.isEmpty(null)              → true
+     * StringUtils.isEmpty("")                → true
+     * StringUtils.isEmpty("  ")              → true
+     * StringUtils.isEmpty(new ArrayList())   → true
+     * StringUtils.isEmpty(new HashMap())     → true
+     * StringUtils.isEmpty(new int[]{})       → true
+     * StringUtils.isEmpty(Optional.empty())  → true
+     * StringUtils.isEmpty("abc")             → false
+     * StringUtils.isEmpty(Arrays.asList(1))  → false
+     * </pre>
+     *
+     * @param obj 待判断对象
+     * @return true 表示为空
+     */
+    public static boolean isEmpty(Object obj) {
+        if (obj == null) {
+            return true;
+        }
+        if (obj instanceof CharSequence) {
+            String str = obj.toString();
+            return str.isEmpty() || str.trim().isEmpty();
+        }
+        if (obj instanceof Collection) {
+            return ((Collection<?>) obj).isEmpty();
+        }
+        if (obj instanceof Map) {
+            return ((Map<?, ?>) obj).isEmpty();
+        }
+        if (obj.getClass().isArray()) {
+            return Array.getLength(obj) == 0;
+        }
+        if (obj instanceof Optional) {
+            return !((Optional<?>) obj).isPresent();
+        }
+        return false;
+    }
+
+    /**
+     * 判断对象是否不为空
+     *
+     * @param obj 待判断对象
+     * @return true 表示不为空
+     * @see #isEmpty(Object)
+     */
+    public static boolean isNotEmpty(Object obj) {
+        return !isEmpty(obj);
+    }
+
+    /**
+     * 判断所有对象是否都为空
+     *
+     * @param objs 待判断对象（可变参数）
+     * @return true 表示全部为空；objs 本身为 null 或空数组时也返回 true
+     */
+    public static boolean isAllEmpty(Object... objs) {
+        if (ArrayUtils.isEmpty(objs)) {
+            return true;
+        }
+        for (Object obj : objs) {
+            if (isNotEmpty(obj)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断是否至少有一个对象不为空
+     *
+     * @param objs 待判断对象（可变参数）
+     * @return true 表示至少有一个不为空；objs 本身为 null 或空数组时返回 false
+     */
+    public static boolean isAnyNotEmpty(Object... objs) {
+        if (ArrayUtils.isEmpty(objs)) {
+            return false;
+        }
+        for (Object obj : objs) {
+            if (isNotEmpty(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断所有对象是否都不为空（全部有值）
+     *
+     * @param objs 待判断对象（可变参数）
+     * @return true 表示所有对象都不为空；objs 本身为 null 或空数组时返回 false
+     */
+    public static boolean isAllNotEmpty(Object... objs) {
+        if (ArrayUtils.isEmpty(objs)) {
+            return false;
+        }
+        for (Object obj : objs) {
+            if (isEmpty(obj)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * 判断是否至少有一个对象为空
+     *
+     * @param objs 待判断对象（可变参数）
+     * @return true 表示至少有一个为空；objs 本身为 null 或空数组时返回 true
+     */
+    public static boolean isAnyEmpty(Object... objs) {
+        if (ArrayUtils.isEmpty(objs)) {
+            return true;
+        }
+        for (Object obj : objs) {
+            if (isEmpty(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断集合或数组中是否存在空元素
+     * <p>
+     * 遍历集合/数组，若其中任何一个元素为空（{@link #isEmpty(Object)}）则返回 true。
+     * 常用于表单批量校验、参数校验等场景。
+     * <pre>
+     * existEmpty(Arrays.asList("a", "", "c"))  → true
+     * existEmpty(Arrays.asList("a", "b", "c")) → false
+     * existEmpty(new Object[]{"a", null})       → true
+     * existEmpty(new ArrayList())                → false（空集合无元素可判）
+     * </pre>
+     *
+     * @param collection 集合
+     * @return true 表示存在空元素；集合为 null 或空时返回 false
+     */
+    public static boolean existEmpty(Collection<?> collection) {
+        if (collection == null || collection.isEmpty()) {
+            return false;
+        }
+        for (Object obj : collection) {
+            if (isEmpty(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断数组中是否存在空元素
+     *
+     * @param array 对象数组
+     * @return true 表示存在空元素；数组为 null 或空时返回 false
+     * @see #existEmpty(Collection)
+     */
+    public static boolean existEmpty(Object... array) {
+        if (ArrayUtils.isEmpty(array)) {
+            return false;
+        }
+        for (Object obj : array) {
+            if (isEmpty(obj)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 判断对象是否不为空（别名方法，语义更清晰）
+     * <p>
+     * 与 {@link #isNotEmpty(Object)} 等价，适用于需要更直观命名的场景
+     *
+     * @param obj  待判断对象
+     * @param trim 是否将全空白字符串视为空（true 时空白字符串也返回 false）
+     * @return true 表示不为空
+     */
+    public static boolean hasObject(Object obj, boolean trim) {
+        if (obj == null) {
+            return false;
+        }
+        if (obj instanceof CharSequence) {
+            return trim ? isNotBlank((CharSequence) obj) : isNotEmpty((CharSequence) obj);
+        }
+        if (obj instanceof Collection) {
+            return !((Collection<?>) obj).isEmpty();
+        }
+        if (obj instanceof Map) {
+            return !((Map<?, ?>) obj).isEmpty();
+        }
+        if (obj.getClass().isArray()) {
+            return Array.getLength(obj) > 0;
+        }
+        if (obj instanceof Optional) {
+            return ((Optional<?>) obj).isPresent();
+        }
+        return true;
+    }
+
+    /**
+     * 判断对象是否不为空（空白字符串视为空）
+     *
+     * @param obj 待判断对象
+     * @return true 表示不为空
+     * @see #hasObject(Object, boolean)
+     */
+    public static boolean hasObject(Object obj) {
+        return hasObject(obj, true);
+    }
+
+    /**
+     * 判断字符串是否有文本内容（非空且非全空白）
+     *
+     * @param str 字符串
+     * @return true 表示有文本内容
+     */
+    public static boolean hasText(String str) {
+        return hasObject(str, true);
+    }
+
+    /**
+     * 对象为空时返回指定默认值
+     *
+     * <pre>
+     * StringUtils.ofNullable(null, "def")   → "def"
+     * StringUtils.ofNullable("", "def")     → "def"
+     * StringUtils.ofNullable("abc", "def")  → "abc"
+     * </pre>
+     *
+     * @param value        待判断对象
+     * @param defaultValue 为空时返回的默认值
+     * @param <T>          对象类型
+     * @return 不为空返回 value，为空返回 defaultValue
+     */
+    public static <T> T ofNullable(T value, T defaultValue) {
+        if (isEmpty(value)) {
+            return defaultValue;
+        }
+        return value;
+    }
+
+    /**
+     * 对象为空时返回 null
+     *
+     * @param value 待判断对象
+     * @param <T>   对象类型
+     * @return 不为空返回 value，为空返回 null
+     * @see #ofNullable(Object, Object)
+     */
+    public static <T> T ofNullable(T value) {
+        return ofNullable(value, null);
+    }
+
+    /**
+     * 对象为空时返回指定默认值（支持 trim 控制空白处理）
+     *
+     * @param value        待判断对象
+     * @param defaultValue 为空时返回的默认值
+     * @param trim         是否将全空白字符串视为空
+     * @param <T>          对象类型
+     * @return 不为空返回 value，为空返回 defaultValue
+     */
+    public static <T> T ofNullable(T value, T defaultValue, boolean trim) {
+        if (hasObject(value, trim)) {
+            return value;
+        }
+        return defaultValue;
+    }
+
+    /**
+     * 对象为空时返回对象本身（空白字符串不视为空）
+     *
+     * @param value 待判断对象
+     * @param <T>   对象类型
+     * @return 不为空返回 value，为空返回 value 本身
+     */
+    public static <T> T ofTrimNullable(T value) {
+        return ofTrimNullable(value, value);
+    }
+
+    /**
+     * 对象为空时返回指定默认值（空白字符串视为空）
+     *
+     * @param value        待判断对象
+     * @param defaultValue 为空时返回的默认值
+     * @param <T>          对象类型
+     * @return 不为空返回 value，为空返回 defaultValue
+     */
+    public static <T> T ofTrimNullable(T value, T defaultValue) {
+        return ofNullable(value, defaultValue, true);
+    }
+
+    // ==================== 基于 StringPool 的快捷拼接 ====================
+
+    /**
+     * 以逗号拼接（跳过空值）
+     * <p>示例：{@code joinComma("a", "b", null, "c") → "a,b,c"}
+     */
+    public static String joinComma(String... parts) {
+        return joinWithSeparator(parts, StringPool.COMMA);
+    }
+
+    /**
+     * 以逗号空格拼接（跳过空值）
+     * <p>示例：{@code joinCommaSpace("a", "b") → "a, b"}
+     */
+    public static String joinCommaSpace(String... parts) {
+        return joinWithSeparator(parts, StringPool.COMMA_SPACE);
+    }
+
+    /**
+     * 以点号拼接（跳过空值）
+     * <p>示例：{@code joinDot("com", "example", "api") → "com.example.api"}
+     */
+    public static String joinDot(String... parts) {
+        return joinWithSeparator(parts, StringPool.DOT);
+    }
+
+    /**
+     * 以冒号拼接（跳过空值），常用于构建缓存 Key
+     * <p>示例：{@code joinColon("user", "info", "1") → "user:info:1"}
+     */
+    public static String joinColon(String... parts) {
+        return joinWithSeparator(parts, StringPool.COLON);
+    }
+
+    /**
+     * 以斜杠拼接（跳过空值），常用于构建路径
+     * <p>示例：{@code joinSlash("home", "user", "file.txt") → "home/user/file.txt"}
+     */
+    public static String joinSlash(String... parts) {
+        return joinWithSeparator(parts, StringPool.SLASH);
+    }
+
+    /**
+     * 以竖线拼接（跳过空值）
+     * <p>示例：{@code joinPipe("a", "b", "c") → "a|b|c"}
+     */
+    public static String joinPipe(String... parts) {
+        return joinWithSeparator(parts, StringPool.PIPE);
+    }
+
+    /**
+     * 以下划线拼接（跳过空值），常用于数据库字段名拼接
+     * <p>示例：{@code joinUnderscore("user", "name") → "user_name"}
+     */
+    public static String joinUnderscore(String... parts) {
+        return joinWithSeparator(parts, StringPool.UNDERSCORE);
+    }
+
+    /**
+     * 以中划线拼接（跳过空值），常用于 UUID、订单号等
+     * <p>示例：{@code joinDash("2026", "07", "11") → "2026-07-11"}
+     */
+    public static String joinDash(String... parts) {
+        return joinWithSeparator(parts, StringPool.DASH);
+    }
+
+    /**
+     * 直接拼接（无分隔符，跳过空值）
+     * <p>示例：{@code joinEmpty("Hello", " ", "World") → "Hello World"}
+     */
+    public static String joinEmpty(String... parts) {
+        return joinWithSeparator(parts, StringPool.EMPTY);
+    }
+
+    /**
+     * 通用拼接方法（跳过 null 和空白字符串）
+     *
+     * @param parts     待拼接数组
+     * @param separator 分隔符枚举
+     * @return 拼接后的字符串；parts 为空时返回空字符串
+     */
+    private static String joinWithSeparator(String[] parts, StringPool separator) {
+        if (ArrayUtils.isEmpty(parts)) {
+            return EMPTY;
+        }
+        return Stream.of(parts)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.joining(separator.getValue()));
+    }
+
+    // ==================== 基于 StringPool 的快捷分割 ====================
+
+    /** 按逗号分割 <p>示例：{@code splitComma("a,b,c") → ["a","b","c"]} */
+    public static String[] splitComma(String str) {
+        return splitWithSeparator(str, StringPool.COMMA);
+    }
+
+    /** 按竖线分割 <p>示例：{@code splitPipe("a|b|c") → ["a","b","c"]} */
+    public static String[] splitPipe(String str) {
+        return splitWithSeparator(str, StringPool.PIPE);
+    }
+
+    /** 按点号分割 <p>示例：{@code splitDot("com.example.api") → ["com","example","api"]} */
+    public static String[] splitDot(String str) {
+        return splitWithSeparator(str, StringPool.DOT);
+    }
+
+    /** 按冒号分割 <p>示例：{@code splitColon("user:info:1") → ["user","info","1"]} */
+    public static String[] splitColon(String str) {
+        return splitWithSeparator(str, StringPool.COLON);
+    }
+
+    /** 按斜杠分割 <p>示例：{@code splitSlash("home/user/file") → ["home","user","file"]} */
+    public static String[] splitSlash(String str) {
+        return splitWithSeparator(str, StringPool.SLASH);
+    }
+
+    /** 按下划线分割 <p>示例：{@code splitUnderscore("user_name") → ["user","name"]} */
+    public static String[] splitUnderscore(String str) {
+        return splitWithSeparator(str, StringPool.UNDERSCORE);
+    }
+
+    /** 按中划线分割 <p>示例：{@code splitDash("2026-07-11") → ["2026","07","11"]} */
+    public static String[] splitDash(String str) {
+        return splitWithSeparator(str, StringPool.DASH);
+    }
+
+    /**
+     * 通用分割方法
+     *
+     * @param str       待分割字符串
+     * @param separator 分隔符枚举
+     * @return 分割结果数组；str 为空白时返回空数组
+     */
+    private static String[] splitWithSeparator(String str, StringPool separator) {
+        if (isBlank(str)) {
+            return ArrayUtils.EMPTY_STRING_ARRAY;
+        }
+        return split(str, separator.getValue());
+    }
+
+    // ==================== 字符串处理 ====================
+
+    /**
+     * 截断字符串（超长时追加省略号 …）
+     * <p>
+     * 当 maxLength ≥ 3 时，截断后保留 {@code maxLength - 3} 个字符再追加 "…"；
+     * 当 maxLength < 3 时，直接截断不加省略号。
+     * <pre>
+     * truncate("Hello World", 8)   → "Hello…"
+     * truncate("Hello", 10)        → "Hello"
+     * truncate("Hello World", 2)   → "He"
+     * </pre>
+     *
+     * @param str       待截断字符串
+     * @param maxLength 最大长度（正整数）
+     * @return 截断结果；str 为空白或 maxLength ≤ 0 时返回原值
+     */
+    public static String truncate(String str, int maxLength) {
+        if (isBlank(str) || maxLength <= 0 || str.length() <= maxLength) {
+            return str;
+        }
+        if (maxLength < 3) {
+            return str.substring(0, maxLength);
+        }
+        return str.substring(0, maxLength - 3) + StringPool.HTML_HELLIP.getValue();
+    }
+
+    /**
+     * 截断字符串（纯截断，不追加省略号）
+     *
+     * @param str       待截断字符串
+     * @param maxLength 最大长度
+     * @return 截断结果；str 为空白或 maxLength ≤ 0 时返回原值
+     */
+    public static String truncatePlain(String str, int maxLength) {
+        if (isBlank(str) || maxLength <= 0 || str.length() <= maxLength) {
+            return str;
+        }
+        return str.substring(0, maxLength);
+    }
+
+    /**
+     * 去除字符串左边的所有空白字符
+     * <p>示例：{@code trimLeft("  hello  ") → "hello  "}
+     *
+     * @param str 字符串
+     * @return 去除左侧空白后的字符串
+     */
+    public static String trimLeft(String str) {
+        if (isEmpty(str)) {
+            return str;
+        }
+        int beginIdx = 0;
+        while (beginIdx < str.length() && Character.isWhitespace(str.charAt(beginIdx))) {
+            beginIdx++;
+        }
+        return str.substring(beginIdx);
+    }
+
+    /**
+     * 去除字符串右边的所有空白字符
+     * <p>示例：{@code trimRight("  hello  ") → "  hello"}
+     *
+     * @param str 字符串
+     * @return 去除右侧空白后的字符串
+     */
+    public static String trimRight(String str) {
+        if (isEmpty(str)) {
+            return str;
+        }
+        int endIdx = str.length() - 1;
+        while (endIdx >= 0 && Character.isWhitespace(str.charAt(endIdx))) {
+            endIdx--;
+        }
+        return str.substring(0, endIdx + 1);
+    }
+
+    /**
+     * 去除字符串中所有空白字符（包括空格、制表符、换行等）
+     * <p>示例：{@code trimAll(" h e l l o ") → "hello"}
+     *
+     * @param str 字符串
+     * @return 去除所有空白后的字符串
+     */
+    public static String trimAll(String str) {
+        return deleteWhitespace(str);
+    }
+
+    /**
+     * 驼峰转下划线（处理连续大写，如 HTTPUtil → http_util）
+     * <pre>
+     * camelToUnderline("userName")    → "user_name"
+     * camelToUnderline("HTTPUtil")    → "http_util"
+     * camelToUnderline("getHTTPCode") → "get_http_code"
+     * </pre>
+     *
+     * @param str 驼峰字符串
+     * @return 下划线格式字符串
+     */
+    public static String camelToUnderline(String str) {
+        if (isBlank(str)) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(str.length() + 4);
+        char[] chars = str.toCharArray();
+        for (int i = 0; i < chars.length; i++) {
+            char c = chars[i];
+            if (Character.isUpperCase(c)) {
+                if (i > 0 && !Character.isUpperCase(chars[i - 1])) {
+                    sb.append(StringPool.UNDERSCORE.getValue());
+                }
+                sb.append(Character.toLowerCase(c));
+            } else {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 下划线转驼峰（首字母小写）
+     * <pre>
+     * underlineToCamel("user_name")  → "userName"
+     * underlineToCamel("_user_name") → "userName"（首下划线忽略）
+     * </pre>
+     *
+     * @param str 下划线字符串
+     * @return 驼峰格式字符串
+     */
+    public static String underlineToCamel(String str) {
+        if (isBlank(str)) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(str.length());
+        char[] chars = str.toCharArray();
+        boolean upperNext = false;
+        for (char c : chars) {
+            if (c == '_') {
+                upperNext = true;
+            } else {
+                sb.append(upperNext ? Character.toUpperCase(c) : c);
+                upperNext = false;
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 下划线转帕斯卡（首字母大写）
+     * <p>示例：{@code user_name → UserName}
+     *
+     * @param str 下划线字符串
+     * @return 帕斯卡格式字符串
+     */
+    public static String underlineToPascal(String str) {
+        String camel = underlineToCamel(str);
+        if (isBlank(camel)) {
+            return camel;
+        }
+        char[] chars = camel.toCharArray();
+        chars[0] = Character.toUpperCase(chars[0]);
+        return new String(chars);
+    }
+
+    /**
+     * 左填充（指定字符补齐到目标长度）
+     * <pre>
+     * padLeft("42", 5, '0')   → "00042"
+     * padLeft("hello", 3, '0') → "hello"（长度已足，不填充）
+     * </pre>
+     *
+     * @param str       待填充字符串
+     * @param totalLen  目标总长度
+     * @param padChar   填充字符
+     * @return 填充后的字符串
+     */
+    public static String padLeft(String str, int totalLen, char padChar) {
+        if (str == null) {
+            str = EMPTY;
+        }
+        if (str.length() >= totalLen) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(totalLen);
+        for (int i = str.length(); i < totalLen; i++) {
+            sb.append(padChar);
+        }
+        sb.append(str);
+        return sb.toString();
+    }
+
+    /**
+     * 右填充（指定字符补齐到目标长度）
+     * <pre>
+     * padRight("42", 5, '0')   → "42000"
+     * padRight("hello", 3, '0') → "hello"
+     * </pre>
+     *
+     * @param str       待填充字符串
+     * @param totalLen  目标总长度
+     * @param padChar   填充字符
+     * @return 填充后的字符串
+     */
+    public static String padRight(String str, int totalLen, char padChar) {
+        if (str == null) {
+            str = EMPTY;
+        }
+        if (str.length() >= totalLen) {
+            return str;
+        }
+        StringBuilder sb = new StringBuilder(totalLen);
+        sb.append(str);
+        for (int i = str.length(); i < totalLen; i++) {
+            sb.append(padChar);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 反转字符串
+     * <p>示例：{@code reverse("hello") → "olleh"}
+     *
+     * @param str 待反转字符串
+     * @return 反转结果；输入为 null 返回 null
+     */
+    public static String reverse(String str) {
+        if (str == null) {
+            return null;
+        }
+        return new StringBuilder(str).reverse().toString();
+    }
+
+    /**
+     * 去除 HTML 标签
+     * <pre>
+     * stripHtml("<p>Hello <b>World</b></p>") → "Hello World"
+     * stripHtml("<a href='#'>链接</a>")       → "链接"
+     * </pre>
+     *
+     * @param html 含 HTML 标签的字符串
+     * @return 去除标签后的纯文本；输入为空白返回原值
+     */
+    public static String stripHtml(String html) {
+        if (isBlank(html)) {
+            return html;
+        }
+        return html.replaceAll("<[^>]*>", EMPTY).trim();
+    }
+
+    /**
+     * 判断字符串是否全为中文
+     * <p>示例：{@code isChinese("你好") → true，isChinese("Hello") → false}
+     *
+     * @param str 待判断字符串
+     * @return true 表示全为中文字符
+     */
+    public static boolean isChinese(String str) {
+        if (isBlank(str)) {
+            return false;
+        }
+        return str.matches(CHINESE_REGEX);
+    }
+
+    /**
+     * 是否包含中文
+     * <p>示例：{@code containsChinese("Hello你好") → true}
+     *
+     * @param str 待判断字符串
+     * @return true 表示包含至少一个中文字符
+     */
+    public static boolean containsChinese(String str) {
+        if (isBlank(str)) {
+            return false;
+        }
+        for (char c : str.toCharArray()) {
+            if (Character.UnicodeScript.of(c) == Character.UnicodeScript.HAN) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 字符串长度判断（安全处理 null）
+     *
+     * @param str 字符串
+     * @return 字符串长度，null 返回 0
+     */
+    public static int length(String str) {
+        return str == null ? 0 : str.length();
+    }
+
+    /**
+     * 判断字符串长度是否在指定范围内（闭区间）
+     *
+     * @param str    字符串
+     * @param minLen 最小长度（含）
+     * @param maxLen 最大长度（含）
+     * @return true 表示长度在 [minLen, maxLen] 范围内
+     */
+    public static boolean lengthBetween(String str, int minLen, int maxLen) {
+        int len = length(str);
+        return len >= minLen && len <= maxLen;
+    }
+
+    // ==================== 类型安全转换 ====================
+
+    /**
+     * String 转 char[]
+     *
+     * @param str 字符串
+     * @return char 数组；输入为空返回 null
+     */
+    public static char[] toCharArray(String str) {
+        if (isEmpty(str)) {
+            return null;
+        }
+        return str.toCharArray();
+    }
+
+    /**
+     * String 转 Character（取第一个字符）
+     *
+     * @param str 字符串
+     * @return 第一个字符；输入为空返回 null
+     */
+    public static Character toChar(String str) {
+        char[] c = toCharArray(str);
+        if (c == null) {
+            return null;
+        }
+        return c[0];
+    }
+
+    /**
+     * Object 安全转 String
+     * <p>
+     * null 返回空字符串，其他类型调用 {@code toString()}
+     *
+     * @param obj 对象
+     * @return 字符串；null 返回 ""
+     */
+    public static String toStr(Object obj) {
+        return toStr(obj, EMPTY);
+    }
+
+    /**
+     * Object 安全转 String（支持默认值）
+     * <pre>
+     * toStr(null, "N/A")   → "N/A"
+     * toStr(123, "N/A")    → "123"
+     * toStr("", "N/A")     → "N/A"
+     * </pre>
+     *
+     * @param obj        对象
+     * @param defaultVal 默认值
+     * @return 字符串；null 或空串返回 defaultVal
+     */
+    public static String toStr(Object obj, String defaultVal) {
+        if (obj == null) {
+            return defaultVal;
+        }
+        if (obj instanceof CharSequence) {
+            String s = obj.toString().trim();
+            return s.isEmpty() ? defaultVal : s;
+        }
+        return obj.toString();
+    }
+
+    /**
+     * Object 安全转 Integer
+     * <p>
+     * 支持 Number 直接取值、字符串解析；解析失败返回默认值
+     *
+     * @param obj        对象
+     * @param defaultVal 默认值
+     * @return Integer；无法转换返回 defaultVal
+     */
+    public static Integer toInt(Object obj, Integer defaultVal) {
+        if (obj == null) {
+            return defaultVal;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).intValue();
+        }
+        try {
+            String s = obj.toString().trim();
+            if (s.isEmpty()) {
+                return defaultVal;
+            }
+            // 处理含小数点的字符串，截取整数部分
+            if (s.contains(StringPool.DOT.getValue())) {
+                s = s.substring(0, s.indexOf(StringPool.DOT.getValue()));
+            }
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    /**
+     * Object 安全转 Integer（null 返回 null）
+     *
+     * @param obj 对象
+     * @return Integer；无法转换返回 null
+     * @see #toInt(Object, Integer)
+     */
+    public static Integer toInt(Object obj) {
+        return toInt(obj, null);
+    }
+
+    /**
+     * Object 安全转 Long
+     *
+     * @param obj        对象
+     * @param defaultVal 默认值
+     * @return Long；无法转换返回 defaultVal
+     */
+    public static Long toLong(Object obj, Long defaultVal) {
+        if (obj == null) {
+            return defaultVal;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).longValue();
+        }
+        try {
+            String s = obj.toString().trim();
+            if (s.isEmpty()) {
+                return defaultVal;
+            }
+            if (s.contains(StringPool.DOT.getValue())) {
+                s = s.substring(0, s.indexOf(StringPool.DOT.getValue()));
+            }
+            return Long.parseLong(s);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    /**
+     * Object 安全转 Long（null 返回 null）
+     *
+     * @param obj 对象
+     * @return Long；无法转换返回 null
+     * @see #toLong(Object, Long)
+     */
+    public static Long toLong(Object obj) {
+        return toLong(obj, null);
+    }
+
+    /**
+     * Object 安全转 Double
+     *
+     * @param obj        对象
+     * @param defaultVal 默认值
+     * @return Double；无法转换返回 defaultVal
+     */
+    public static Double toDouble(Object obj, Double defaultVal) {
+        if (obj == null) {
+            return defaultVal;
+        }
+        if (obj instanceof Number) {
+            return ((Number) obj).doubleValue();
+        }
+        try {
+            String s = obj.toString().trim();
+            if (s.isEmpty()) {
+                return defaultVal;
+            }
+            return Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            return defaultVal;
+        }
+    }
+
+    /**
+     * Object 安全转 Double（null 返回 null）
+     *
+     * @param obj 对象
+     * @return Double；无法转换返回 null
+     * @see #toDouble(Object, Double)
+     */
+    public static Double toDouble(Object obj) {
+        return toDouble(obj, null);
+    }
+
+    /**
+     * Object 安全转 Boolean
+     * <p>
+     * 支持："true"/"1"/"yes"/"on"/"Y"/"T" → true（忽略大小写）
+     *
+     * @param obj        对象
+     * @param defaultVal 默认值
+     * @return Boolean；无法判断返回 defaultVal
+     */
+    public static Boolean toBoolean(Object obj, Boolean defaultVal) {
+        if (obj == null) {
+            return defaultVal;
+        }
+        if (obj instanceof Boolean) {
+            return (Boolean) obj;
+        }
+        String s = obj.toString().trim().toLowerCase();
+        if (s.isEmpty()) {
+            return defaultVal;
+        }
+        if ("true".equals(s) || "1".equals(s) || "yes".equals(s)
+                || "on".equals(s) || "y".equals(s) || "t".equals(s)) {
+            return true;
+        }
+        if ("false".equals(s) || "0".equals(s) || "no".equals(s)
+                || "off".equals(s) || "n".equals(s) || "f".equals(s)) {
+            return false;
+        }
+        return defaultVal;
+    }
+
+    /**
+     * Object 安全转 Boolean（null 返回 null）
+     *
+     * @param obj 对象
+     * @return Boolean；无法判断返回 null
+     * @see #toBoolean(Object, Boolean)
+     */
+    public static Boolean toBoolean(Object obj) {
+        return toBoolean(obj, null);
+    }
+
+    // ==================== 业务工具 ====================
+
+    /**
+     * 判断字符串是否等于 "0"（启用状态）
+     *
+     * @param str 待判断字符串
+     * @return true 表示等于 {@link Business#STATUS_ENABLE}
+     */
+    public static boolean isEnable(String str) {
+        return Business.STATUS_ENABLE.equals(str);
+    }
+
+    /**
+     * 判断字符串是否等于 "1"（禁用状态）
+     *
+     * @param str 待判断字符串
+     * @return true 表示等于 {@link Business#STATUS_DISABLE}
+     */
+    public static boolean isDisable(String str) {
+        return Business.STATUS_DISABLE.equals(str);
+    }
+
+    /**
+     * 判断字符串是否为 "1"（是）
+     *
+     * @param str 待判断字符串
+     * @return true 表示等于 {@link Business#YES}
+     */
+    public static boolean isYes(String str) {
+        return Business.YES.equals(str);
+    }
+
+    /**
+     * 判断字符串是否为 "0"（否）
+     *
+     * @param str 待判断字符串
+     * @return true 表示等于 {@link Business#NO}
+     */
+    public static boolean isNo(String str) {
+        return Business.NO.equals(str);
+    }
+
+    /**
+     * 构建缓存 Key（以冒号分隔各段，跳过空段）
+     * <p>示例：{@code buildCacheKey("user", "info", "1") → "user:info:1"}
+     *
+     * @param parts Key 各段
+     * @return 拼接后的缓存 Key；parts 为空返回空字符串
+     */
+    public static String buildCacheKey(String... parts) {
+        if (ArrayUtils.isEmpty(parts)) {
+            return EMPTY;
+        }
+        return Stream.of(parts)
+                .filter(StringUtils::isNotBlank)
+                .collect(Collectors.joining(StringPool.COLON.getValue()));
+    }
+
+    /**
+     * 构建 Redis Key（前缀 + 业务名 + 参数，以冒号分隔）
+     * <pre>
+     * buildRedisKey("dream", "user", 1, "info")  → "dream:user:1:info"
+     * buildRedisKey("", "user", "list")           → "user:list"
+     * </pre>
+     *
+     * @param prefix Key 前缀（如项目名）
+     * @param biz    业务标识
+     * @param params 附加参数
+     * @return Redis Key；prefix 和 biz 都为空时返回空字符串
+     */
+    public static String buildRedisKey(String prefix, String biz, Object... params) {
+        if (isBlank(prefix) && isBlank(biz)) {
+            return EMPTY;
+        }
+        StringBuilder sb = new StringBuilder();
+        if (isNotBlank(prefix)) {
+            sb.append(prefix).append(StringPool.COLON.getValue());
+        }
+        if (isNotBlank(biz)) {
+            sb.append(biz);
+        }
+        if (ArrayUtils.isNotEmpty(params)) {
+            for (Object param : params) {
+                sb.append(StringPool.COLON.getValue()).append(param);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 简易格式化（使用 {} 作为占位符，类似 Slf4j 风格）
+     * <pre>
+     * format("Hello, {}!", "World")         → "Hello, World!"
+     * format("User {} logged in at {}", "admin", "2026-07-11")
+     *                                       → "User admin logged in at 2026-07-11"
+     * format("Value: {}", (Object) null)     → "Value: null"
+     * </pre>
+     *
+     * @param template 模板字符串，使用 {} 作为占位符
+     * @param args     参数列表
+     * @return 格式化后的字符串；template 为 null 返回 null
+     */
+    public static String format(String template, Object... args) {
+        if (template == null) {
+            return null;
+        }
+        if (args == null || args.length == 0) {
+            return template;
+        }
+        StringBuilder sb = new StringBuilder(template.length() + 64);
+        int argIndex = 0;
+        int i = 0;
+        while (i < template.length()) {
+            if (i + 1 < template.length()
+                    && template.charAt(i) == '{'
+                    && template.charAt(i + 1) == '}') {
+                sb.append(argIndex < args.length ? String.valueOf(args[argIndex++]) : "{}");
+                i += 2;
+            } else {
+                sb.append(template.charAt(i));
+                i++;
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 拼接字符串并添加前缀和后缀
+     * <pre>
+     * wrap("[", "]", "content")  → "[content]"
+     * wrap("(", ")", null)       → "()"
+     * </pre>
+     *
+     * @param prefix  前缀
+     * @param suffix  后缀
+     * @param content 中间内容
+     * @return 拼接结果
+     */
+    public static String wrap(String prefix, String suffix, String content) {
+        return defaultString(prefix) + defaultString(content) + defaultString(suffix);
+    }
+
+    // ==================== 截取与填充（支持负索引） ====================
+
+    /**
+     * 截取字符串（支持负索引，-1 表示最后一个字符）
+     * <pre>
+     * substring("Hello", 0)   → "Hello"
+     * substring("Hello", 2)   → "llo"
+     * substring("Hello", -3)  → "llo"（从倒数第3位开始）
+     * </pre>
+     *
+     * @param str   字符串
+     * @param start 开始位置（负数表示从末尾倒数）
+     * @return 截取结果；str 为 null 返回空字符串
+     */
+    public static String substring(String str, int start) {
+        if (str == null) {
+            return EMPTY;
+        }
+        if (start < 0) {
+            start = str.length() + start;
+        }
+        if (start < 0) {
+            start = 0;
+        }
+        if (start > str.length()) {
+            return EMPTY;
+        }
+        return str.substring(start);
+    }
+
+    /**
+     * 截取字符串（支持负索引）
+     * <pre>
+     * substring("Hello", 1, 4)   → "ell"
+     * substring("Hello", -4, -1) → "ell"（从倒数第4位到倒数第1位）
+     * substring("Hello", 0, 10)  → "Hello"（超出长度自动截断）
+     * </pre>
+     *
+     * @param str   字符串
+     * @param start 开始位置（负数表示从末尾倒数）
+     * @param end   结束位置（负数表示从末尾倒数）
+     * @return 截取结果；str 为 null 返回空字符串
+     */
+    public static String substring(String str, int start, int end) {
+        if (str == null) {
+            return EMPTY;
+        }
+        if (start < 0) {
+            start = str.length() + start;
+        }
+        if (end < 0) {
+            end = str.length() + end;
+        }
+        if (start < 0) {
+            start = 0;
+        }
+        if (end < 0) {
+            end = 0;
+        }
+        if (end > str.length()) {
+            end = str.length();
+        }
+        if (start > end) {
+            return EMPTY;
+        }
+        return str.substring(start, end);
+    }
+
+    /**
+     * 左侧补齐（默认补 '0'），常用于订单号、编号生成
+     * <pre>
+     * pads(42, 6)       → "000042"
+     * pads("7", 4)      → "0007"
+     * pads("12345", 3)  → "345"（超长截取末尾3位）
+     * </pre>
+     *
+     * @param obj  数字或字符串对象
+     * @param size 目标长度
+     * @return 补齐后的字符串
+     */
+    public static String pads(Object obj, int size) {
+        return pads(obj, size, '0');
+    }
+
+    /**
+     * 左侧补齐指定字符，超长则截取末尾 size 位
+     * <pre>
+     * pads(42, 6, '0')   → "000042"
+     * pads("AB", 5, '*') → "***AB"
+     * pads(null, 4, '0')  → "0000"
+     * </pre>
+     *
+     * @param obj  数字或字符串对象
+     * @param size 目标长度
+     * @param c    补齐字符
+     * @return 补齐后的字符串
+     */
+    public static String pads(Object obj, int size, char c) {
+        StringBuilder sb = new StringBuilder(size);
+        if (obj != null) {
+            String objStr = String.valueOf(obj);
+            int len = objStr.length();
+            if (len <= size) {
+                for (int i = size - len; i > 0; i--) {
+                    sb.append(c);
+                }
+                sb.append(objStr);
+            } else {
+                return objStr.substring(len - size);
+            }
+        } else {
+            for (int i = size; i > 0; i--) {
+                sb.append(c);
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 生成标准 UUID（含 -）
+     * <p>示例：{@code uuid() → "550e8400-e29b-41d4-a716-446655440000"}
+     *
+     * @return UUID 字符串
+     */
+    public static String uuid() {
+        return UUID.randomUUID().toString();
+    }
+
+    /**
+     * 生成无 - 的 UUID
+     * <p>示例：{@code simpleUuid() → "550e8400e29b41d4a716446655440000"}
+     *
+     * @return 无连字符的 UUID 字符串
+     */
+    public static String simpleUuid() {
+        return uuid().replace(StringPool.DASH.getValue(), EMPTY);
+    }
+
+    /**
+     * 生成6位纯数字验证码
+     * <p>示例：{@code generateVerifyCode() → "834521"}
+     *
+     * @return 6位随机数字字符串
+     */
+    public static String generateVerifyCode() {
+        return String.valueOf((int) ((Math.random() * 9 + 1) * Math.pow(10, 5)));
+    }
+
+    /**
+     * 生成 [min, max] 范围内的随机整数（包含边界）
+     * <p>示例：{@code randomInteger(1, 10) → 7}
+     *
+     * @param min 最小值（含）
+     * @param max 最大值（含）
+     * @return 随机整数
+     */
+    public static Integer randomInteger(Integer min, Integer max) {
+        return ThreadLocalRandom.current().nextInt(min, max + 1);
+    }
+
+    /**
+     * 从列表中随机获取一个元素
+     *
+     * @param list 元素列表
+     * @param <T>  元素类型
+     * @return 随机元素；list 为空返回 null
+     */
+    public static <T> T randomEle(List<T> list) {
+        if (isEmpty(list)) {
+            return null;
+        }
+        if (list.size() == 1) {
+            return list.get(0);
+        }
+        return list.get(randomInteger(0, list.size() - 1));
+    }
+
+    /**
+     * 生成 a-z 小写字母列表
+     *
+     * @return 26 个小写字母组成的列表
+     */
+    public static List<String> generateAtoZ() {
+        return IntStream.rangeClosed('a', 'z')
+                .mapToObj(c -> String.valueOf((char) c))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 数字金额转中文大写（最高支持亿元）
+     * <pre>
+     * digitUppercase(0)       → "零元整"
+     * digitUppercase(100.5)   → "壹佰元伍角"
+     * digitUppercase(1001.01) → "壹仟零壹元零壹分"
+     * digitUppercase(-50.5)   → "负伍拾元伍角"
+     * </pre>
+     *
+     * @param dou 金额，范围 [-999999999.99, 999999999.99]
+     * @return 中文大写金额
+     * @throws IllegalArgumentException 金额超出范围时抛出
+     */
+    public static String digitUppercase(double dou) {
+        if (dou > MAX_MONEY || dou < MIN_MONEY) {
+            throw new IllegalArgumentException(
+                    "请传入[" + BigDecimal.valueOf(MIN_MONEY) + "至" + BigDecimal.valueOf(MAX_MONEY) + "]之间的金额");
+        }
+        String head = dou < 0 ? "负" : EMPTY;
+        dou = Math.abs(dou);
+
+        StringBuilder s = new StringBuilder();
+        for (int i = 0; i < FRACTION.length; i++) {
+            s.append((DIGIT[(int) (Math.floor(dou * 10 * Math.pow(10, i)) % 10)] + FRACTION[i])
+                    .replaceAll("(零.)+", EMPTY));
+        }
+        if (s.length() < 1) {
+            s = new StringBuilder("整");
+        }
+        int integerPart = (int) Math.floor(dou);
+
+        for (int i = 0; i < UNIT[0].length && integerPart > 0; i++) {
+            StringBuilder p = new StringBuilder();
+            for (int j = 0; j < UNIT[1].length && dou > 0; j++) {
+                p.insert(0, DIGIT[integerPart % 10] + UNIT[1][j]);
+                integerPart = integerPart / 10;
+            }
+            s.insert(0, p.toString().replaceAll("(零.)*零$", EMPTY).replaceAll("^$", "零") + UNIT[0][i]);
+        }
+        return head + s.toString()
+                .replaceAll("(零.)*零元", "元")
+                .replaceFirst("(零.)+", EMPTY)
+                .replaceAll("(零.)+", "零")
+                .replaceAll("^整$", "零元整");
+    }
+
+    /**
+     * 集合分片（将大集合按指定大小拆分为多个子集合）
+     * <pre>
+     * listChunk(Arrays.asList(1,2,3,4,5), 2)  → [[1,2],[3,4],[5]]
+     * </pre>
+     *
+     * @param list      原始集合
+     * @param chunkSize 每片大小
+     * @param <T>       元素类型
+     * @return 分片后的集合列表；list 为空返回空列表
+     */
+    public static <T> List<List<T>> listChunk(List<T> list, int chunkSize) {
+        if (isEmpty(list)) {
+            return new ArrayList<>();
+        }
+        return IntStream.range(0, (int) Math.ceil((double) list.size() / chunkSize))
+                .mapToObj(i -> list.subList(i * chunkSize, Math.min((i + 1) * chunkSize, list.size())))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * URL 路径匹配（支持 ?、*、** 通配符）
+     * <ul>
+     *   <li>{@code ?}  表示单个字符</li>
+     *   <li>{@code *}  表示一层路径内的任意字符串，不可跨层级</li>
+     *   <li>{@code **} 表示任意层路径</li>
+     * </ul>
+     * <pre>
+     * isMatch("/api/*", "/api/user")    → true
+     * isMatch("/api/**", "/api/user/1") → true
+     * isMatch("/user/?.png", "/user/a.png") → true
+     * </pre>
+     *
+     * @param pattern 匹配规则
+     * @param url     待匹配的 URL
+     * @return true 表示匹配；pattern 或 url 为 null 返回 false
+     */
+    public static boolean isMatch(String pattern, String url) {
+        if (pattern == null || url == null) {
+            return false;
+        }
+        // 将通配符转换为正则表达式
+        StringBuilder regex = new StringBuilder("^");
+        int i = 0;
+        while (i < pattern.length()) {
+            char c = pattern.charAt(i);
+            if (c == '*') {
+                if (i + 1 < pattern.length() && pattern.charAt(i + 1) == '*') {
+                    regex.append(".*");
+                    i += 2;
+                } else {
+                    regex.append("[^/]*");
+                    i++;
+                }
+            } else if (c == '?') {
+                regex.append("[^/]");
+                i++;
+            } else if ("\\[]{}().+^$|".indexOf(c) >= 0) {
+                regex.append('\\').append(c);
+                i++;
+            } else {
+                regex.append(c);
+                i++;
+            }
+        }
+        regex.append("$");
+        return url.matches(regex.toString());
+    }
+
+}

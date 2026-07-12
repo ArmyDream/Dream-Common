@@ -32,10 +32,6 @@ public final class Security {
     public static final String CACHE_PREFIX_FAIL = "login_fail:";
     public static final String CACHE_PREFIX_BLACKLIST = "blacklist:";
 
-    // ==================== 登录限制 ====================
-    public static final int MAX_LOGIN_FAIL_COUNT = 5;
-    public static final int LOGIN_LOCK_TIME = 15; // 分钟
-
     /**
      * 令牌秘钥
      */

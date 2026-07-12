@@ -1,6 +1,7 @@
 package com.dream.common.core.utils;
 
 import com.dream.common.core.enums.DesensitizeType;
+import com.dream.common.core.enums.Regex;
 
 /**
  * 数据脱敏工具类
@@ -157,5 +158,19 @@ public final class DesensitizeUtils {
         char[] chars = new char[count];
         java.util.Arrays.fill(chars, ch);
         return new String(chars);
+    }
+
+    /**
+     * 判断字符串是否匹配指定正则枚举
+     *
+     * @param str   待校验字符串
+     * @param regex 正则枚举
+     * @return true 表示匹配；str 或 regex 为 null 时返回 false
+     */
+    public static boolean matches(String str, Regex regex) {
+        if (str == null || regex == null || regex.getRegex() == null || regex.getRegex().trim().isEmpty()) {
+            return false;
+        }
+        return str.matches(regex.getRegex());
     }
 }

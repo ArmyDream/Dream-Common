@@ -336,9 +336,9 @@ public final class SysKey {
 
 
     /**
-     * 树根节点父 ID（默认为 0）
+     * 树根节点父 ID（默认为 ""）
      */
-    public static final String TREE_ROOT_PARENT_ID = "0";
+    public static final String TREE_ROOT_NODE_VALUE = "";
 
     /**
      * 树根节点父 ID 为空值标识（用于表示根节点）

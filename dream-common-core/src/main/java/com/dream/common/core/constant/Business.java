@@ -1,5 +1,7 @@
 package com.dream.common.core.constant;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * 业务常量
  */
@@ -12,20 +14,32 @@ public final class Business {
     public static final String DEFAULT_PASSWORD = "dream123456!";
     public static final String DEFAULT_AVATAR = "/avatar/default.jpg";
 
+    /** 默认时间单位：秒 */
+    public static final TimeUnit DEFAULT_TIME_UNIT = TimeUnit.SECONDS;
+
+    /** 初始容量 */
+    public static final int CACHE_INITIAL_CAPACITY = 250;
+
+    /** 最大缓存条目数 10 万条 */
+    public static final long CACHE_MAXIMUM_SIZE = 100_000L;
+
     // ==================== 缓存过期时间（秒） ====================
-    public static final int CACHE_EXPIRE_1_MIN = 60;
-    public static final int CACHE_EXPIRE_5_MIN = 300;
-    public static final int CACHE_EXPIRE_10_MIN = 600;
-    public static final int CACHE_EXPIRE_15_MIN = 900;
-    public static final int CACHE_EXPIRE_30_MIN = 1800;
-    public static final int CACHE_EXPIRE_1_HOUR = 3600;
-    public static final int CACHE_EXPIRE_2_HOUR = 7200;
-    public static final int CACHE_EXPIRE_6_HOUR = 21600;
-    public static final int CACHE_EXPIRE_12_HOUR = 43200;
-    public static final int CACHE_EXPIRE_24_HOUR = 86400;
-    public static final int CACHE_EXPIRE_7_DAY = 604800;
-    public static final int CACHE_EXPIRE_30_DAY = 2592000;
-    public static final int CACHE_NEVER_EXPIRE = -1;
+    public static final long CACHE_EXPIRE_1_MIN = 60;
+    public static final long CACHE_EXPIRE_2_MIN = 120;
+    public static final long CACHE_EXPIRE_3_MIN = 180;
+    public static final long CACHE_EXPIRE_5_MIN = 300;
+    public static final long CACHE_EXPIRE_10_MIN = 600;
+    public static final long CACHE_EXPIRE_15_MIN = 900;
+    public static final long CACHE_EXPIRE_30_MIN = 1800;
+    public static final long CACHE_EXPIRE_1_HOUR = 3600;
+    public static final long CACHE_EXPIRE_2_HOUR = 7200;
+    public static final long CACHE_EXPIRE_6_HOUR = 21600;
+    public static final long CACHE_EXPIRE_12_HOUR = 43200;
+    public static final long CACHE_EXPIRE_24_HOUR = 86400;
+    public static final long CACHE_EXPIRE_7_DAY = 604800;
+    public static final long CACHE_EXPIRE_30_DAY = 2592000;
+    public static final long CACHE_EXPIRE_MAX = Long.MAX_VALUE;
+    public static final long CACHE_NEVER_EXPIRE = -1;
 
     // ==================== 通用状态值 ====================
     public static final String STATUS_ENABLE = "0";
@@ -47,7 +61,6 @@ public final class Business {
     // ==================== Token 相关 ====================
     public static final int TOKEN_EXPIRE_HOUR = 2;
     public static final int TOKEN_REFRESH_EXPIRE_DAY = 7;
-
 
     // ==================== 密码规则 ====================
     public static final int PASSWORD_MIN_LENGTH = 8;

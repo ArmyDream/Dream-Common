@@ -13,7 +13,9 @@
     <artifactId>dream-common-core</artifactId>
 
     <description>
-        通用模块-核心。无第三方依赖
+        最底层，不依赖任何第三方库。
+        提供纯 Java 的基础能力。
+        零依赖、可被任何模块引用。
     </description>
 
 </project>

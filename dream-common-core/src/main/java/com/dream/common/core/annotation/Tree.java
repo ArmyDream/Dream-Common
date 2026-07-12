@@ -143,11 +143,12 @@ public @interface Tree {
     // ==================== 树结构控制 ====================
 
     /**
-     * 根节点父 ID 值
+     * 根节点 值
      * <p>
-     * 默认值：0
+     *    ""  " " null 3者 都表示根节点
+     * 默认值：""
      */
-    String rootParentId() default SysKey.TREE_ROOT_PARENT_ID;
+    String rootNodeValue() default SysKey.TREE_ROOT_NODE_VALUE;
 
     /**
      * 是否包含根节点
