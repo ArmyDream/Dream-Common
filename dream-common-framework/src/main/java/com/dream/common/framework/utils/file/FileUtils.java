@@ -129,7 +129,7 @@ public final class FileUtils {
      * @return 扩展名（小写），无扩展名返回空字符串
      */
     public static String getExtension(String fileName) {
-        if (StringUtils.isEmpty(fileName)) {
+        if (StringUtils.isObjectBlank(fileName)) {
             return StringPool.EMPTY.getValue();
         }
         int dotIndex = fileName.lastIndexOf(StringPool.DOT.getValue());
@@ -164,7 +164,7 @@ public final class FileUtils {
      * @return 文件名，失败返回空字符串
      */
     public static String getFileName(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return StringPool.EMPTY.getValue();
         }
         try {
@@ -187,7 +187,7 @@ public final class FileUtils {
      * @return 不含扩展名的文件名
      */
     public static String getFileNameWithoutExt(String fileName) {
-        if (StringUtils.isEmpty(fileName)) {
+        if (StringUtils.isObjectBlank(fileName)) {
             return StringPool.EMPTY.getValue();
         }
         int dotIndex = fileName.lastIndexOf(StringPool.DOT.getValue());
@@ -204,7 +204,7 @@ public final class FileUtils {
      * @return FileType，无法识别返回 null
      */
     public static FileType getFileType(String extension) {
-        if (StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(extension)) {
             return null;
         }
         return FileType.fromExtension(extension);
@@ -316,7 +316,7 @@ public final class FileUtils {
      * @return 字节数组，失败返回 null
      */
     public static byte[] readBytes(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return null;
         }
         try {
@@ -338,7 +338,7 @@ public final class FileUtils {
      * @return 字节数组，失败返回 null
      */
     public static byte[] readBytesMapped(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return null;
         }
         try (RandomAccessFile raf = new RandomAccessFile(filePath, "r");
@@ -369,7 +369,7 @@ public final class FileUtils {
      * @return 文件内容，失败返回 null
      */
     public static String readString(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return null;
         }
         try {
@@ -388,7 +388,7 @@ public final class FileUtils {
      * @return 文件内容，失败返回 null
      */
     public static String readString(String filePath, Charset charset) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return null;
         }
         try {
@@ -411,7 +411,7 @@ public final class FileUtils {
      * @return 行列表，失败返回空列表
      */
     public static List<String> readLines(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return Collections.emptyList();
         }
         try {
@@ -433,7 +433,7 @@ public final class FileUtils {
      * @return 字节数组，失败返回 null
      */
     public static byte[] readClasspathBytes(String resourcePath) {
-        if (StringUtils.isEmpty(resourcePath)) {
+        if (StringUtils.isObjectBlank(resourcePath)) {
             return null;
         }
         try (InputStream is = new ClassPathResource(resourcePath).getInputStream()) {
@@ -507,7 +507,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean writeString(String filePath, String content, boolean append) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return false;
         }
         try {
@@ -539,7 +539,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean writeBytes(String filePath, byte[] data) {
-        if (StringUtils.isEmpty(filePath) || data == null) {
+        if (StringUtils.isObjectBlank(filePath) || data == null) {
             return false;
         }
         try {
@@ -561,7 +561,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean appendBytes(String filePath, byte[] data) {
-        if (StringUtils.isEmpty(filePath) || data == null) {
+        if (StringUtils.isObjectBlank(filePath) || data == null) {
             return false;
         }
         try {
@@ -589,7 +589,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean copy(String sourcePath, String targetPath) {
-        if (StringUtils.isEmpty(sourcePath) || StringUtils.isEmpty(targetPath)) {
+        if (StringUtils.isObjectBlank(sourcePath) || StringUtils.isObjectBlank(targetPath)) {
             return false;
         }
         try {
@@ -615,7 +615,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean move(String sourcePath, String targetPath) {
-        if (StringUtils.isEmpty(sourcePath) || StringUtils.isEmpty(targetPath)) {
+        if (StringUtils.isObjectBlank(sourcePath) || StringUtils.isObjectBlank(targetPath)) {
             return false;
         }
         try {
@@ -641,7 +641,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean rename(String filePath, String newName) {
-        if (StringUtils.isEmpty(filePath) || StringUtils.isEmpty(newName)) {
+        if (StringUtils.isObjectBlank(filePath) || StringUtils.isObjectBlank(newName)) {
             return false;
         }
         try {
@@ -669,7 +669,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean delete(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return false;
         }
         try {
@@ -697,7 +697,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean deleteDirectory(String dirPath) {
-        if (StringUtils.isEmpty(dirPath)) {
+        if (StringUtils.isObjectBlank(dirPath)) {
             return false;
         }
         Path dir = Paths.get(dirPath);
@@ -733,7 +733,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean cleanDirectory(String dirPath) {
-        if (StringUtils.isEmpty(dirPath)) {
+        if (StringUtils.isObjectBlank(dirPath)) {
             return false;
         }
         Path dir = Paths.get(dirPath);
@@ -770,7 +770,7 @@ public final class FileUtils {
      * @return 是否成功
      */
     public static boolean mkdirs(String dirPath) {
-        if (StringUtils.isEmpty(dirPath)) {
+        if (StringUtils.isObjectBlank(dirPath)) {
             return false;
         }
         try {
@@ -797,7 +797,7 @@ public final class FileUtils {
      * @return 文件名列表，失败返回空列表
      */
     public static List<String> list(String dirPath) {
-        if (StringUtils.isEmpty(dirPath)) {
+        if (StringUtils.isObjectBlank(dirPath)) {
             return Collections.emptyList();
         }
         try (Stream<Path> stream = Files.list(Paths.get(dirPath))) {
@@ -822,7 +822,7 @@ public final class FileUtils {
      * @return 匹配的文件名列表，失败返回空列表
      */
     public static List<String> listByExtension(String dirPath, String extension) {
-        if (StringUtils.isEmpty(dirPath) || StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(dirPath) || StringUtils.isObjectBlank(extension)) {
             return Collections.emptyList();
         }
         String lowerExt = extension.toLowerCase();
@@ -854,7 +854,7 @@ public final class FileUtils {
      * @return 是否存在
      */
     public static boolean exists(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return false;
         }
         return Files.exists(Paths.get(filePath));
@@ -867,7 +867,7 @@ public final class FileUtils {
      * @return 是否为目录
      */
     public static boolean isDirectory(String path) {
-        if (StringUtils.isEmpty(path)) {
+        if (StringUtils.isObjectBlank(path)) {
             return false;
         }
         return Files.isDirectory(Paths.get(path));
@@ -880,7 +880,7 @@ public final class FileUtils {
      * @return 是否为文件
      */
     public static boolean isFile(String path) {
-        if (StringUtils.isEmpty(path)) {
+        if (StringUtils.isObjectBlank(path)) {
             return false;
         }
         return Files.isRegularFile(Paths.get(path));
@@ -893,7 +893,7 @@ public final class FileUtils {
      * @return 文件大小，失败返回 -1
      */
     public static long getSize(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return -1;
         }
         try {
@@ -911,7 +911,7 @@ public final class FileUtils {
      * @return 最后修改时间戳（毫秒），失败返回 -1
      */
     public static long getLastModified(String filePath) {
-        if (StringUtils.isEmpty(filePath)) {
+        if (StringUtils.isObjectBlank(filePath)) {
             return -1;
         }
         try {
@@ -967,7 +967,7 @@ public final class FileUtils {
             log.warn("upload: file is null or empty");
             return null;
         }
-        if (StringUtils.isEmpty(savePath)) {
+        if (StringUtils.isObjectBlank(savePath)) {
             log.warn("upload: savePath is empty");
             return null;
         }
@@ -1030,7 +1030,7 @@ public final class FileUtils {
             log.warn("upload: data is null or empty");
             return null;
         }
-        if (StringUtils.isEmpty(savePath) || StringUtils.isEmpty(fileName)) {
+        if (StringUtils.isObjectBlank(savePath) || StringUtils.isObjectBlank(fileName)) {
             log.warn("upload: savePath or fileName is empty");
             return null;
         }
@@ -1086,7 +1086,7 @@ public final class FileUtils {
         String random = randomString(8);
         String extension = getExtension(originalName);
 
-        if (StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(extension)) {
             return timestamp + "_" + random;
         }
         return timestamp + "_" + random + StringPool.DOT.getValue() + extension;
@@ -1101,7 +1101,7 @@ public final class FileUtils {
     public static String generateStoredNameWithExt(String extension) {
         String timestamp = LocalDateTime.now().format(FILE_NAME_DATE_FMT);
         String random = randomString(8);
-        if (StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(extension)) {
             return timestamp + "_" + random;
         }
         return timestamp + "_" + random + StringPool.DOT.getValue() + extension.toLowerCase();
@@ -1220,11 +1220,11 @@ public final class FileUtils {
      * @return true 如果文件类型在允许列表中
      */
     public static boolean validateFileType(String fileName, FileType... allowedTypes) {
-        if (StringUtils.isEmpty(fileName) || allowedTypes == null || allowedTypes.length == 0) {
+        if (StringUtils.isObjectBlank(fileName) || allowedTypes == null || allowedTypes.length == 0) {
             return false;
         }
         String extension = getExtension(fileName);
-        if (StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(extension)) {
             return false;
         }
         FileType actualType = FileType.fromExtension(extension);
@@ -1266,11 +1266,11 @@ public final class FileUtils {
      * @return true 如果文件分类在允许列表中
      */
     public static boolean validateFileType(String fileName, FileCat... allowedCats) {
-        if (StringUtils.isEmpty(fileName) || allowedCats == null || allowedCats.length == 0) {
+        if (StringUtils.isObjectBlank(fileName) || allowedCats == null || allowedCats.length == 0) {
             return false;
         }
         String extension = getExtension(fileName);
-        if (StringUtils.isEmpty(extension)) {
+        if (StringUtils.isObjectBlank(extension)) {
             return false;
         }
         FileType actualType = FileType.fromExtension(extension);

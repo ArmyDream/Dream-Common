@@ -68,24 +68,24 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * </ul>
      *
      * <pre>
-     * StringUtils.isEmpty(null)              → true
-     * StringUtils.isEmpty("")                → true
-     * StringUtils.isEmpty("  ")              → true
-     * StringUtils.isEmpty(new ArrayList())   → true
-     * StringUtils.isEmpty(new HashMap())     → true
-     * StringUtils.isEmpty(new int[]{})       → true
-     * StringUtils.isEmpty(Optional.empty())  → true
-     * StringUtils.isEmpty("abc")             → false
-     * StringUtils.isEmpty(Arrays.asList(1))  → false
+     * StringUtils.isObjectBlank(null)              → true
+     * StringUtils.isObjectBlank("")                → true
+     * StringUtils.isObjectBlank("  ")              → true
+     * StringUtils.isObjectBlank(new ArrayList())   → true
+     * StringUtils.isObjectBlank(new HashMap())     → true
+     * StringUtils.isObjectBlank(new int[]{})       → true
+     * StringUtils.isObjectBlank(Optional.empty())  → true
+     * StringUtils.isObjectBlank("abc")             → false
+     * StringUtils.isObjectBlank(Arrays.asList(1))  → false
      * </pre>
      *
      * @param obj 待判断对象
      * @return true 表示为空
      */
-    public static boolean isEmpty(Object obj) {
+    public static boolean isObjectBlank(Object obj) {
         if (obj == null) {
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: obj 为 null，返回 true");
+                log.debug("isObjectBlank: obj 为 null，返回 true");
             }
             return true;
         }
@@ -93,21 +93,21 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             String str = obj.toString();
             boolean empty = str.isEmpty() || str.trim().isEmpty();
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: CharSequence=[{}], result={}", str, empty);
+                log.debug("isObjectBlank: CharSequence=[{}], result={}", str, empty);
             }
             return empty;
         }
         if (obj instanceof Collection) {
             boolean empty = ((Collection<?>) obj).isEmpty();
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: Collection size={}, result={}", ((Collection<?>) obj).size(), empty);
+                log.debug("isObjectBlank: Collection size={}, result={}", ((Collection<?>) obj).size(), empty);
             }
             return empty;
         }
         if (obj instanceof Map) {
             boolean empty = ((Map<?, ?>) obj).isEmpty();
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: Map size={}, result={}", ((Map<?, ?>) obj).size(), empty);
+                log.debug("isObjectBlank: Map size={}, result={}", ((Map<?, ?>) obj).size(), empty);
             }
             return empty;
         }
@@ -115,19 +115,19 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             int len = Array.getLength(obj);
             boolean empty = len == 0;
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: Array length={}, result={}", len, empty);
+                log.debug("isObjectBlank: Array length={}, result={}", len, empty);
             }
             return empty;
         }
         if (obj instanceof Optional) {
             boolean empty = !((Optional<?>) obj).isPresent();
             if (log.isDebugEnabled()) {
-                log.debug("isEmpty: Optional isPresent={}, result={}", ((Optional<?>) obj).isPresent(), empty);
+                log.debug("isObjectBlank: Optional isPresent={}, result={}", ((Optional<?>) obj).isPresent(), empty);
             }
             return empty;
         }
         if (log.isDebugEnabled()) {
-            log.debug("isEmpty: obj={}, result=false", obj.getClass().getSimpleName());
+            log.debug("isObjectBlank: obj={}, result=false", obj.getClass().getSimpleName());
         }
         return false;
     }
@@ -139,10 +139,10 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return true 表示不为空
      * @see #isEmpty(Object)
      */
-    public static boolean isNotEmpty(Object obj) {
-        boolean result = !isEmpty(obj);
+    public static boolean isObjectNotBlank(Object obj) {
+        boolean result = !isObjectBlank(obj);
         if (log.isDebugEnabled()) {
-            log.debug("isNotEmpty: result={}", result);
+            log.debug("isObjectNotBlank: result={}", result);
         }
         return result;
     }
@@ -161,7 +161,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             return true;
         }
         for (Object obj : objs) {
-            if (isNotEmpty(obj)) {
+            if (isObjectNotBlank(obj)) {
                 if (log.isDebugEnabled()) {
                     log.debug("isAllEmpty: 发现非空对象，返回 false");
                 }
@@ -188,7 +188,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             return false;
         }
         for (Object obj : objs) {
-            if (isNotEmpty(obj)) {
+            if (isObjectNotBlank(obj)) {
                 if (log.isDebugEnabled()) {
                     log.debug("isAnyNotEmpty: 发现非空对象，返回 true");
                 }
@@ -215,7 +215,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             return false;
         }
         for (Object obj : objs) {
-            if (isEmpty(obj)) {
+            if (isObjectBlank(obj)) {
                 if (log.isDebugEnabled()) {
                     log.debug("isAllNotEmpty: 发现空对象，返回 false");
                 }
@@ -242,7 +242,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             return true;
         }
         for (Object obj : objs) {
-            if (isEmpty(obj)) {
+            if (isObjectBlank(obj)) {
                 if (log.isDebugEnabled()) {
                     log.debug("isAnyEmpty: 发现空对象，返回 true");
                 }
@@ -253,149 +253,6 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
             log.debug("isAnyEmpty: 所有对象均非空，返回 false");
         }
         return false;
-    }
-
-    /**
-     * 判断集合或数组中是否存在空元素
-     * <p>
-     * 遍历集合/数组，若其中任何一个元素为空（{@link #isEmpty(Object)}）则返回 true。
-     * 常用于表单批量校验、参数校验等场景。
-     * <pre>
-     * existEmpty(Arrays.asList("a", "", "c"))  → true
-     * existEmpty(Arrays.asList("a", "b", "c")) → false
-     * existEmpty(new Object[]{"a", null})       → true
-     * existEmpty(new ArrayList())                → false（空集合无元素可判）
-     * </pre>
-     *
-     * @param collection 集合
-     * @return true 表示存在空元素；集合为 null 或空时返回 false
-     */
-    public static boolean existEmpty(Collection<?> collection) {
-        if (collection == null || collection.isEmpty()) {
-            if (log.isDebugEnabled()) {
-                log.debug("existEmpty: collection 为空，返回 false");
-            }
-            return false;
-        }
-        for (Object obj : collection) {
-            if (isEmpty(obj)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("existEmpty: 发现空元素，返回 true");
-                }
-                return true;
-            }
-        }
-        if (log.isDebugEnabled()) {
-            log.debug("existEmpty: 无空元素，返回 false");
-        }
-        return false;
-    }
-
-    /**
-     * 判断数组中是否存在空元素
-     *
-     * @param array 对象数组
-     * @return true 表示存在空元素；数组为 null 或空时返回 false
-     * @see #existEmpty(Collection)
-     */
-    public static boolean existEmpty(Object... array) {
-        if (ArrayUtils.isEmpty(array)) {
-            if (log.isDebugEnabled()) {
-                log.debug("existEmpty: array 为空，返回 false");
-            }
-            return false;
-        }
-        for (Object obj : array) {
-            if (isEmpty(obj)) {
-                if (log.isDebugEnabled()) {
-                    log.debug("existEmpty: 发现空元素，返回 true");
-                }
-                return true;
-            }
-        }
-        if (log.isDebugEnabled()) {
-            log.debug("existEmpty: 无空元素，返回 false");
-        }
-        return false;
-    }
-
-    /**
-     * 判断对象是否不为空（别名方法，语义更清晰）
-     * <p>
-     * 与 {@link #isNotEmpty(Object)} 等价，适用于需要更直观命名的场景
-     *
-     * @param obj  待判断对象
-     * @param trim 是否将全空白字符串视为空（true 时空白字符串也返回 false）
-     * @return true 表示不为空
-     */
-    public static boolean hasObject(Object obj, boolean trim) {
-        if (obj == null) {
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: obj 为 null，返回 false");
-            }
-            return false;
-        }
-        if (obj instanceof CharSequence) {
-            boolean result = trim ? isNotBlank((CharSequence) obj) : isNotEmpty((CharSequence) obj);
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: CharSequence=[{}], trim={}, result={}", obj, trim, result);
-            }
-            return result;
-        }
-        if (obj instanceof Collection) {
-            boolean result = !((Collection<?>) obj).isEmpty();
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: Collection size={}, result={}", ((Collection<?>) obj).size(), result);
-            }
-            return result;
-        }
-        if (obj instanceof Map) {
-            boolean result = !((Map<?, ?>) obj).isEmpty();
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: Map size={}, result={}", ((Map<?, ?>) obj).size(), result);
-            }
-            return result;
-        }
-        if (obj.getClass().isArray()) {
-            int len = Array.getLength(obj);
-            boolean result = len > 0;
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: Array length={}, result={}", len, result);
-            }
-            return result;
-        }
-        if (obj instanceof Optional) {
-            boolean result = ((Optional<?>) obj).isPresent();
-            if (log.isDebugEnabled()) {
-                log.debug("hasObject: Optional isPresent={}, result={}", result, result);
-            }
-            return result;
-        }
-        if (log.isDebugEnabled()) {
-            log.debug("hasObject: obj={}, result=true", obj.getClass().getSimpleName());
-        }
-        return true;
-    }
-
-    /**
-     * 判断对象是否不为空（空白字符串视为空）
-     *
-     * @param obj 待判断对象
-     * @return true 表示不为空
-     * @see #hasObject(Object, boolean)
-     */
-    public static boolean hasObject(Object obj) {
-        return hasObject(obj, true);
-    }
-
-    /**
-     * 判断字符串是否有文本内容（非空且非全空白）
-     *
-     * @param str 字符串
-     * @return true 表示有文本内容
-     */
-    public static boolean hasText(String str) {
-        return hasObject(str, true);
     }
 
     /**
@@ -413,7 +270,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 不为空返回 value，为空返回 defaultValue
      */
     public static <T> T ofNullable(T value, T defaultValue) {
-        if (isEmpty(value)) {
+        if (isObjectBlank(value)) {
             if (log.isDebugEnabled()) {
                 log.debug("ofNullable: value 为空，返回默认值 {}", defaultValue);
             }
@@ -438,43 +295,19 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     }
 
     /**
-     * 对象为空时返回指定默认值（支持 trim 控制空白处理）
-     *
-     * @param value        待判断对象
-     * @param defaultValue 为空时返回的默认值
-     * @param trim         是否将全空白字符串视为空
-     * @param <T>          对象类型
-     * @return 不为空返回 value，为空返回 defaultValue
+     * 对象为空时返回 字符串 defaultValue
      */
-    public static <T> T ofNullable(T value, T defaultValue, boolean trim) {
-        if (hasObject(value, trim)) {
-            return value;
+    public static String ofNullableString(Object obj, String defaultValue) {
+        if(isObjectBlank( obj)){
+            return defaultValue;
         }
-        return defaultValue;
+        if (obj instanceof CharSequence) {
+            String str = obj.toString();
+            return str;
+        }
+        return JsonUtils.toJson(obj);
     }
 
-    /**
-     * 对象为空时返回对象本身（空白字符串不视为空）
-     *
-     * @param value 待判断对象
-     * @param <T>   对象类型
-     * @return 不为空返回 value，为空返回 value 本身
-     */
-    public static <T> T ofTrimNullable(T value) {
-        return ofTrimNullable(value, value);
-    }
-
-    /**
-     * 对象为空时返回指定默认值（空白字符串视为空）
-     *
-     * @param value        待判断对象
-     * @param defaultValue 为空时返回的默认值
-     * @param <T>          对象类型
-     * @return 不为空返回 value，为空返回 defaultValue
-     */
-    public static <T> T ofTrimNullable(T value, T defaultValue) {
-        return ofNullable(value, defaultValue, true);
-    }
 
     // ==================== 基于 StringPool 的快捷拼接 ====================
 
@@ -1618,7 +1451,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 随机元素；list 为空返回 null
      */
     public static <T> T randomEle(List<T> list) {
-        if (isEmpty(list)) {
+        if (isObjectBlank(list)) {
             return null;
         }
         if (list.size() == 1) {
@@ -1700,7 +1533,7 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 分片后的集合列表；list 为空返回空列表
      */
     public static <T> List<List<T>> listChunk(List<T> list, int chunkSize) {
-        if (isEmpty(list)) {
+        if (isObjectBlank(list)) {
             return new ArrayList<>();
         }
         return IntStream.range(0, (int) Math.ceil((double) list.size() / chunkSize))

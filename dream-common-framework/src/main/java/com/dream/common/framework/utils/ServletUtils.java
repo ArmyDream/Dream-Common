@@ -140,7 +140,7 @@ public final class ServletUtils {
      */
     public static String getParameter(String name, String defaultValue) {
         String value = getParameter(name);
-        return StringUtils.hasText(value) ? value : defaultValue;
+        return StringUtils.isObjectNotBlank(value) ? value : defaultValue;
     }
 
     /**
@@ -207,7 +207,7 @@ public final class ServletUtils {
             return "";
         }
         String value = request.getHeader(name);
-        if (!StringUtils.hasText(value)) {
+        if (!StringUtils.isObjectNotBlank(value)) {
             return "";
         }
         return urlDecode(value);
@@ -284,7 +284,7 @@ public final class ServletUtils {
      */
     public static String getCookieValue(String name, String defaultValue) {
         String value = getCookieValue(name);
-        return StringUtils.hasText(value) ? value : defaultValue;
+        return StringUtils.isObjectNotBlank(value) ? value : defaultValue;
     }
 
     /**
@@ -307,8 +307,8 @@ public final class ServletUtils {
         }
         Cookie cookie = new Cookie(name, value);
         cookie.setMaxAge(maxAge);
-        cookie.setPath(StringUtils.hasText(path) ? path : "/");
-        if (StringUtils.hasText(domain)) {
+        cookie.setPath(StringUtils.isObjectNotBlank(path) ? path : "/");
+        if (StringUtils.isObjectNotBlank(domain)) {
             cookie.setDomain(domain);
         }
         cookie.setHttpOnly(httpOnly);
@@ -530,7 +530,7 @@ public final class ServletUtils {
             return null;
         }
         try {
-            String charset = StringUtils.hasText(enc) ? enc : CharsetEnum.UTF_8.getValue();
+            String charset = StringUtils.isObjectNotBlank(enc) ? enc : CharsetEnum.UTF_8.getValue();
             return java.net.URLEncoder.encode(str, charset);
         } catch (Exception e) {
             log.warn("URL 编码失败: {}", str, e);
@@ -560,7 +560,7 @@ public final class ServletUtils {
             return null;
         }
         try {
-            String charset = StringUtils.hasText(enc) ? enc : CharsetEnum.UTF_8.getValue();
+            String charset = StringUtils.isObjectNotBlank(enc) ? enc : CharsetEnum.UTF_8.getValue();
             return java.net.URLDecoder.decode(str, charset);
         } catch (Exception e) {
             log.warn("URL 解码失败: {}", str, e);

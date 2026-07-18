@@ -2,6 +2,7 @@ package com.dream.common.framework.utils;
 
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.omg.CORBA.UNKNOWN;
 
 import javax.servlet.http.HttpServletRequest;
 import java.net.Inet4Address;
@@ -154,7 +155,7 @@ public final class IpUtils {
      * @return true 表示合法 IPv4
      */
     public static boolean isIp(String ip) {
-        return StringUtils.hasText(ip) && ip.matches(REGX_IPV4);
+        return StringUtils.isObjectNotBlank(ip) && ip.matches(REGX_IPV4);
     }
 
     /**
@@ -164,7 +165,7 @@ public final class IpUtils {
      * @return true 表示合法 IPv6
      */
     public static boolean isIPv6(String ip) {
-        if (!StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
         return PATTERN_IPV6.matcher(ip.trim()).matches();
@@ -187,7 +188,7 @@ public final class IpUtils {
      * @return true 表示匹配通配符格式
      */
     public static boolean isIpWildcard(String ip) {
-        return StringUtils.hasText(ip) && ip.matches(REGX_IPV4_WILDCARD);
+        return StringUtils.isObjectNotBlank(ip) && ip.matches(REGX_IPV4_WILDCARD);
     }
 
     /**
@@ -197,7 +198,7 @@ public final class IpUtils {
      * @return true 表示合法网段格式
      */
     public static boolean isIpSegment(String ipSeg) {
-        return StringUtils.hasText(ipSeg) && ipSeg.matches(REGX_IPV4_SEGMENT);
+        return StringUtils.isObjectNotBlank(ipSeg) && ipSeg.matches(REGX_IPV4_SEGMENT);
     }
 
     /**
@@ -207,7 +208,7 @@ public final class IpUtils {
      * @return true 表示合法 CIDR 格式
      */
     public static boolean isCidr(String cidr) {
-        return StringUtils.hasText(cidr) && PATTERN_CIDR.matcher(cidr.trim()).matches();
+        return StringUtils.isObjectNotBlank(cidr) && PATTERN_CIDR.matcher(cidr.trim()).matches();
     }
 
     /**
@@ -217,7 +218,7 @@ public final class IpUtils {
      * @return true 表示 unknown
      */
     public static boolean isUnknown(String checkString) {
-        return !StringUtils.hasText(checkString) || UNKNOWN.equalsIgnoreCase(checkString);
+        return !StringUtils.isObjectNotBlank(checkString) || UNKNOWN.equalsIgnoreCase(checkString);
     }
 
     // ==================== 内网 / 私网判断 ====================
@@ -238,7 +239,7 @@ public final class IpUtils {
      * @return true 表示内网 IP
      */
     public static boolean internalIp(String ip) {
-        if (!StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
 
@@ -257,7 +258,7 @@ public final class IpUtils {
      * @return true 表示私网 IP
      */
     public static boolean isPrivateIp(String ip) {
-        if (!StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
         byte[] addr = textToNumericFormatV4(ip);
@@ -271,7 +272,7 @@ public final class IpUtils {
      * @return true 表示本地回环
      */
     public static boolean isLocalHost(String ip) {
-        if (!StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
         return LOCALHOST_IPV4.equals(ip) || LOCALHOST_IPV6.equals(ip)
@@ -344,7 +345,7 @@ public final class IpUtils {
      * @return 4 字节数组；格式无效返回 null
      */
     public static byte[] textToNumericFormatV4(String text) {
-        if (!StringUtils.hasText(text)) {
+        if (!StringUtils.isObjectNotBlank(text)) {
             return null;
         }
 
@@ -403,7 +404,7 @@ public final class IpUtils {
      * @return IP 对应的 long 值；格式无效返回 -1
      */
     public static long ip2Long(String ipStr) {
-        if (!StringUtils.hasText(ipStr)) {
+        if (!StringUtils.isObjectNotBlank(ipStr)) {
             return -1L;
         }
 
@@ -451,7 +452,7 @@ public final class IpUtils {
      * @return true 表示 IP 在网段内
      */
     public static boolean ipInRangeCidr(String ip, String cidr) {
-        if (!StringUtils.hasText(ip) || !StringUtils.hasText(cidr)) {
+        if (!StringUtils.isObjectNotBlank(ip) || !StringUtils.isObjectNotBlank(cidr)) {
             return false;
         }
 
@@ -540,7 +541,7 @@ public final class IpUtils {
      * @return true 表示匹配
      */
     public static boolean ipIsInWildcard(String wildcard, String ip) {
-        if (!StringUtils.hasText(wildcard) || !StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(wildcard) || !StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
 
@@ -567,7 +568,7 @@ public final class IpUtils {
      * @return true 表示在范围内
      */
     public static boolean ipIsInNet(String ipRange, String ip) {
-        if (!StringUtils.hasText(ipRange) || !StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ipRange) || !StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
 
@@ -604,7 +605,7 @@ public final class IpUtils {
      * @return true 表示匹配任一规则
      */
     public static boolean isMatchedIp(String filter, String ip) {
-        if (!StringUtils.hasText(filter) || !StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(filter) || !StringUtils.isObjectNotBlank(ip)) {
             return false;
         }
 
@@ -612,7 +613,7 @@ public final class IpUtils {
 
         for (String rule : filter.split(";")) {
             String ruleTrimmed = rule.trim();
-            if (!StringUtils.hasText(ruleTrimmed)) {
+            if (!StringUtils.isObjectNotBlank(ruleTrimmed)) {
                 continue;
             }
 
@@ -671,7 +672,7 @@ public final class IpUtils {
      * @return 脱敏后的 IP
      */
     public static String maskIp(String ip, int keepParts) {
-        if (!StringUtils.hasText(ip)) {
+        if (!StringUtils.isObjectNotBlank(ip)) {
             return ip;
         }
 
@@ -795,7 +796,7 @@ public final class IpUtils {
             return "";
         }
         String ua = request.getHeader("User-Agent");
-        return StringUtils.hasText(ua) ? ua : "";
+        return StringUtils.isObjectNotBlank(ua) ? ua : "";
     }
 
     /**

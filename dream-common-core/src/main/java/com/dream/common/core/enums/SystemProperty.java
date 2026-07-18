@@ -10,6 +10,7 @@ import java.util.function.Supplier;
  * 系统属性枚举
  * <p>
  * 统一管理 Java 系统属性和路径分隔符
+ * </p>
  * <p>
  * 性能优化：
  * <ul>
@@ -84,6 +85,26 @@ public enum SystemProperty implements BaseEnum<String> {
      */
     JAVA_SPECIFICATION_VERSION("java.specification.version", "Java规范版本", () -> System.getProperty("java.specification.version")),
 
+    /**
+     * Java 类路径
+     */
+    JAVA_CLASS_PATH("java.class.path", "Java类路径", () -> System.getProperty("java.class.path")),
+
+    /**
+     * Java 扩展目录
+     */
+    JAVA_EXT_DIRS("java.ext.dirs", "Java扩展目录", () -> System.getProperty("java.ext.dirs")),
+
+    /**
+     * Java 库路径
+     */
+    JAVA_LIBRARY_PATH("java.library.path", "Java库路径", () -> System.getProperty("java.library.path")),
+
+    /**
+     * Java 临时目录
+     */
+    JAVA_IO_TMPDIR("java.io.tmpdir", "Java临时目录", () -> System.getProperty("java.io.tmpdir")),
+
     // ==================== 操作系统 ====================
 
     /**
@@ -101,12 +122,29 @@ public enum SystemProperty implements BaseEnum<String> {
      */
     OS_ARCH("os.arch", "操作系统架构", () -> System.getProperty("os.arch")),
 
-    // ==================== 其他 ====================
+    // ==================== 用户信息 ====================
 
     /**
-     * 临时目录
+     * 当前用户名称
      */
-    TMP_DIR("java.io.tmpdir", "临时目录", () -> System.getProperty("java.io.tmpdir")),
+    USER_NAME("user.name", "当前用户名", () -> System.getProperty("user.name")),
+
+    /**
+     * 当前用户所在国家
+     */
+    USER_COUNTRY("user.country", "用户国家", () -> System.getProperty("user.country")),
+
+    /**
+     * 当前用户语言
+     */
+    USER_LANGUAGE("user.language", "用户语言", () -> System.getProperty("user.language")),
+
+    /**
+     * 当前用户时区
+     */
+    USER_TIMEZONE("user.timezone", "用户时区", () -> System.getProperty("user.timezone")),
+
+    // ==================== 编码 ====================
 
     /**
      * 文件编码
@@ -114,9 +152,28 @@ public enum SystemProperty implements BaseEnum<String> {
     FILE_ENCODING("file.encoding", "文件编码", () -> Charset.defaultCharset().displayName()),
 
     /**
-     * 当前用户名称
+     * 控制台编码
      */
-    USER_NAME("user.name", "当前用户名", () -> System.getProperty("user.name"));
+    SUN_JNU_ENCODING("sun.jnu.encoding", "文件系统编码", () -> System.getProperty("sun.jnu.encoding")),
+
+    /**
+     * 标准输入输出编码
+     */
+    SUN_STDOUT_ENCODING("sun.stdout.encoding", "标准输出编码", () -> System.getProperty("sun.stdout.encoding")),
+
+    // ==================== 其他 ====================
+
+    /**
+     * 应用名称（自定义）
+     */
+    DREAM_NAME("dream.application.name", "应用名称", () -> "Dream"),
+
+    /**
+     * 应用版本（自定义）
+     */
+    DREAM_VERSION("dream.application.version", "应用版本", () -> "1.0.0"),
+
+    ;
 
     // ==================== 字段 ====================
 
@@ -160,12 +217,20 @@ public enum SystemProperty implements BaseEnum<String> {
         return label;
     }
 
+    @Override
+    public String getColor() {
+        return "#1890FF";
+    }
+
+    @Override
+    public String getDescription() {
+        return key + " - " + label;
+    }
+
     // ==================== 核心方法 ====================
 
     /**
      * 获取系统属性值（带缓存）
-     * <p>
-     * 首次调用时读取并缓存，后续直接从缓存返回
      *
      * @return 系统属性值
      */
@@ -187,8 +252,6 @@ public enum SystemProperty implements BaseEnum<String> {
 
     /**
      * 强制刷新指定枚举的缓存
-     * <p>
-     * 当系统属性在运行时发生变化时调用
      *
      * @return 刷新后的值
      */
@@ -227,6 +290,7 @@ public enum SystemProperty implements BaseEnum<String> {
     private static Boolean osWindows = null;
     private static Boolean osLinux = null;
     private static Boolean osMac = null;
+    private static Boolean osUnix = null;
 
     /**
      * 判断当前操作系统是否为 Windows
@@ -262,51 +326,69 @@ public enum SystemProperty implements BaseEnum<String> {
      * 判断当前操作系统是否为 Unix 类（Linux/Mac）
      */
     public static boolean isUnixLike() {
-        return isLinux() || isMac();
+        if (osUnix == null) {
+            osUnix = isLinux() || isMac();
+        }
+        return osUnix;
     }
 
     // ==================== 常用属性快捷方法 ====================
 
-    /**
-     * 获取当前系统换行符
-     */
     public static String getLineSeparator() {
         return LINE_SEPARATOR.getProperty();
     }
 
-    /**
-     * 获取当前系统文件分隔符
-     */
     public static String getFileSeparator() {
         return FILE_SEPARATOR.getProperty();
     }
 
-    /**
-     * 获取当前系统路径分隔符
-     */
     public static String getPathSeparator() {
         return PATH_SEPARATOR.getProperty();
     }
 
-    /**
-     * 获取用户工作目录
-     */
     public static String getUserDir() {
         return USER_DIR.getProperty();
     }
 
-    /**
-     * 获取用户主目录
-     */
     public static String getUserHome() {
         return USER_HOME.getProperty();
     }
 
-    /**
-     * 获取临时目录
-     */
     public static String getTempDir() {
-        return TMP_DIR.getProperty();
+        return JAVA_IO_TMPDIR.getProperty();
+    }
+
+    public static String getJavaVersion() {
+        return JAVA_VERSION.getProperty();
+    }
+
+    public static String getOsName() {
+        return OS_NAME.getProperty();
+    }
+
+    public static String getUserName() {
+        return USER_NAME.getProperty();
+    }
+
+    public static String getFileEncoding() {
+        return FILE_ENCODING.getProperty();
+    }
+
+    // ==================== 系统信息汇总 ====================
+
+    /**
+     * 获取系统信息摘要
+     */
+    public static String getSystemSummary() {
+        return String.format(
+                "OS: %s %s (%s), Java: %s, User: %s, WorkDir: %s",
+                getOsName(),
+                OS_VERSION.getProperty(),
+                OS_ARCH.getProperty(),
+                getJavaVersion(),
+                getUserName(),
+                getUserDir()
+        );
     }
 
     // ==================== 静态方法 ====================
@@ -325,5 +407,9 @@ public enum SystemProperty implements BaseEnum<String> {
 
     public static SystemProperty fromValue(String value) {
         return BaseEnum.fromValue(SystemProperty.class, value);
+    }
+
+    public static boolean exists(String key) {
+        return fromKey(key) != null;
     }
 }
