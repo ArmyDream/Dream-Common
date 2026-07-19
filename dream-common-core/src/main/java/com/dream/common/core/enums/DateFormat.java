@@ -1,5 +1,9 @@
 package com.dream.common.core.enums;
 
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.List;
+
 /**
  * 日期格式枚举
  *
@@ -9,7 +13,7 @@ public enum DateFormat implements BaseEnum<String> {
 
     // ==================== 默认格式 ====================
 
-    DATETIME("yyyy-MM-dd HH:mm:ss", "日期时间",
+    DATE_TIME("yyyy-MM-dd HH:mm:ss", "日期时间",
             "^\\d{4}-\\d{1,2}-\\d{1,2} \\d{1,2}:\\d{1,2}:\\d{1,2}$"),
 
     DATE("yyyy-MM-dd", "日期",
@@ -20,16 +24,16 @@ public enum DateFormat implements BaseEnum<String> {
 
     // ==================== 完整日期时间 ====================
 
-    DATETIME_MILLIS("yyyy-MM-dd HH:mm:ss:SSS", "日期时间(毫秒)",
+    DATE_TIME_MILLIS("yyyy-MM-dd HH:mm:ss:SSS", "日期时间(毫秒)",
             "^\\d{4}-\\d{1,2}-\\d{1,2} \\d{1,2}:\\d{1,2}:\\d{1,2}:\\d{1,3}$"),
 
-    DATETIME_SLASH("yyyy/MM/dd HH:mm:ss", "日期时间(斜杠)",
+    DATE_TIME_SLASH("yyyy/MM/dd HH:mm:ss", "日期时间(斜杠)",
             "^\\d{4}/\\d{1,2}/\\d{1,2} \\d{1,2}:\\d{1,2}:\\d{1,2}$"),
 
-    DATETIME_DOT("yyyy.MM.dd HH:mm:ss", "日期时间(点)",
+    DATE_TIME_DOT("yyyy.MM.dd HH:mm:ss", "日期时间(点)",
             "^\\d{4}\\.\\d{1,2}\\.\\d{1,2} \\d{1,2}:\\d{1,2}:\\d{1,2}$"),
 
-    DATETIME_CHINESE("yyyy年MM月dd日 HH:mm:ss", "日期时间(中文)",
+    DATE_TIME_CHINESE("yyyy年MM月dd日 HH:mm:ss", "日期时间(中文)",
             "^\\d{4}年\\d{1,2}月\\d{1,2}日 \\d{1,2}:\\d{1,2}:\\d{1,2}$"),
 
     // ==================== 日期（不含时间） ====================
@@ -62,10 +66,10 @@ public enum DateFormat implements BaseEnum<String> {
 
     // ==================== 紧凑格式（无分隔符） ====================
 
-    DATETIME_COMPACT("yyyyMMddHHmmss", "紧凑日期时间",
+    DATE_TIME_COMPACT("yyyyMMddHHmmss", "紧凑日期时间",
             "^\\d{14}$"),
 
-    DATETIME_COMPACT_MILLIS("yyyyMMddHHmmssSSS", "紧凑日期时间(毫秒)",
+    DATE_TIME_COMPACT_MILLIS("yyyyMMddHHmmssSSS", "紧凑日期时间(毫秒)",
             "^\\d{17}$"),
 
     DATE_COMPACT("yyyyMMdd", "紧凑日期",
@@ -80,8 +84,8 @@ public enum DateFormat implements BaseEnum<String> {
 
     MYBATIS_DB("%Y-%m-%d %H:%i:%s", "MyBatis", null);
 
-    // 注意：TIMESTAMP_MILLIS 与 DATETIME_COMPACT_MILLIS 的 pattern 和 regex 完全相同（^\d{17}$）
-    // TIMESTAMP_SECOND 与 DATETIME_COMPACT 的 pattern 和 regex 完全相同（^\d{14}$）
+    // 注意：TIMESTAMP_MILLIS 与 DATE_TIME_COMPACT_MILLIS 的 pattern 和 regex 完全相同（^\d{17}$）
+    // TIMESTAMP_SECOND 与 DATE_TIME_COMPACT 的 pattern 和 regex 完全相同（^\d{14}$）
     // 为避免 matchPattern() 歧义，不再重复定义，请直接引用对应的紧凑格式枚举
 
     private final String pattern;
@@ -115,10 +119,10 @@ public enum DateFormat implements BaseEnum<String> {
     @Override
     public String getColor() {
         switch (this) {
-            case DATETIME:
-            case DATETIME_MILLIS:
-            case DATETIME_SLASH:
-            case DATETIME_DOT:
+            case DATE_TIME:
+            case DATE_TIME_MILLIS:
+            case DATE_TIME_SLASH:
+            case DATE_TIME_DOT:
                 return "#1890FF";
             case DATE:
             case DATE_SLASH:
@@ -132,15 +136,15 @@ public enum DateFormat implements BaseEnum<String> {
             case TIME_MILLIS:
             case TIME_HOUR_MINUTE:
                 return "#722ED1";
-            case DATETIME_COMPACT:
-            case DATETIME_COMPACT_MILLIS:
+            case DATE_TIME_COMPACT:
+            case DATE_TIME_COMPACT_MILLIS:
             case DATE_COMPACT:
             case TIME_COMPACT:
                 return "#FF7A45";
             case ORACLE_DB:
             case MYBATIS_DB:
                 return "#8C8C8C";
-            case DATETIME_CHINESE:
+            case DATE_TIME_CHINESE:
             case DATE_CHINESE:
                 return "#FF4D4F";
             default:
@@ -211,4 +215,49 @@ public enum DateFormat implements BaseEnum<String> {
     public static DateFormat fromValue(String value) {
         return BaseEnum.fromValue(DateFormat.class, value);
     }
+
+    /**
+     * 获取所有的 Pattern，用于校验
+     * 排查 数据库、Oracle、MyBatis 的时间格式
+     */
+    public static String[] getAllPatterns() {
+        return Arrays.stream(values()).filter(
+                format -> !(format == ORACLE_DB || format == MYBATIS_DB)
+        ).map(BaseEnum::getValue).toArray(String[]::new);
+    }
+
+    public static List<String> getWeekList(Language lang) {
+        if (lang == null) {
+            lang = Language.ZH_CN;
+        }
+        if (lang == Language.ZH_CN || lang == Language.ZH_TW || lang == Language.ZH_HK) {
+            return Arrays.asList("星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六");
+        }
+        return Arrays.asList("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday");
+    }
+
+    public static List<String> getMonthList(Language lang) {
+        if (lang == null) {
+            lang = Language.ZH_CN;
+        }
+        if (lang == Language.ZH_CN || lang == Language.ZH_TW || lang == Language.ZH_HK) {
+            return Arrays.asList("01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12");
+        }
+        return Arrays.asList("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec");
+    }
+
+    /**
+     * start 00:00:00
+     */
+    public static String getStartOfDay() {
+        return "00:00:00";
+    }
+
+    /**
+     * end 23:59:59
+     */
+    public static String getEndOfDay() {
+        return "23:59:59";
+    }
+
 }

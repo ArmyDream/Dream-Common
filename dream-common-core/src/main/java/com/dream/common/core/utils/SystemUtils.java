@@ -6,6 +6,7 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.util.Date;
 
 /**
  * 系统工具类
@@ -104,6 +105,43 @@ public final class SystemUtils {
         SystemProperty property = SystemProperty.fromKey(key);
         return property != null ? property.getProperty() : null;
     }
+
+    /**
+     * 获取 JVM 启动时间戳（毫秒）
+     *
+     * @return JVM 启动时间戳
+     */
+    public static long getJvmStartTimeMillis() {
+        try {
+            return ManagementFactory.getRuntimeMXBean().getStartTime();
+        } catch (Exception e) {
+            return -1L;
+        }
+    }
+
+    /**
+     * 获取 JVM 启动时间（Date）
+     *
+     * @return JVM 启动时间
+     */
+    public static Date getJvmStartTime() {
+        long millis = getJvmStartTimeMillis();
+        return millis > 0 ? new Date(millis) : null;
+    }
+
+    /**
+     * 获取 JVM 已运行时间（毫秒）
+     *
+     * @return 已运行时间（毫秒）
+     */
+    public static long getJvmUptime() {
+        try {
+            return ManagementFactory.getRuntimeMXBean().getUptime();
+        } catch (Exception e) {
+            return -1L;
+        }
+    }
+
 
     // ==================== 常用属性快捷方法 ====================
 

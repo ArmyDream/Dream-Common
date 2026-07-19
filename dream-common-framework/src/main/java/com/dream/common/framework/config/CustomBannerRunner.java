@@ -53,11 +53,16 @@ public class CustomBannerRunner implements ApplicationRunner {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final String DEFAULT_PROFILE = "default";
+    private static final String DEFAULT_PORT = "8080";
 
-    /** Banner 内容宽度 */
+    /**
+     * Banner 内容宽度
+     */
     private static final int CONTENT_WIDTH = 62;
 
-    /** Dream ASCII 图案 */
+    /**
+     * Dream ASCII 图案
+     */
     private static final String DREAM_ASCII =
             "  ██████╗ ██████╗ ███████╗ █████╗ ███╗   ███╗\n" +
                     "  ██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗ ████║\n" +
@@ -66,7 +71,9 @@ public class CustomBannerRunner implements ApplicationRunner {
                     "  ██████╔╝██║  ██║███████╗██║  ██║██║ ╚═╝ ██║\n" +
                     "  ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝";
 
-    /** 分隔线 */
+    /**
+     * 分隔线
+     */
     private static final String SEPARATOR_LINE = repeatChar('=', CONTENT_WIDTH);
 
     private final Environment environment;
@@ -81,12 +88,13 @@ public class CustomBannerRunner implements ApplicationRunner {
             String appName = SystemProperty.DREAM_NAME.getProperty();
             String version = SystemProperty.DREAM_VERSION.getProperty();
             String profile = environment.getProperty("spring.profiles.active", DEFAULT_PROFILE);
+            String port = environment.getProperty("server.port", DEFAULT_PORT);
             String hostname = SystemUtils.getHostName();
             String ip = SystemUtils.getHostIp();
             String pid = SystemUtils.getCurrentPidStr();
             String os = SystemProperty.OS_NAME.getProperty();
             String started = LocalDateTime.now().format(DATE_FORMATTER);
-            String banner = buildBanner(appName, version, profile, hostname, ip, pid, os, started);
+            String banner = buildBanner(appName, version, profile, hostname, ip, port, pid, os, started);
             log.info(banner);
         } catch (Exception e) {
             log.debug("Failed to print custom banner: {}", e.getMessage());
@@ -97,7 +105,7 @@ public class CustomBannerRunner implements ApplicationRunner {
      * 构建 Banner 字符串
      */
     private String buildBanner(String appName, String version, String profile,
-                               String hostname, String ip, String pid,
+                               String hostname, String ip, String port, String pid,
                                String os, String started) {
 
         // 标题：🚀 appName vversion 已启动成功！
@@ -107,6 +115,7 @@ public class CustomBannerRunner implements ApplicationRunner {
         String profileLine = formatInfo("Profile", profile);
         String hostnameLine = formatInfo("HostName", hostname);
         String ipLine = formatInfo("IP", ip);
+        String portLine = formatInfo("Port", port);
         String pidLine = formatInfo("PID", pid);
         String osLine = formatInfo("System", os);
         String startedLine = formatInfo("Started", started);
@@ -122,6 +131,7 @@ public class CustomBannerRunner implements ApplicationRunner {
                 + profileLine + "\n"
                 + hostnameLine + "\n"
                 + ipLine + "\n"
+                + portLine + "\n"
                 + pidLine + "\n"
                 + osLine + "\n"
                 + startedLine + "\n"
