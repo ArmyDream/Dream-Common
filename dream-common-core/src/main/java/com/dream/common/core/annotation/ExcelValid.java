@@ -1,5 +1,6 @@
 package com.dream.common.core.annotation;
 
+import java.lang.annotation.Documented;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Inherited;
 import java.lang.annotation.Retention;
@@ -39,6 +40,7 @@ import java.lang.annotation.Target;
  * }</pre>
  *
  */
+@Documented
 @Target({ElementType.FIELD, ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited

@@ -3,7 +3,6 @@ package com.dream.common.advice.handler;
 import com.dream.common.advice.annotation.IgnoreResponse;
 import com.dream.common.core.utils.R;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpStatus;
@@ -13,6 +12,7 @@ import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.lang.Nullable;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
 import javax.servlet.http.HttpServletResponse;
@@ -35,20 +35,22 @@ import javax.servlet.http.HttpServletResponse;
  * @author dream
  */
 @Slf4j
-@RequiredArgsConstructor
+@RestControllerAdvice
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
     private final ObjectMapper objectMapper;
 
+    public GlobalResponseHandler(@Nullable ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+    }
+
     @Override
-    public boolean supports(MethodParameter returnType,Class<? extends HttpMessageConverter<?>> converterType) {
+    public boolean supports(MethodParameter returnType,@Nullable Class<? extends HttpMessageConverter<?>> converterType) {
         // 类级别或方法级别标注了 @IgnoreResponse 则跳过
-      /*  if (returnType.getContainingClass().isAnnotationPresent(IgnoreResponse.class)) {
+        if (returnType.getContainingClass().isAnnotationPresent(IgnoreResponse.class)) {
             return false;
         }
-
-        return !returnType.hasMethodAnnotation(IgnoreResponse.class);*/
-        return true;
+        return !returnType.hasMethodAnnotation(IgnoreResponse.class);
     }
 
     @Override
