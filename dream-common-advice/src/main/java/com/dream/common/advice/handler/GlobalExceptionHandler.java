@@ -165,7 +165,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public R<?> handleNoHandlerFoundException(NoHandlerFoundException ex, WebRequest request) {
         log.warn("资源不存在: uri={}", ex.getRequestURL());
-        return R.fail(ResponseCode.NOT_FOUND, "接口不存在: " + ex.getRequestURL());
+        return R.fail(ResponseCode.NOT_FOUND);
     }
 
     // ==================== 文件上传异常 ====================
@@ -174,7 +174,7 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<?> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex, WebRequest request) {
         log.warn("文件上传超限: uri={}, maxSize={}", getRequestUri(request), ex.getMaxUploadSize());
-        return R.fail(ResponseCode.PAYLOAD_TOO_LARGE, "上传文件大小超过限制");
+        return R.fail(ResponseCode.FILE_TOO_LARGE);
     }
 
     // ==================== Servlet 异常 ====================
@@ -192,7 +192,7 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return R.fail(ResponseCode.INTERNAL_ERROR, "服务器内部错误");
+        return R.fail(ResponseCode.INTERNAL_ERROR);
     }
 
     // ==================== 新增：通用非法参数异常 ====================
@@ -240,7 +240,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.INTERNAL_ERROR, "文件读写异常");
+        return R.fail(ResponseCode.IO_ERROR);
     }
 
     @ExceptionHandler(FileNotFoundException.class)
@@ -270,7 +270,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.INTERNAL_ERROR, "数据库查询异常");
+        return R.fail(ResponseCode.SQL_ERROR);
     }
 
     // ==================== 新增：响应序列化异常 ====================
@@ -286,7 +286,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.INTERNAL_ERROR, "响应数据序列化失败");
+        return R.fail(ResponseCode.SERIALIZE_ERROR);
     }
 
     // ==================== 兜底异常 ====================
