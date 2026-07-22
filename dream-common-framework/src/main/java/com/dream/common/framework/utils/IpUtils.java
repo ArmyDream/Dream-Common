@@ -2,7 +2,6 @@ package com.dream.common.framework.utils;
 
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.omg.CORBA.UNKNOWN;
 
 import javax.servlet.http.HttpServletRequest;
 import java.net.Inet4Address;
