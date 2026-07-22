@@ -224,7 +224,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.INTERNAL_ERROR, "系统内部错误，请联系管理员");
+        return R.fail(ResponseCode.NULL_POINTER);
     }
 
     // ==================== 新增：IO 异常 ====================

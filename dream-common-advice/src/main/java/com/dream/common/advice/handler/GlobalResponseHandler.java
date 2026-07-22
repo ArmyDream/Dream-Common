@@ -1,6 +1,7 @@
 package com.dream.common.advice.handler;
 
 import com.dream.common.advice.annotation.IgnoreResponse;
+import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.utils.R;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -45,7 +46,7 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
     }
 
     @Override
-    public boolean supports(MethodParameter returnType,@Nullable Class<? extends HttpMessageConverter<?>> converterType) {
+    public boolean supports(MethodParameter returnType, @Nullable Class<? extends HttpMessageConverter<?>> converterType) {
         // 类级别或方法级别标注了 @IgnoreResponse 则跳过
         if (returnType.getContainingClass().isAnnotationPresent(IgnoreResponse.class)) {
             return false;
@@ -61,12 +62,21 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                                   @Nullable ServerHttpRequest request,
                                   @Nullable ServerHttpResponse response) {
 
+        // 已是 R 类型 → 不再包装
+        if (body instanceof R<?>) {
+            return body;
+        }
+
         // 非 2xx 状态码不包装（如异常处理器已自行构造响应）
         if (response instanceof ServletServerHttpResponse) {
             HttpServletResponse servletResponse = ((ServletServerHttpResponse) response).getServletResponse();
             int status = servletResponse.getStatus();
             if (status < HttpStatus.OK.value() || status >= HttpStatus.MULTIPLE_CHOICES.value()) {
-                return body;
+                HttpStatus httpStatus = HttpStatus.resolve(status);
+                if (httpStatus != null) {
+                    return R.error(status, httpStatus.getReasonPhrase());
+                }
+                return R.fail(ResponseCode.UNKNOWN_ERROR);
             }
         }
 
@@ -75,8 +85,8 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
             return R.ok();
         }
 
-        // 已是 R 类型 → 不再包装
-        if (body instanceof R<?>) {
+        //byte[] 类型 → 不再包装
+        if (body instanceof byte[]) {
             return body;
         }
 
