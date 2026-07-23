@@ -21,9 +21,21 @@
       "defaultValue": true
     },
     {
+      "name": "dream.advice.exception.show-stack-trace",
+      "type": "java.lang.Boolean",
+      "description": "5xx 服务端异常是否在响应体中输出异常堆栈（建议仅非生产环境开启）。",
+      "defaultValue": false
+    },
+    {
       "name": "dream.advice.response.enabled",
       "type": "java.lang.Boolean",
       "description": "是否启用全局统一响应包装处理器。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.advice.response.include-metadata",
+      "type": "java.lang.Boolean",
+      "description": "是否在响应体中补充 timestamp、path 元数据。",
       "defaultValue": true
     }
   ],
@@ -51,6 +63,32 @@
         {
           "value": false,
           "description": "禁用全局统一响应包装。"
+        }
+      ]
+    },
+    {
+      "name": "dream.advice.exception.show-stack-trace",
+      "values": [
+        {
+          "value": true,
+          "description": "5xx 响应体输出异常堆栈。"
+        },
+        {
+          "value": false,
+          "description": "不输出异常堆栈（默认）。"
+        }
+      ]
+    },
+    {
+      "name": "dream.advice.response.include-metadata",
+      "values": [
+        {
+          "value": true,
+          "description": "补充 timestamp、path 元数据（默认）。"
+        },
+        {
+          "value": false,
+          "description": "不补充元数据。"
         }
       ]
     }

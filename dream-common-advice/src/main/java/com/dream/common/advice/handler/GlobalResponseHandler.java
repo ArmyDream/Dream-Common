@@ -1,10 +1,12 @@
 package com.dream.common.advice.handler;
 
 import com.dream.common.advice.annotation.IgnoreResponse;
+import com.dream.common.core.constant.SysKey;
 import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.utils.R;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.annotation.Order;
@@ -34,6 +36,10 @@ import javax.servlet.http.HttpServletResponse;
  * 特别处理：若返回值为 {@code String}，自动转换为 JSON 格式的 {@code R} 对象，
  * 并设置响应头 {@code Content-Type=application/json}。
  * </p>
+ * <p>
+ * 可通过 {@code dream.advice.response.include-metadata} 控制是否为响应补充
+ * {@code timestamp}、{@code path} 元数据。
+ * </p>
  *
  * @author dream
  */
@@ -44,6 +50,12 @@ import javax.servlet.http.HttpServletResponse;
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
     private final ObjectMapper objectMapper;
+
+    /**
+     * 是否在响应体中补充元数据（path），默认开启
+     */
+    @Value("${dream.advice.response.include-metadata:true}")
+    private boolean includeMetadata;
 
     public GlobalResponseHandler(@Nullable ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
@@ -66,9 +78,9 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                                   @Nullable ServerHttpRequest request,
                                   @Nullable ServerHttpResponse response) {
 
-        // 已是 R 类型 → 不再包装
+        // 已是 R 类型 → 不再包装，仅补充元数据
         if (body instanceof R<?>) {
-            return body;
+            return enrichMetadata((R<?>) body, request);
         }
 
         // byte[] 类型 → 二进制响应（如文件下载），直接跳过，不受状态码影响
@@ -83,15 +95,15 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
             if (status < HttpStatus.OK.value() || status >= HttpStatus.MULTIPLE_CHOICES.value()) {
                 HttpStatus httpStatus = HttpStatus.resolve(status);
                 if (httpStatus != null) {
-                    return R.error(status, httpStatus.getReasonPhrase());
+                    return enrichMetadata(R.error(status, httpStatus.getReasonPhrase()), request);
                 }
-                return R.fail(ResponseCode.UNKNOWN_ERROR);
+                return enrichMetadata(R.fail(ResponseCode.UNKNOWN_ERROR), request);
             }
         }
 
         // void 返回 → 包装为成功空对象
         if (body == null) {
-            return R.ok();
+            return enrichMetadata(R.ok(), request);
         }
 
         // String 特殊处理：转为 JSON 格式的 R
@@ -101,7 +113,7 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                 if (response instanceof ServletServerHttpResponse) {
                     ((ServletServerHttpResponse) response).getServletResponse().setContentType(MediaType.APPLICATION_JSON_VALUE);
                 }
-                return objectMapper.writeValueAsString(R.ok(body));
+                return objectMapper.writeValueAsString(enrichMetadata(R.ok(body), request));
             } catch (Exception e) {
                 log.error("序列化 String 响应为 JSON 失败，返回原始内容", e);
                 return body;
@@ -114,6 +126,22 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
         }
 
         // 普通对象 → 包装为 R
-        return R.ok(body);
+        return enrichMetadata(R.ok(body), request);
+    }
+
+    /**
+     * 为响应结果补充元数据（timestamp、path）。
+     *
+     * @param result  统一响应结果
+     * @param request 当前请求，用于提取路径
+     * @return 补充元数据后的结果
+     */
+    private R<?> enrichMetadata(R<?> result, @Nullable ServerHttpRequest request) {
+        if (includeMetadata && result != null) {
+            if (request != null && request.getURI() != null) {
+                result.put(SysKey.PATH, request.getURI().getPath());
+            }
+        }
+        return result;
     }
 }

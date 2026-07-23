@@ -7,6 +7,18 @@
       "sourceType": "com.dream.common.framework.filter.FilterAutoConfig"
     },
     {
+      "name": "dream.filter.access-log",
+      "description": "请求访问日志过滤器配置",
+      "type": "com.dream.common.framework.filter.AccessLogFilter",
+      "sourceType": "com.dream.common.framework.config.FilterAutoConfig"
+    },
+    {
+      "name": "dream.filter.security-header",
+      "description": "安全响应头过滤器配置",
+      "type": "com.dream.common.framework.config.SecurityHeaderProperties",
+      "sourceType": "com.dream.common.framework.config.SecurityHeaderProperties"
+    },
+    {
       "name": "logging.custom",
       "description": "自定义日志配置（logback-spring.xml 扩展）"
     }
@@ -17,6 +29,42 @@
       "type": "java.lang.Boolean",
       "description": "是否启用链路追踪过滤器（在 MDC 中注入 traceId）。",
       "defaultValue": true
+    },
+    {
+      "name": "dream.filter.access-log.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用请求访问日志过滤器。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.filter.security-header.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用安全响应头过滤器。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.filter.security-header.content-type-options",
+      "type": "java.lang.String",
+      "description": "X-Content-Type-Options 头值，空字符串则不输出。",
+      "defaultValue": "nosniff"
+    },
+    {
+      "name": "dream.filter.security-header.frame-options",
+      "type": "java.lang.String",
+      "description": "X-Frame-Options 头值，空字符串则不输出。",
+      "defaultValue": "DENY"
+    },
+    {
+      "name": "dream.filter.security-header.xss-protection",
+      "type": "java.lang.String",
+      "description": "X-XSS-Protection 头值，空字符串则不输出。",
+      "defaultValue": "1; mode=block"
+    },
+    {
+      "name": "dream.filter.security-header.strict-transport-security",
+      "type": "java.lang.String",
+      "description": "Strict-Transport-Security 头值，默认空（不输出）；HTTPS 场景可配置如 max-age=31536000。",
+      "defaultValue": ""
     },
     {
       "name": "logging.custom.package",
@@ -48,6 +96,32 @@
         {
           "value": false,
           "description": "禁用链路追踪过滤器。"
+        }
+      ]
+    },
+    {
+      "name": "dream.filter.access-log.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用请求访问日志过滤器（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用请求访问日志过滤器。"
+        }
+      ]
+    },
+    {
+      "name": "dream.filter.security-header.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用安全响应头过滤器（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用安全响应头过滤器。"
         }
       ]
     },

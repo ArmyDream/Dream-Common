@@ -5,7 +5,7 @@ import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.exception.BusinessException;
 import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -30,6 +30,8 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -56,6 +58,10 @@ import java.util.stream.Collectors;
  *   <li>其他未知异常（{@link Exception}）</li>
  * </ul>
  * </p>
+ * <p>
+ * 对于 5xx 服务端异常，可通过 {@code dream.advice.exception.show-stack-trace} 控制是否
+ * 在响应体中输出异常堆栈（默认关闭，仅建议在非生产环境开启）。
+ * </p>
  *
  * @author dream
  */
@@ -65,6 +71,12 @@ import java.util.stream.Collectors;
 public class GlobalExceptionHandler {
 
     private final ExceptionHandlerDelegate delegate;
+
+    /**
+     * 是否在 5xx 响应体中输出异常堆栈，默认关闭
+     */
+    @Value("${dream.advice.exception.show-stack-trace:false}")
+    private boolean showStackTrace;
 
     public GlobalExceptionHandler(@Nullable ExceptionHandlerDelegate delegate) {
         this.delegate = delegate;
@@ -200,7 +212,7 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return R.fail(ResponseCode.INTERNAL_ERROR);
+        return failWithTrace(ResponseCode.INTERNAL_ERROR, ex);
     }
 
     // ==================== 新增：通用非法参数异常 ====================
@@ -232,7 +244,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.NULL_POINTER);
+        return failWithTrace(ResponseCode.NULL_POINTER, ex);
     }
 
     // ==================== 新增：IO 异常 ====================
@@ -248,7 +260,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.IO_ERROR);
+        return failWithTrace(ResponseCode.IO_ERROR, ex);
     }
 
     @ExceptionHandler(FileNotFoundException.class)
@@ -278,7 +290,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.SQL_ERROR);
+        return failWithTrace(ResponseCode.SQL_ERROR, ex);
     }
 
     // ==================== 新增：响应序列化异常 ====================
@@ -294,7 +306,7 @@ public class GlobalExceptionHandler {
                 return result;
             }
         }
-        return R.fail(ResponseCode.SERIALIZE_ERROR);
+        return failWithTrace(ResponseCode.SERIALIZE_ERROR, ex);
     }
 
     // ==================== 兜底异常 ====================
@@ -326,10 +338,38 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return R.fail(ResponseCode.SYSTEM_BUSY);
+        return failWithTrace(ResponseCode.SYSTEM_BUSY, ex);
     }
 
     // ==================== 内部方法 ====================
+
+    /**
+     * 构造 5xx 失败响应，按开关决定是否携带异常堆栈。
+     *
+     * @param code 响应码
+     * @param ex   原始异常
+     * @return 统一失败响应
+     */
+    private R<?> failWithTrace(ResponseCode code, Throwable ex) {
+        if (showStackTrace && ex != null) {
+            return R.fail(code, code.getLabel(), buildStackTrace(ex));
+        }
+        return R.fail(code);
+    }
+
+    /**
+     * 将异常堆栈转换为字符串。
+     *
+     * @param ex 异常
+     * @return 堆栈字符串
+     */
+    private String buildStackTrace(Throwable ex) {
+        StringWriter sw = new StringWriter();
+        try (PrintWriter pw = new PrintWriter(sw)) {
+            ex.printStackTrace(pw);
+        }
+        return sw.toString();
+    }
 
     private String extractValidationMessage(List<FieldError> fieldErrors) {
         if (fieldErrors == null || fieldErrors.isEmpty()) {
