@@ -101,6 +101,8 @@ public class R<T> implements Serializable {
         if (total != null) {
             map.put(KEY_TOTAL, total);
         }
+        //时间
+        map.put(SysKey.TIMESTAMP, System.currentTimeMillis());
     }
 
     // ==================== 成功响应 ====================
