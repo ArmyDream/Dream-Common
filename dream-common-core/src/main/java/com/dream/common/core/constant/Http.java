@@ -25,6 +25,13 @@ public final class Http {
     public static final String HEADER_X_REQUEST_ID = "X-Request-Id";
     public static final String HEADER_X_FORWARDED_FOR = "X-Forwarded-For";
 
+    //自定义 头 X-Client-Type 请求端类型 如 PC/APP/H5
+    public static final String HEADER_X_CLIENT_TYPE = "X-Client-Type";
+    //X-Crypto-Secret-Key 请求头 加密密钥
+    public static final String HEADER_X_CRYPTO_SECRET_KEY = "X-Crypto-Secret-Key";
+    //X-Trace-Id 请求头 链路追踪ID
+    public static final String HEADER_X_TRACE_ID = "X-Trace-Id";
+
     /**
      * 跨域相关
      */
@@ -56,23 +63,5 @@ public final class Http {
     public static final String HEADER_X_XSS_PROTECTION = "X-XSS-Protection";
     public static final String HEADER_STRICT_TRANSPORT_SECURITY = "Strict-Transport-Security";
 
-    // ==================== 常用 HTTP 状态码 ====================
-    public static final int STATUS_OK = 200;
-    public static final int STATUS_CREATED = 201;
-    public static final int STATUS_NO_CONTENT = 204;
-    public static final int STATUS_MOVED_PERMANENTLY = 301;
-    public static final int STATUS_FOUND = 302;
-    public static final int STATUS_NOT_MODIFIED = 304;
-    public static final int STATUS_BAD_REQUEST = 400;
-    public static final int STATUS_UNAUTHORIZED = 401;
-    public static final int STATUS_FORBIDDEN = 403;
-    public static final int STATUS_NOT_FOUND = 404;
-    public static final int STATUS_METHOD_NOT_ALLOWED = 405;
-    public static final int STATUS_CONFLICT = 409;
-    public static final int STATUS_TOO_MANY_REQUESTS = 429;
-    public static final int STATUS_INTERNAL_ERROR = 500;
-    public static final int STATUS_BAD_GATEWAY = 502;
-    public static final int STATUS_SERVICE_UNAVAILABLE = 503;
-    public static final int STATUS_GATEWAY_TIMEOUT = 504;
 
 }

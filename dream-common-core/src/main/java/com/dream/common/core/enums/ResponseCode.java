@@ -110,6 +110,7 @@ public enum ResponseCode implements BaseEnum<Integer> {
     PARAM_FORMAT_ERROR(2010, "Parameter Format Error", "参数格式错误"),
     REJECTED(2011, "Rejected", "审批拒绝"),
     DEMO_ENVIRONMENT(2012, "Demo Environment", "演示环境，不允许此操作"),
+    SYSTEM_BUSY(2013, "System Busy", "系统繁忙，请稍后重试"),
 
     // 分页相关 2100~2109
     PAGE_SIZE_TOO_LARGE(2100, "Page Size Too Large", "每页查询最多[{0}]条数据"),

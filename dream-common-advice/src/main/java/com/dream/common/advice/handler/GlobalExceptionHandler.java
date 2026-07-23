@@ -318,7 +318,7 @@ public class GlobalExceptionHandler {
             }
         }
 
-        return R.fail(ResponseCode.INTERNAL_ERROR, "系统繁忙，请稍后重试");
+        return R.fail(ResponseCode.SYSTEM_BUSY);
     }
 
     // ==================== 内部方法 ====================

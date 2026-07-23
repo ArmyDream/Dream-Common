@@ -441,6 +441,11 @@ public final class SysKey {
     public static final String REFERER = "referer";
 
     /**
+     * traceId
+     */
+    public static final String TRACE_ID = "traceId";
+
+    /**
      * Accept-Language key
      */
     public static final String ACCEPT_LANGUAGE = "acceptLanguage";

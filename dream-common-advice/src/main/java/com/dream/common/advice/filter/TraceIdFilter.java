@@ -1,5 +1,7 @@
 package com.dream.common.advice.filter;
 
+import com.dream.common.core.constant.Http;
+import com.dream.common.core.constant.SysKey;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -10,6 +12,7 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
+
 import org.springframework.lang.Nullable;
 
 /**
@@ -24,27 +27,24 @@ import org.springframework.lang.Nullable;
 @Slf4j
 public class TraceIdFilter extends OncePerRequestFilter {
 
-    private static final String TRACE_ID_HEADER = "X-Trace-Id";
-    private static final String TRACE_ID_MDC_KEY = "traceId";
-
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     @Nullable HttpServletResponse response,
                                     @Nullable FilterChain filterChain) throws ServletException, IOException {
-        String traceId = request.getHeader(TRACE_ID_HEADER);
+        String traceId = request.getHeader(Http.HEADER_X_TRACE_ID);
         if (traceId == null || traceId.isEmpty()) {
             traceId = UUID.randomUUID().toString().replace("-", "");
         }
         try {
-            MDC.put(TRACE_ID_MDC_KEY, traceId);
+            MDC.put(SysKey.TRACE_ID, traceId);
             if (response != null) {
-                response.setHeader(TRACE_ID_HEADER, traceId);
+                response.setHeader(Http.HEADER_X_TRACE_ID, traceId);
             }
             if (filterChain != null) {
                 filterChain.doFilter(request, response);
             }
         } finally {
-            MDC.remove(TRACE_ID_MDC_KEY);
+            MDC.remove(SysKey.TRACE_ID);
         }
     }
 }
