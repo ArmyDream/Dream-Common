@@ -162,11 +162,20 @@
     <logger name="org.mybatis" level="WARN"/>
     <logger name="springfox" level="WARN"/>-->
 
+    <!-- ==================== 业务 Logger（公共，不受 profile 影响） ==================== -->
+
+    <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="FILE_ALL"/>
+        <appender-ref ref="FILE_ERROR"/>
+        <appender-ref ref="FILE_WARN"/>
+    </logger>
+
     <!-- ==================== 环境隔离 ==================== -->
 
     <!--
         【开发/测试环境】
-        控制台 + 文件输出，业务包 DEBUG
+        控制台 + 同步文件输出
     -->
     <springProfile name="dev,test,sit,pre,fat,staging">
         <root level="${ROOT_LEVEL}">
@@ -175,34 +184,18 @@
             <appender-ref ref="FILE_ERROR"/>
             <appender-ref ref="FILE_WARN"/>
         </root>
-
-        <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
     </springProfile>
 
     <!--
         【生产/UAT 环境】
-        仅异步文件输出，业务包 INFO
+        仅异步文件输出，无控制台
     -->
-    <springProfile name="prod,production,uat,dr">
+    <springProfile name="pro,prod,production,uat,dr">
         <root level="${ROOT_LEVEL}">
             <appender-ref ref="ASYNC_ALL"/>
             <appender-ref ref="ASYNC_ERROR"/>
             <appender-ref ref="ASYNC_WARN"/>
         </root>
-
-        <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
     </springProfile>
-
-    <!--
-        【默认配置】（兜底）
-    -->
-    <root level="${ROOT_LEVEL}">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="FILE_ALL"/>
-        <appender-ref ref="FILE_ERROR"/>
-        <appender-ref ref="FILE_WARN"/>
-    </root>
-
-    <logger name="${BIZ_PACKAGE}" level="${BIZ_LEVEL}"/>
 
 </configuration>

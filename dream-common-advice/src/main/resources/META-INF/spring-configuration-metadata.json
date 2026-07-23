@@ -1,0 +1,58 @@
+{
+  "groups": [
+    {
+      "name": "dream.advice.exception",
+      "description": "全局异常处理器配置",
+      "type": "com.dream.common.advice.handler.GlobalExceptionHandler",
+      "sourceType": "com.dream.common.advice.handler.GlobalExceptionHandler"
+    },
+    {
+      "name": "dream.advice.response",
+      "description": "全局统一响应包装处理器配置",
+      "type": "com.dream.common.advice.handler.GlobalResponseHandler",
+      "sourceType": "com.dream.common.advice.handler.GlobalResponseHandler"
+    }
+  ],
+  "properties": [
+    {
+      "name": "dream.advice.exception.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用全局异常处理器。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.advice.response.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用全局统一响应包装处理器。",
+      "defaultValue": true
+    }
+  ],
+  "hints": [
+    {
+      "name": "dream.advice.exception.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用全局异常处理器（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用全局异常处理器。"
+        }
+      ]
+    },
+    {
+      "name": "dream.advice.response.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用全局统一响应包装（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用全局统一响应包装。"
+        }
+      ]
+    }
+  ]
+}

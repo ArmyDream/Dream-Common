@@ -1,9 +1,10 @@
-package com.dream.common.advice.filter;
+package com.dream.common.framework.filter;
 
 import com.dream.common.core.constant.Http;
 import com.dream.common.core.constant.SysKey;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.lang.Nullable;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.FilterChain;
@@ -12,8 +13,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.UUID;
-
-import org.springframework.lang.Nullable;
 
 /**
  * 链路追踪过滤器，在 MDC 中注入 traceId。

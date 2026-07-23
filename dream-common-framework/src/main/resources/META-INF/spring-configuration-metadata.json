@@ -1,0 +1,93 @@
+{
+  "groups": [
+    {
+      "name": "dream.filter.trace",
+      "description": "链路追踪过滤器配置",
+      "type": "com.dream.common.framework.filter.TraceIdFilter",
+      "sourceType": "com.dream.common.framework.filter.FilterAutoConfig"
+    },
+    {
+      "name": "logging.custom",
+      "description": "自定义日志配置（logback-spring.xml 扩展）"
+    }
+  ],
+  "properties": [
+    {
+      "name": "dream.filter.trace.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用链路追踪过滤器（在 MDC 中注入 traceId）。",
+      "defaultValue": true
+    },
+    {
+      "name": "logging.custom.package",
+      "type": "java.lang.String",
+      "description": "业务包名，用于 logback-spring.xml 中业务 logger 的包路径匹配。",
+      "defaultValue": "com.dream"
+    },
+    {
+      "name": "logging.level.biz",
+      "type": "java.lang.String",
+      "description": "业务包日志级别（独立于 root 级别）。",
+      "defaultValue": "INFO"
+    },
+    {
+      "name": "logging.custom.console",
+      "type": "java.lang.Boolean",
+      "description": "是否启用控制台日志输出。",
+      "defaultValue": true
+    }
+  ],
+  "hints": [
+    {
+      "name": "dream.filter.trace.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用链路追踪过滤器（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用链路追踪过滤器。"
+        }
+      ]
+    },
+    {
+      "name": "logging.level.biz",
+      "values": [
+        {
+          "value": "TRACE",
+          "description": "TRACE 级别。"
+        },
+        {
+          "value": "DEBUG",
+          "description": "DEBUG 级别。"
+        },
+        {
+          "value": "INFO",
+          "description": "INFO 级别（默认）。"
+        },
+        {
+          "value": "WARN",
+          "description": "WARN 级别。"
+        },
+        {
+          "value": "ERROR",
+          "description": "ERROR 级别。"
+        }
+      ]
+    },
+    {
+      "name": "logging.custom.console",
+      "values": [
+        {
+          "value": true,
+          "description": "启用控制台输出（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用控制台输出。"
+        }
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.utils.R;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.MethodParameter;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -38,7 +39,8 @@ import javax.servlet.http.HttpServletResponse;
  */
 @Slf4j
 @RestControllerAdvice
-@Order(1) // 值越大，执行越靠后。
+@ConditionalOnProperty(prefix = "dream.advice.response", name = "enabled", havingValue = "true", matchIfMissing = true)
+@Order(20) // 值越大，执行越靠后。
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
     private final ObjectMapper objectMapper;
@@ -69,6 +71,11 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
             return body;
         }
 
+        // byte[] 类型 → 二进制响应（如文件下载），直接跳过，不受状态码影响
+        if (body instanceof byte[]) {
+            return body;
+        }
+
         // 非 2xx 状态码不包装（如异常处理器已自行构造响应）
         if (response instanceof ServletServerHttpResponse) {
             HttpServletResponse servletResponse = ((ServletServerHttpResponse) response).getServletResponse();
@@ -85,11 +92,6 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
         // void 返回 → 包装为成功空对象
         if (body == null) {
             return R.ok();
-        }
-
-        //byte[] 类型 → 不再包装
-        if (body instanceof byte[]) {
-            return body;
         }
 
         // String 特殊处理：转为 JSON 格式的 R

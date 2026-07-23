@@ -6,9 +6,11 @@ import com.dream.common.core.exception.BusinessException;
 import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
+import org.springframework.lang.Nullable;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -18,12 +20,14 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 import javax.servlet.ServletException;
+import javax.servlet.http.HttpServletRequest;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.sql.SQLSyntaxErrorException;
@@ -57,10 +61,14 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @RestControllerAdvice
+@ConditionalOnProperty(prefix = "dream.advice.exception", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class GlobalExceptionHandler {
 
-    @Autowired(required = false)
-    private ExceptionHandlerDelegate delegate;
+    private final ExceptionHandlerDelegate delegate;
+
+    public GlobalExceptionHandler(@Nullable ExceptionHandlerDelegate delegate) {
+        this.delegate = delegate;
+    }
 
     // ==================== 业务异常 ====================
 
@@ -333,8 +341,17 @@ public class GlobalExceptionHandler {
     }
 
     private String getRequestUri(WebRequest request) {
+        if (request instanceof NativeWebRequest) {
+            HttpServletRequest httpReq = ((NativeWebRequest) request).getNativeRequest(HttpServletRequest.class);
+            if (httpReq != null) {
+                String uri = httpReq.getRequestURI();
+                String qs = httpReq.getQueryString();
+                return qs != null ? uri + "?" + qs : uri;
+            }
+        }
         if (request != null && request.getDescription(false) != null) {
-            return request.getDescription(false).replace("uri=", "");
+            String desc = request.getDescription(false);
+            return desc.startsWith("uri=") ? desc.substring(4) : desc;
         }
         return "unknown";
     }
