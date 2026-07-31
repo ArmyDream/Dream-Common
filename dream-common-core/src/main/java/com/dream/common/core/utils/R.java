@@ -2,6 +2,7 @@ package com.dream.common.core.utils;
 
 import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.constant.SysKey;
+import com.dream.common.core.enums.StringPool;
 
 import java.io.Serializable;
 import java.util.LinkedHashMap;
@@ -371,18 +372,20 @@ public class R<T> implements Serializable {
     }
 
     /**
-     * 判断是否成功
+     * 当前时间戳
      */
-    public boolean isSuccess() {
-        Integer code = getCode();
-        return code != null && Objects.equals(code, CODE_SUCCESS);
+    public Long getTimestamp() {
+        return (Long) map.get(SysKey.TIMESTAMP);
     }
 
     /**
-     * 判断是否失败
+     * 路径
      */
-    public boolean isFail() {
-        return !isSuccess();
+    public String getPath() {
+        if (map.get(SysKey.PATH) != null) {
+            return (String) map.get(SysKey.PATH);
+        }
+        return StringPool.EMPTY.getValue();
     }
 
     /**
