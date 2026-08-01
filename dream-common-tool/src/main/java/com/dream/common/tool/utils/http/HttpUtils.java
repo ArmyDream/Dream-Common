@@ -1,14 +1,15 @@
 package com.dream.common.tool.utils.http;
 
 import cn.hutool.http.*;
-import com.dream.common.core.exception.BusinessException;
 import com.dream.common.tool.utils.StringUtils;
 import lombok.Builder;
 import lombok.Data;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.File;
 import java.net.SocketTimeoutException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -20,11 +21,11 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *     <li>可配置的连接/读取超时、自动重试</li>
  *     <li>全局默认 Content-Type</li>
- *     <li>可插拔的日志/监控拦截器 {@link HttpInterceptor}（默认 Slf4j 日志）</li>
- *     <li>请求前/后处理器（Consumer 注入，用于业务逻辑）</li>
- *     <li>全局或单次请求的 Token（Bearer）自动注入</li>
+ *     <li>可插拔的日志/监控拦截器 {@link HttpInterceptor}（内置 Slf4j 实现，默认按配置输出详细/简要日志）</li>
+ *     <li>请求前/后业务处理器（Consumer 注入）</li>
+ *     <li>全局或单次请求的 Token（Bearer 或自定义 Header）自动注入</li>
  *     <li>链式构建器 {@link RequestBuilder}，覆盖全部 HTTP 方法</li>
- *     <li>自定义异常体系</li>
+ *     <li>自定义异常体系 {@link HttpException} / {@link HttpStatusException}</li>
  * </ul>
  *
  * <h3>典型用法</h3>
@@ -36,30 +37,39 @@ import java.util.concurrent.TimeUnit;
  *         .bearerAuth("your-jwt-token")
  *         .executeString();
  *
- * // 自定义拦截器（上报监控）
+ * // 自定义拦截器（上报监控），同时打开详细日志
  * HttpUtils.setGlobalConfig(HttpUtils.HttpConfig.builder()
  *         .interceptor(new MyMonitorInterceptor())
+ *         .printDetailLog(true)
  *         .defaultContentType("application/json")
  *         .maxRetries(1)
  *         .build());
  * String resp = HttpUtils.builderGet("https://api.example.com/ping")
  *         .executeString();
  *
- * // 父类方法完全可用
+ * // 父类方法（get、post、downloadBytes 等）完全可用
  * String html = HttpUtils.downloadString("https://www.example.com", StandardCharsets.UTF_8);
  * }</pre>
  *
  * @author dream
  */
 @Slf4j
+@SuppressWarnings("unused")
 public final class HttpUtils extends HttpUtil {
+
+    // ==================== 常量定义 ====================
 
     /** 默认连接超时（毫秒） */
     public static final int DEFAULT_CONNECT_TIMEOUT = 5000;
     /** 默认读取超时（毫秒） */
     public static final int DEFAULT_READ_TIMEOUT = 30000;
 
-    /** 全局默认配置（线程安全） */
+    /** 全局默认配置（线程安全）
+     * -- GETTER --
+     *  获取当前全局配置
+     *
+     */
+    @Getter
     private static volatile HttpConfig globalConfig;
 
     static {
@@ -79,15 +89,6 @@ public final class HttpUtils extends HttpUtil {
      */
     public static synchronized void setGlobalConfig(HttpConfig config) {
         globalConfig = (config != null) ? config : HttpConfig.builder().build();
-    }
-
-    /**
-     * 获取当前全局配置
-     *
-     * @return 全局配置对象，不可为 null
-     */
-    public static HttpConfig getGlobalConfig() {
-        return globalConfig;
     }
 
     // ==================== 增强执行入口 ====================
@@ -138,6 +139,9 @@ public final class HttpUtils extends HttpUtil {
 
     // ==================== 内部核心逻辑 ====================
 
+    /**
+     * 带重试的执行逻辑
+     */
     private static HttpResponse executeWithRetry(HttpRequest request, HttpConfig config) {
         int maxRetries = config.getMaxRetries();
         long retryInterval = config.getRetryIntervalMs();
@@ -156,35 +160,41 @@ public final class HttpUtils extends HttpUtil {
                 }
             }
         }
-        throw new BusinessException("HTTP request failed after " + (maxRetries + 1) + " attempts: " +
-                request.getMethod() + " " + request.getUrl());
+        // 重试耗尽，抛出携带原始异常的 HttpException
+        throw new HttpException(
+                "HTTP request failed after " + (maxRetries + 1) + " attempts: " +
+                        request.getMethod() + " " + request.getUrl(),
+                lastException
+        );
     }
 
-    private static HttpResponse doExecute(HttpRequest request, HttpConfig config) throws Exception {
-        // 前置业务处理器
+    /**
+     * 单次请求执行，应用所有增强配置
+     */
+    private static HttpResponse doExecute(HttpRequest request, HttpConfig config) {
+        // 1. 前置业务处理器（如签名）
         if (config.getBeforeRequest() != null) {
             config.getBeforeRequest().accept(request);
         }
 
-        // 自动注入全局 Bearer Token
+        // 2. 自动注入全局 Token
         if (StringUtils.isNotBlank(config.getToken())) {
             if (StringUtils.isBlank(request.header("Authorization"))) {
                 request.header("Authorization", "Bearer " + config.getToken());
             }
-            //注入 TokenKey Token
-            if(StringUtils.isNotBlank(config.getTokenKey())){
-                if(StringUtils.isBlank(request.header(config.getTokenKey()))){
-                    request.header(config.getTokenKey(), config.getToken());
-                }
+            if (StringUtils.isNotBlank(config.getTokenKey()) &&
+                    StringUtils.isBlank(request.header(config.getTokenKey()))) {
+                request.header(config.getTokenKey(), config.getToken());
             }
         }
 
-        // 默认 Content-Type（若请求未自行设置）
+        // 3. 默认 Content-Type（若请求未自行设置）
         if (StringUtils.isNotBlank(config.getDefaultContentType()) &&
                 StringUtils.isBlank(request.header(Header.CONTENT_TYPE.getValue()))) {
             request.contentType(config.getDefaultContentType());
         }
 
+        // 4. 拦截器：请求前日志/监控
         HttpInterceptor interceptor = config.getInterceptor();
         interceptor.beforeRequest(request);
 
@@ -201,9 +211,10 @@ public final class HttpUtils extends HttpUtil {
         }
 
         long cost = System.currentTimeMillis() - start;
+        // 5. 拦截器：响应后日志/监控
         interceptor.afterResponse(request, response, cost);
 
-        // 后置业务处理器
+        // 6. 后置业务处理器（如结果校验）
         if (config.getAfterResponse() != null) {
             config.getAfterResponse().accept(response);
         }
@@ -211,18 +222,27 @@ public final class HttpUtils extends HttpUtil {
         return response;
     }
 
+    /**
+     * 校验响应状态码为 2xx，否则抛出 {@link HttpStatusException}
+     */
     static void validateStatus(HttpResponse response) {
         int status = response.getStatus();
         if (status < 200 || status >= 300) {
-            throw new BusinessException("HTTP status check failed: " + status +
-                    ", body: " + response.body());
+            throw new HttpStatusException("HTTP status check failed: " + status +
+                    ", body: " + response.body(), status, response);
         }
     }
 
+    /**
+     * 判断异常是否可重试（默认仅对 SocketTimeoutException 重试）
+     */
     private static boolean shouldRetry(Exception e) {
         return e instanceof SocketTimeoutException;
     }
 
+    /**
+     * 线程休眠
+     */
     private static void sleep(long millis) {
         if (millis <= 0) {
             return;
@@ -234,14 +254,58 @@ public final class HttpUtils extends HttpUtil {
         }
     }
 
+    /**
+     * 安全提取请求的详细参数信息（查询参数、表单、请求体），用于日志输出。
+     * 注意：请求体通过 bodyBytes 获取，避免直接调用 body() 在某些环境下的兼容性问题。
+     *
+     * @param request HttpRequest 对象
+     * @return 格式化的参数字符串，若无参数则返回 "-"
+     */
+    private static String getRequestDetail(HttpRequest request) {
+        StringBuilder sb = new StringBuilder();
+
+        // 查询参数（URL 中的 ?key=value）
+        String url = request.getUrl();
+        if (url != null && url.contains("?")) {
+            String query = url.substring(url.indexOf("?") + 1);
+            if (StringUtils.isNotBlank(query)) {
+                sb.append("query=【").append(query).append("】 ");
+            }
+        }
+
+        // 表单参数（application/x-www-form-urlencoded 或 multipart/form-data）
+        Map<String, Object> formMap = request.form();
+        if (formMap != null && !formMap.isEmpty()) {
+            sb.append("form=").append(formMap).append(" ");
+        }
+
+        // 请求体（JSON / XML / 文本 / 二进制）
+        byte[] bodyBytes = request.bodyBytes();
+        if (bodyBytes != null && bodyBytes.length > 0) {
+            if (bodyBytes.length < 4096) {
+                String bodyStr = new String(bodyBytes, StandardCharsets.UTF_8);
+                sb.append("body=").append(bodyStr);
+            } else {
+                sb.append("body=(").append(bodyBytes.length).append(" bytes)");
+            }
+        }
+
+        return sb.length() > 0 ? sb.toString().trim() : "-";
+    }
+
     // ==================== 请求构建器 ====================
 
     /**
      * 链式请求构建器，封装 {@link HttpRequest}，支持所有 HTTP 方法。
-     * <p>
      * 最终通过 {@link #execute()} / {@link #executeString()} / {@link #executeBytes()} 执行。
      */
     public static class RequestBuilder {
+        /**
+         * -- GETTER --
+         * 获取底层的
+         * ，便于配合父类或其他 Hutool 方法使用
+         */
+        @Getter
         private final HttpRequest request;
         private HttpConfig config;
         private boolean validateStatus;
@@ -264,7 +328,7 @@ public final class HttpUtils extends HttpUtil {
             return this;
         }
 
-        /** 设置 Bearer Token */
+        /** 设置 Bearer Token（Authorization: Bearer xxx） */
         public RequestBuilder bearerAuth(String token) {
             if (StringUtils.isNotBlank(token)) {
                 request.header("Authorization", "Bearer " + token);
@@ -272,17 +336,21 @@ public final class HttpUtils extends HttpUtil {
             return this;
         }
 
-        /** 设置 header tokenKey */
+        /** 设置自定义 Token Header（如 X-Token: value） */
         public RequestBuilder tokenKey(String tokenKey, String token) {
-            if(StringUtils.isNotBlank(tokenKey) && StringUtils.isNotBlank(token)){
+            if (StringUtils.isNotBlank(tokenKey) && StringUtils.isNotBlank(token)) {
                 request.header(tokenKey, token);
             }
             return this;
         }
 
+        /** 打印日志 */
+        public RequestBuilder printDetailLog(boolean printDetailLog) {
+            config.setPrintDetailLog(printDetailLog);
+            return this;
+        }
 
-
-        /** 设置字符串请求体 */
+        /** 设置字符串请求体（JSON 等） */
         public RequestBuilder body(String body) {
             request.body(body);
             return this;
@@ -312,7 +380,7 @@ public final class HttpUtils extends HttpUtil {
             return this;
         }
 
-        /** 设置 Content-Type 为 application/json */
+        /** 快捷设置 Content-Type 为 application/json */
         public RequestBuilder json() {
             request.contentType(ContentType.JSON.getValue());
             return this;
@@ -346,11 +414,6 @@ public final class HttpUtils extends HttpUtil {
             return this;
         }
 
-        /** 获取底层的 {@link HttpRequest} */
-        public HttpRequest getRequest() {
-            return request;
-        }
-
         /** 执行请求，返回原始 {@link HttpResponse} */
         public HttpResponse execute() {
             return HttpUtils.execute(request, config);
@@ -365,7 +428,7 @@ public final class HttpUtils extends HttpUtil {
             return response.body();
         }
 
-        /** 执行并返回响应体字节数组 */
+        /** 执行并返回响应体字节数组，若开启状态码校验则自动校验 */
         public byte[] executeBytes() {
             HttpResponse response = execute();
             if (validateStatus) {
@@ -378,60 +441,88 @@ public final class HttpUtils extends HttpUtil {
     // ==================== HTTP 拦截器接口 ====================
 
     /**
-     * HTTP 请求拦截器，负责请求前、响应后、异常时的处理（默认实现为 Slf4j 日志打印）。
-     * <p>
-     * 业务可通过实现该接口并注入 {@link HttpConfig#getInterceptor()} 来自定义日志、监控等行为。
+     * HTTP 请求拦截器，负责请求前、响应后、异常时的处理。
+     * 内置实现 {@link DefaultHttpInterceptor} 使用 Slf4j 输出日志，
+     * 业务可通过实现此接口并注入 {@link HttpConfig} 来自定义监控、日志等行为。
      */
     public interface HttpInterceptor {
-        /**
-         * 请求发送前调用
-         */
+        /** 请求发送前调用 */
         void beforeRequest(HttpRequest request);
 
-        /**
-         * 收到响应后调用（无论成功或失败，异常场景不会触发此方法）
-         */
+        /** 收到响应后调用（异常场景不触发） */
         void afterResponse(HttpRequest request, HttpResponse response, long costMs);
 
-        /**
-         * 请求发生异常时调用（连接超时、读取异常等）
-         */
+        /** 请求发生异常时调用 */
         void onError(HttpRequest request, Exception e, long costMs);
 
-        /**
-         * 触发重试时调用（默认空实现）
-         */
+        /** 触发重试时调用（默认空实现） */
         default void onRetry(HttpRequest request, Exception e, int retryCount) {
         }
     }
 
     /**
-     * 默认拦截器：使用 {@link Slf4j} 输出请求/响应/异常日志
+     * 内置 Slf4j 拦截器，根据 {@link HttpConfig#isPrintDetailLog()} 控制日志详细程度。
      */
     @Slf4j
     static class DefaultHttpInterceptor implements HttpInterceptor {
         @Override
         public void beforeRequest(HttpRequest request) {
-            log.info("HTTP request: {} {}", request.getMethod(), request.getUrl());
+            if (globalConfig.isPrintDetailLog()) {
+                // 详细模式：打印请求方法、URL、参数（含 JSON body）、请求头
+                log.info("HTTP request: 【{}】 【{}】 \nheaders=【{}】 \nparams=【{}】",
+                        request.getMethod(), request.getUrl(),
+                        request.headers(),
+                        getRequestDetail(request));
+            } else {
+                // 简要模式
+                log.info("HTTP request: 【{}】 【{}】", request.getMethod(), request.getUrl());
+            }
         }
 
         @Override
         public void afterResponse(HttpRequest request, HttpResponse response, long costMs) {
-            log.info("HTTP response: {} {}, status={}, cost={}ms",
-                    request.getMethod(), request.getUrl(), response.getStatus(), costMs);
+            if (globalConfig.isPrintDetailLog()) {
+                // 安全获取响应体摘要，避免大文件撑爆日志
+                String respBody = truncateBody(response.body(), 4096);
+                log.info("HTTP response: 【{}】 【{}】, status=【{}】, cost=【{}ms】 \nresponseBody=【{}】",
+                        request.getMethod(), request.getUrl(), response.getStatus(), costMs, respBody);
+            } else {
+                log.info("HTTP response: 【{}】 【{}】, status=【{}】, cost=【{}ms】",
+                        request.getMethod(), request.getUrl(), response.getStatus(), costMs);
+            }
         }
 
         @Override
         public void onError(HttpRequest request, Exception e, long costMs) {
-            log.error("HTTP error: {} {}, cost={}ms, error={}",
+            log.error("HTTP error: 【{}】 【{}】, cost=【{}ms】 \nerror=【{}】",
                     request.getMethod(), request.getUrl(), costMs, e.getMessage(), e);
+        }
+
+        @Override
+        public void onRetry(HttpRequest request, Exception e, int retryCount) {
+            log.warn("HTTP retry: 【{}】 【{}】, retry=【{}】",
+                    request.getMethod(), request.getUrl(), retryCount, e);
+        }
+
+        /**
+         * 截断过长的字符串，防止日志爆炸
+         */
+        private String truncateBody(String body, int maxLen) {
+            if (body == null) {
+                return "{}";
+            }
+            if (body.length() <= maxLen) {
+                return body;
+            }
+            return body.substring(0, maxLen) + "...";
         }
     }
 
-    // ==================== HTTP 配置类 ====================
+    // ==================== 配置类 ====================
 
     /**
      * HTTP 增强配置，所有属性均有合理默认值。
+     * 使用 {@link #builder()} 创建，或 {@link #toBuilder()} 基于已有配置修改。
      */
     @Data
     @Builder(toBuilder = true)
@@ -452,7 +543,7 @@ public final class HttpUtils extends HttpUtil {
         @Builder.Default
         private long retryIntervalMs = 1000;
 
-        /** 请求日志/监控拦截器，默认使用 Slf4j 打印 */
+        /** 日志/监控拦截器，默认使用 Slf4j 实现（详细日志） */
         @Builder.Default
         private HttpInterceptor interceptor = new DefaultHttpInterceptor();
 
@@ -464,11 +555,15 @@ public final class HttpUtils extends HttpUtil {
         @Builder.Default
         private boolean validateStatus = true;
 
-        /** header 全局 Bearer Token（为空时不自动添加） */
+        /** 是否打印详细请求/响应信息（影响内置拦截器的日志粒度） */
+        @Builder.Default
+        private boolean printDetailLog = true;
+
+        /** 全局 Bearer Token（为空时不自动添加） */
         @Builder.Default
         private String token = null;
 
-        /** header 全局 TokenKey（为空时不自动添加） 如 X-Token */
+        /** 全局自定义 Token Header 名称（如 X-Token），需配合 token 使用 */
         @Builder.Default
         private String tokenKey = null;
 
@@ -484,5 +579,30 @@ public final class HttpUtils extends HttpUtil {
         }
     }
 
+    // ==================== 自定义异常 ====================
 
+    /**
+     * HTTP 请求通用异常
+     */
+    public static class HttpException extends RuntimeException {
+        public HttpException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    /**
+     * HTTP 状态码异常（携带状态码和响应对象）
+     */
+    @Getter
+    public static class HttpStatusException extends HttpException {
+        private final int status;
+        private final transient HttpResponse response;
+
+        public HttpStatusException(String message, int status, HttpResponse response) {
+            super(message, null);
+            this.status = status;
+            this.response = response;
+        }
+
+    }
 }
