@@ -37,6 +37,12 @@
       "type": "java.lang.Boolean",
       "description": "是否在响应体中补充 timestamp、path 元数据。",
       "defaultValue": true
+    },
+    {
+      "name": "dream.advice.response.ignore-response-path",
+      "type": "java.lang.String",
+      "description": "忽略响应路径，多个路径用英文逗号分隔，如： /swagger",
+      "defaultValue": ""
     }
   ],
   "hints": [

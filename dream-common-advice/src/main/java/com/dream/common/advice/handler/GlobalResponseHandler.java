@@ -18,9 +18,13 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.lang.Nullable;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.util.Objects;
 
 /**
  * 全局统一响应包装处理器。
@@ -57,6 +61,13 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
     @Value("${dream.advice.response.include-metadata:true}")
     private boolean includeMetadata;
 
+    /**
+     * 忽略响应路径，多个路径用英文逗号分隔
+     */
+    @Value("${dream.advice.response.ignore-response-path}")
+    private String ignoreResponsePath;
+
+
     public GlobalResponseHandler(@Nullable ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
@@ -77,6 +88,25 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                                   @Nullable Class<? extends HttpMessageConverter<?>> selectedConverterType,
                                   @Nullable ServerHttpRequest request,
                                   @Nullable ServerHttpResponse response) {
+
+        try {
+            // 路径忽略
+            HttpServletRequest req = ((ServletRequestAttributes) Objects.requireNonNull(RequestContextHolder.getRequestAttributes())).getRequest();
+            String uri = req.getRequestURI();
+            if (ignoreResponsePath != null && !ignoreResponsePath.trim().isEmpty()
+                    && uri != null && !uri.trim().isEmpty()) {
+                String[] paths = ignoreResponsePath.split(",");
+                for (String path : paths) {
+                    if (path != null && !path.trim().isEmpty()) {
+                        if (uri.contains(path.trim())) {
+                            return body;
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.error("ignoreResponsePath error", e);
+        }
 
         // 已是 R 类型 → 不再包装，仅补充元数据
         if (body instanceof R<?>) {

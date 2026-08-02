@@ -18,6 +18,8 @@
         <module>dream-common-tool</module>
         <module>dream-common-framework</module>
         <module>dream-common-advice</module>
+        <module>dream-common-data</module>
+        <module>dream-common-generator</module>
     </modules>
 
     <properties>
@@ -50,6 +52,18 @@
             <dependency>
                 <groupId>com.dream</groupId>
                 <artifactId>dream-common-advice</artifactId>
+                <version>${dream.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.dream</groupId>
+                <artifactId>dream-common-data</artifactId>
+                <version>${dream.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.dream</groupId>
+                <artifactId>dream-common-generator</artifactId>
                 <version>${dream.version}</version>
             </dependency>
 

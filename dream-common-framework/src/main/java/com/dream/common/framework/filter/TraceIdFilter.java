@@ -2,6 +2,7 @@ package com.dream.common.framework.filter;
 
 import com.dream.common.core.constant.Http;
 import com.dream.common.core.constant.SysKey;
+import com.dream.common.core.utils.ThreadLocalUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.lang.Nullable;
@@ -36,6 +37,8 @@ public class TraceIdFilter extends OncePerRequestFilter {
         }
         try {
             MDC.put(SysKey.TRACE_ID, traceId);
+            // 存入 ThreadLocal 供全局使用
+            ThreadLocalUtils.put(SysKey.TRACE_ID, traceId);
             if (response != null) {
                 response.setHeader(Http.HEADER_X_TRACE_ID, traceId);
             }
@@ -44,6 +47,8 @@ public class TraceIdFilter extends OncePerRequestFilter {
             }
         } finally {
             MDC.remove(SysKey.TRACE_ID);
+            // 优化点：必须清理，防止内存泄漏和数据串用
+            ThreadLocalUtils.clear();
         }
     }
 }

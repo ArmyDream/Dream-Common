@@ -7,6 +7,8 @@ import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.converter.HttpMessageNotWritableException;
@@ -25,15 +27,19 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
+import org.yaml.snakeyaml.constructor.DuplicateKeyException;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
+import javax.validation.ConstraintViolation;
+import javax.validation.ConstraintViolationException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
 /**
@@ -68,6 +74,8 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestControllerAdvice
 @ConditionalOnProperty(prefix = "dream.advice.exception", name = "enabled", havingValue = "true", matchIfMissing = true)
+@SuppressWarnings("DataFlowIssue")
+@Order(Ordered.HIGHEST_PRECEDENCE)
 public class GlobalExceptionHandler {
 
     private final ExceptionHandlerDelegate delegate;
@@ -82,6 +90,39 @@ public class GlobalExceptionHandler {
         this.delegate = delegate;
     }
 
+    /**
+     * 通用委托异常处理
+     *
+     * @param handler 具体的处理方法，如 delegate::handleValidationException
+     * @return 如果委托处理成功，返回响应结果；否则返回 null 继续下一个处理
+     */
+    private R<?> handleWithDelegate(@Nullable ExceptionHandlerDelegate delegate,
+                                    @Nullable Exception ex,
+                                    @Nullable WebRequest request,
+                                    boolean apply,
+                                    @Nullable BiFunction<Exception, WebRequest, R<?>> handler) {
+        if (delegate == null || ex == null) {
+            return null;
+        }
+        try {
+            delegate.onException(ex, request);
+        } catch (Exception e) {
+            log.warn("onException 处理失败 ==> {}", e.getMessage(), e);
+        }
+        if (handler == null) {
+            return null;
+        }
+        try {
+            if (apply) {
+                return handler.apply(ex, request);
+            }
+        } catch (Exception e) {
+            log.warn("委托异常处理失败 ==> {}", e.getMessage(), e);
+            return null;
+        }
+        return null;
+    }
+
     // ==================== 业务异常 ====================
 
     @ExceptionHandler(BusinessException.class)
@@ -92,12 +133,10 @@ public class GlobalExceptionHandler {
                 ex.getResultCode() != null ? ex.getResultCode().getValue() : null,
                 ex.getMessage());
 
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleBusinessException(ex, request);
-            if (result != null) {
-                return result;
-            }
+        R<?> result = handleWithDelegate(delegate, ex, request, true,
+                (e, r) -> delegate.handleBusinessException((BusinessException) e, r));
+        if (result != null) {
+            return result;
         }
 
         ResponseCode code = ex.getResultCode() != null ? ex.getResultCode() : ResponseCode.FAIL;
@@ -112,12 +151,10 @@ public class GlobalExceptionHandler {
         String message = extractValidationMessage(ex.getBindingResult().getFieldErrors());
         log.warn("参数校验失败: uri={}, msg={}", getRequestUri(request), message);
 
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleValidationException(ex, request);
-            if (result != null) {
-                return result;
-            }
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
         }
 
         return R.fail(ResponseCode.BAD_REQUEST, message);
@@ -129,12 +166,10 @@ public class GlobalExceptionHandler {
         String message = extractValidationMessage(ex.getBindingResult().getFieldErrors());
         log.warn("表单绑定校验失败: uri={}, msg={}", getRequestUri(request), message);
 
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleValidationException(ex, request);
-            if (result != null) {
-                return result;
-            }
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
         }
 
         return R.fail(ResponseCode.BAD_REQUEST, message);
@@ -146,6 +181,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<?> handleMissingParamException(MissingServletRequestParameterException ex, WebRequest request) {
         log.warn("缺少必填参数: uri={}, param={}", getRequestUri(request), ex.getParameterName());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.BAD_REQUEST, "缺少必填参数: " + ex.getParameterName());
     }
 
@@ -155,6 +197,13 @@ public class GlobalExceptionHandler {
         String message = "参数类型错误: " + ex.getName() + " 应为 " +
                 (ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "未知类型");
         log.warn("参数类型错误: uri={}, param={}", getRequestUri(request), ex.getName());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.BAD_REQUEST, message);
     }
 
@@ -162,7 +211,30 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<?> handleMessageNotReadableException(HttpMessageNotReadableException ex, WebRequest request) {
         log.warn("请求体解析失败: uri={}, msg={}", getRequestUri(request), ex.getMessage());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.BAD_REQUEST, "请求体格式错误，请检查 JSON 格式");
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public R<?> handleConstraintViolationException(ConstraintViolationException ex, WebRequest request) {
+        String message = ex.getConstraintViolations().stream()
+                .map(ConstraintViolation::getMessage)
+                .collect(Collectors.joining("; "));
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleValidationException(e, r));
+        if (result != null) {
+            return result;
+        }
+
+        return R.fail(ResponseCode.BAD_REQUEST, message);
     }
 
     // ==================== HTTP 协议异常 ====================
@@ -171,6 +243,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.METHOD_NOT_ALLOWED)
     public R<?> handleMethodNotSupportedException(HttpRequestMethodNotSupportedException ex, WebRequest request) {
         log.warn("请求方法不支持: uri={}, method={}", getRequestUri(request), ex.getMethod());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.METHOD_NOT_ALLOWED, "不支持 " + ex.getMethod() + " 请求方法");
     }
 
@@ -178,6 +257,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
     public R<?> handleMediaTypeNotSupportedException(HttpMediaTypeNotSupportedException ex, WebRequest request) {
         log.warn("Content-Type 不支持: uri={}, contentType={}", getRequestUri(request), ex.getContentType());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.UNSUPPORTED_MEDIA_TYPE, "不支持的 Content-Type: " + ex.getContentType());
     }
 
@@ -185,6 +271,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public R<?> handleNoHandlerFoundException(NoHandlerFoundException ex, WebRequest request) {
         log.warn("资源不存在: uri={}", ex.getRequestURL());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.NOT_FOUND);
     }
 
@@ -194,6 +287,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<?> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException ex, WebRequest request) {
         log.warn("文件上传超限: uri={}, maxSize={}", getRequestUri(request), ex.getMaxUploadSize());
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException(e, r));
+        if (result != null) {
+            return result;
+        }
+
         return R.fail(ResponseCode.FILE_TOO_LARGE);
     }
 
@@ -204,12 +304,10 @@ public class GlobalExceptionHandler {
     public R<?> handleServletException(ServletException ex, WebRequest request) {
         log.error("Servlet 异常: uri={}", getRequestUri(request), ex);
 
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleServletException(ex, request);
-            if (result != null) {
-                return result;
-            }
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleServletException((ServletException) e, r));
+        if (result != null) {
+            return result;
         }
 
         return failWithTrace(ResponseCode.INTERNAL_ERROR, ex);
@@ -221,13 +319,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public R<?> handleIllegalArgumentException(IllegalArgumentException ex, WebRequest request) {
         log.warn("非法参数异常: uri={}, msg={}", getRequestUri(request), ex.getMessage());
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return R.fail(ResponseCode.BAD_REQUEST, "非法参数: " + ex.getMessage());
     }
 
@@ -237,13 +335,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<?> handleNullPointerException(NullPointerException ex, WebRequest request) {
         log.error("空指针异常: uri={}", getRequestUri(request), ex);
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return failWithTrace(ResponseCode.NULL_POINTER, ex);
     }
 
@@ -253,13 +351,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<?> handleIOException(IOException ex, WebRequest request) {
         log.error("IO异常: uri={}, msg={}", getRequestUri(request), ex.getMessage(), ex);
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return failWithTrace(ResponseCode.IO_ERROR, ex);
     }
 
@@ -267,13 +365,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.NOT_FOUND)
     public R<?> handleFileNotFoundException(FileNotFoundException ex, WebRequest request) {
         log.warn("文件未找到: uri={}, msg={}", getRequestUri(request), ex.getMessage());
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return R.fail(ResponseCode.NOT_FOUND, "文件不存在: " + ex.getMessage());
     }
 
@@ -283,13 +381,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<?> handleSQLSyntaxErrorException(SQLSyntaxErrorException ex, WebRequest request) {
         log.error("SQL语法错误: uri={}, msg={}", getRequestUri(request), ex.getMessage(), ex);
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return failWithTrace(ResponseCode.SQL_ERROR, ex);
     }
 
@@ -299,13 +397,13 @@ public class GlobalExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<?> handleHttpMessageNotWritableException(HttpMessageNotWritableException ex, WebRequest request) {
         log.error("响应序列化失败: uri={}, msg={}", getRequestUri(request), ex.getMessage(), ex);
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
+
         return failWithTrace(ResponseCode.SERIALIZE_ERROR, ex);
     }
 
@@ -320,9 +418,8 @@ public class GlobalExceptionHandler {
                 && (cause.getMessage().contains("Duplicate entry") || cause.getMessage().contains("UNIQUE constraint"))) {
             log.warn("数据唯一键冲突: uri={}", getRequestUri(request));
 
-            if (delegate != null) {
-                delegate.onException(ex, request);
-            }
+           handleWithDelegate(delegate, ex, request,false,
+                    (e, r) -> delegate.handleUnknownException( e, r));
 
             return R.fail(ResponseCode.CONFLICT, "数据重复，请检查唯一性约束");
         }
@@ -330,12 +427,10 @@ public class GlobalExceptionHandler {
         log.error("系统未知异常: uri={}, type={}, msg={}",
                 getRequestUri(request), ex.getClass().getName(), ex.getMessage(), ex);
 
-        if (delegate != null) {
-            delegate.onException(ex, request);
-            R<?> result = delegate.handleUnknownException(ex, request);
-            if (result != null) {
-                return result;
-            }
+        R<?> result = handleWithDelegate(delegate, ex, request,true,
+                (e, r) -> delegate.handleUnknownException( e, r));
+        if (result != null) {
+            return result;
         }
 
         return failWithTrace(ResponseCode.SYSTEM_BUSY, ex);

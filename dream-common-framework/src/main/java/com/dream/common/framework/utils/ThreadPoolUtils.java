@@ -98,7 +98,7 @@ public final class ThreadPoolUtils {
     public static final long DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 30L;
 
     /** 默认线程池名称前缀 */
-    public static final String DEFAULT_THREAD_NAME_PREFIX = "dream-";
+    public static final String DEFAULT_THREAD_NAME_PREFIX = "dream-pool";
 
     /** 全局默认线程池（懒加载） */
     private static volatile ExecutorService DEFAULT_EXECUTOR;
