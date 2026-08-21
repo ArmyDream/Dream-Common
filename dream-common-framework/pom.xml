@@ -76,6 +76,20 @@
             <optional>true</optional>
         </dependency>
 
+        <!-- Apache Commons Compress：支持 zip/tar/7z/gzip/bzip2/xz 等多种压缩格式（可选） -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-compress</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- XZ for Java：commons-compress 处理 XZ/LZMA 格式时的可选依赖 -->
+        <dependency>
+            <groupId>org.tukaani</groupId>
+            <artifactId>xz</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>

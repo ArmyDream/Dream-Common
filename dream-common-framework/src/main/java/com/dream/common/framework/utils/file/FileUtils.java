@@ -8,7 +8,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
+import javax.servlet.http.HttpServletResponse;
 import java.io.*;
+import java.net.URLEncoder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
@@ -1358,6 +1360,412 @@ public final class FileUtils {
         return Arrays.stream(cats)
                 .map(FileCat::getLabel)
                 .collect(Collectors.joining("、"));
+    }
+
+    // ==================== 文件下载 ====================
+
+    /**
+     * 将本地文件作为附件下载到客户端
+     * <p>
+     * 设置 Content-Disposition 为 attachment，浏览器会弹出下载框。
+     * </p>
+     *
+     * @param response  HttpServletResponse
+     * @param filePath  本地文件完整路径
+     * @param downloadName 下载显示的文件名（为 null 则使用原文件名）
+     * @return 是否成功
+     */
+    public static boolean download(HttpServletResponse response, String filePath, String downloadName) {
+        if (response == null || StringUtils.isObjectBlank(filePath)) {
+            return false;
+        }
+        Path path = Paths.get(filePath);
+        if (!Files.exists(path) || !Files.isRegularFile(path)) {
+            log.warn("download: file not found: {}", filePath);
+            return false;
+        }
+        String fileName = StringUtils.isObjectBlank(downloadName)
+                ? path.getFileName().toString()
+                : downloadName;
+        try {
+            String encoded = URLEncoder.encode(fileName, "UTF-8").replaceAll("\\+", "%20");
+            response.setContentType("application/octet-stream");
+            response.setCharacterEncoding("utf-8");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+            response.setContentLengthLong(Files.size(path));
+            Files.copy(path, response.getOutputStream());
+            response.getOutputStream().flush();
+            log.info("download: {} -> {}", filePath, fileName);
+            return true;
+        } catch (IOException e) {
+            log.error("download failed: {}", filePath, e);
+            return false;
+        }
+    }
+
+    /**
+     * 将字节数组作为附件下载到客户端
+     *
+     * @param response     HttpServletResponse
+     * @param data         文件内容
+     * @param downloadName 下载文件名
+     * @return 是否成功
+     */
+    public static boolean download(HttpServletResponse response, byte[] data, String downloadName) {
+        if (response == null || data == null || data.length == 0
+                || StringUtils.isObjectBlank(downloadName)) {
+            return false;
+        }
+        try {
+            String encoded = URLEncoder.encode(downloadName, "UTF-8").replaceAll("\\+", "%20");
+            response.setContentType("application/octet-stream");
+            response.setCharacterEncoding("utf-8");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+            response.setContentLength(data.length);
+            response.getOutputStream().write(data);
+            response.getOutputStream().flush();
+            log.info("download (bytes): {}, size: {}", downloadName, data.length);
+            return true;
+        } catch (IOException e) {
+            log.error("download (bytes) failed: {}", downloadName, e);
+            return false;
+        }
+    }
+
+    // ==================== 压缩/解压 ====================
+
+    /**
+     * 压缩文件或目录为 ZIP
+     * <p>
+     * 实际委托给 {@link CompressUtils#zip} 实现，底层使用 Apache Commons Compress，
+     * 支持更多格式（tar/7z/gzip/bzip2/xz）请直接使用 {@link CompressUtils}。
+     * </p>
+     *
+     * @param sourcePath 源文件或目录路径
+     * @param zipPath   目标 ZIP 文件路径
+     * @return 是否成功
+     * @see CompressUtils#zip
+     */
+    public static boolean zip(String sourcePath, String zipPath) {
+        return CompressUtils.zip(sourcePath, zipPath);
+    }
+
+    /**
+     * 解压 ZIP 到目标目录
+     * <p>
+     * 实际委托给 {@link CompressUtils#unzip} 实现，底层使用 Apache Commons Compress，
+     * 含 Zip Slip 路径穿越防护。其他格式（tar/7z/gzip/bzip2/xz）解压请使用
+     * </p>
+     *
+     * @param zipPath  ZIP 文件路径
+     * @param destDir  目标目录
+     * @return 是否成功
+     * @see CompressUtils#unzip
+     * @see CompressUtils#decompress
+     */
+    public static boolean unzip(String zipPath, String destDir) {
+        return CompressUtils.unzip(zipPath, destDir);
+    }
+
+    // ==================== 递归与统计 ====================
+
+    /**
+     * 递归列出目录下所有文件（不含目录）
+     *
+     * @param dirPath 目录路径
+     * @return 文件路径列表（绝对路径），失败返回空列表
+     */
+    public static List<String> listAll(String dirPath) {
+        if (StringUtils.isObjectBlank(dirPath)) {
+            return Collections.emptyList();
+        }
+        Path dir = Paths.get(dirPath);
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return Collections.emptyList();
+        }
+        List<String> result = new ArrayList<>();
+        try (Stream<Path> stream = Files.walk(dir)) {
+            stream.filter(Files::isRegularFile)
+                    .forEach(p -> result.add(p.toAbsolutePath().toString()));
+        } catch (IOException e) {
+            log.error("listAll failed: {}", dirPath, e);
+        }
+        return result;
+    }
+
+    /**
+     * 统计目录下文件数量
+     *
+     * @param dirPath 目录路径
+     * @return 文件数量，失败返回 -1
+     */
+    public static long countFiles(String dirPath) {
+        if (StringUtils.isObjectBlank(dirPath)) {
+            return -1;
+        }
+        Path dir = Paths.get(dirPath);
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return -1;
+        }
+        try (Stream<Path> stream = Files.walk(dir)) {
+            return stream.filter(Files::isRegularFile).count();
+        } catch (IOException e) {
+            log.error("countFiles failed: {}", dirPath, e);
+            return -1;
+        }
+    }
+
+    /**
+     * 统计目录总大小（字节）
+     *
+     * @param dirPath 目录路径
+     * @return 总字节数，失败返回 -1
+     */
+    public static long sizeOfDirectory(String dirPath) {
+        if (StringUtils.isObjectBlank(dirPath)) {
+            return -1;
+        }
+        Path dir = Paths.get(dirPath);
+        if (!Files.exists(dir) || !Files.isDirectory(dir)) {
+            return -1;
+        }
+        try (Stream<Path> stream = Files.walk(dir)) {
+            return stream.filter(Files::isRegularFile)
+                    .mapToLong(p -> {
+                        try {
+                            return Files.size(p);
+                        } catch (IOException e) {
+                            return 0L;
+                        }
+                    })
+                    .sum();
+        } catch (IOException e) {
+            log.error("sizeOfDirectory failed: {}", dirPath, e);
+            return -1;
+        }
+    }
+
+    /**
+     * 统计文件行数
+     *
+     * @param filePath 文件路径
+     * @return 行数，失败返回 -1
+     */
+    public static long countLines(String filePath) {
+        if (StringUtils.isObjectBlank(filePath)) {
+            return -1;
+        }
+        try (Stream<String> stream = Files.lines(Paths.get(filePath), DEFAULT_CHARSET)) {
+            return stream.count();
+        } catch (IOException e) {
+            log.error("countLines failed: {}", filePath, e);
+            return -1;
+        }
+    }
+
+    // ==================== 文件操作增强 ====================
+
+    /**
+     * 复制文件到目标目录（保留原文件名）
+     *
+     * @param sourcePath 源文件路径
+     * @param targetDir  目标目录
+     * @return 是否成功
+     */
+    public static boolean copyToDir(String sourcePath, String targetDir) {
+        if (StringUtils.isObjectBlank(sourcePath) || StringUtils.isObjectBlank(targetDir)) {
+            return false;
+        }
+        Path source = Paths.get(sourcePath);
+        if (!Files.exists(source) || !Files.isRegularFile(source)) {
+            log.warn("copyToDir: source not found: {}", sourcePath);
+            return false;
+        }
+        if (!mkdirs(targetDir)) {
+            return false;
+        }
+        Path target = Paths.get(targetDir, source.getFileName().toString());
+        return copy(sourcePath, target.toString());
+    }
+
+    /**
+     * 合并两个文件为第三个文件
+     *
+     * @param file1Path 第一个文件路径
+     * @param file2Path 第二个文件路径
+     * @param outputPath 输出文件路径
+     * @return 是否成功
+     */
+    public static boolean mergeFiles(String file1Path, String file2Path, String outputPath) {
+        if (StringUtils.isObjectBlank(file1Path) || StringUtils.isObjectBlank(file2Path)
+                || StringUtils.isObjectBlank(outputPath)) {
+            return false;
+        }
+        try (OutputStream os = new FileOutputStream(outputPath)) {
+            ensureParentDirectory(outputPath);
+            Files.copy(Paths.get(file1Path), os);
+            Files.copy(Paths.get(file2Path), os);
+            log.info("mergeFiles: {} + {} -> {}", file1Path, file2Path, outputPath);
+            return true;
+        } catch (IOException e) {
+            log.error("mergeFiles failed", e);
+            return false;
+        }
+    }
+
+    /**
+     * 创建临时文件
+     *
+     * @param prefix 文件名前缀
+     * @param suffix 文件名后缀（如 .tmp）
+     * @return 临时文件路径，失败返回 null
+     */
+    public static String createTempFile(String prefix, String suffix) {
+        try {
+            Path temp = Files.createTempFile(prefix, suffix);
+            log.debug("createTempFile: {}", temp);
+            return temp.toAbsolutePath().toString();
+        } catch (IOException e) {
+            log.error("createTempFile failed", e);
+            return null;
+        }
+    }
+
+    /**
+     * 创建临时文件并写入内容
+     *
+     * @param prefix  文件名前缀
+     * @param suffix  文件名后缀
+     * @param content 文件内容
+     * @return 临时文件路径，失败返回 null
+     */
+    public static String createTempFile(String prefix, String suffix, byte[] content) {
+        String path = createTempFile(prefix, suffix);
+        if (path == null || !writeBytes(path, content)) {
+            return null;
+        }
+        return path;
+    }
+
+    // ==================== 内容搜索 ====================
+
+    /**
+     * 在文件中搜索关键字（按行匹配）
+     *
+     * @param filePath 文件路径
+     * @param keyword  关键字
+     * @return 匹配的行列表，失败返回空列表
+     */
+    public static List<String> searchInFile(String filePath, String keyword) {
+        if (StringUtils.isObjectBlank(filePath) || StringUtils.isObjectBlank(keyword)) {
+            return Collections.emptyList();
+        }
+        List<String> matches = new ArrayList<>();
+        try (Stream<String> stream = Files.lines(Paths.get(filePath), DEFAULT_CHARSET)) {
+            stream.filter(line -> line.contains(keyword))
+                    .forEach(matches::add);
+        } catch (IOException e) {
+            log.error("searchInFile failed: {}", filePath, e);
+        }
+        return matches;
+    }
+
+    /**
+     * 在文件中搜索关键字（按行匹配，忽略大小写）
+     *
+     * @param filePath 文件路径
+     * @param keyword  关键字
+     * @return 匹配的行列表，失败返回空列表
+     */
+    public static List<String> searchInFileIgnoreCase(String filePath, String keyword) {
+        if (StringUtils.isObjectBlank(filePath) || StringUtils.isObjectBlank(keyword)) {
+            return Collections.emptyList();
+        }
+        String lowerKeyword = keyword.toLowerCase();
+        List<String> matches = new ArrayList<>();
+        try (Stream<String> stream = Files.lines(Paths.get(filePath), DEFAULT_CHARSET)) {
+            stream.filter(line -> line.toLowerCase().contains(lowerKeyword))
+                    .forEach(matches::add);
+        } catch (IOException e) {
+            log.error("searchInFileIgnoreCase failed: {}", filePath, e);
+        }
+        return matches;
+    }
+
+    // ==================== 路径操作 ====================
+
+    /**
+     * 路径拼接
+     *
+     * @param base 基础路径
+     * @param more 子路径片段
+     * @return 拼接后的路径字符串
+     */
+    public static String joinPath(String base, String... more) {
+        if (StringUtils.isObjectBlank(base)) {
+            return StringPool.EMPTY.getValue();
+        }
+        Path path = Paths.get(base);
+        if (more != null && more.length > 0) {
+            for (String segment : more) {
+                if (!StringUtils.isObjectBlank(segment)) {
+                    path = path.resolve(segment);
+                }
+            }
+        }
+        return path.toString();
+    }
+
+    /**
+     * 获取相对路径
+     *
+     * @param basePath 基础路径
+     * @param fullPath 完整路径
+     * @return 相对路径字符串，失败返回原完整路径
+     */
+    public static String getRelativePath(String basePath, String fullPath) {
+        if (StringUtils.isObjectBlank(basePath) || StringUtils.isObjectBlank(fullPath)) {
+            return fullPath;
+        }
+        try {
+            Path base = Paths.get(basePath).toAbsolutePath().normalize();
+            Path full = Paths.get(fullPath).toAbsolutePath().normalize();
+            return base.relativize(full).toString();
+        } catch (Exception e) {
+            log.warn("getRelativePath failed: base={}, full={}", basePath, fullPath, e);
+            return fullPath;
+        }
+    }
+
+    /**
+     * 获取父目录路径
+     *
+     * @param filePath 文件路径
+     * @return 父目录路径，无父目录返回空字符串
+     */
+    public static String getParentPath(String filePath) {
+        if (StringUtils.isObjectBlank(filePath)) {
+            return StringPool.EMPTY.getValue();
+        }
+        Path parent = Paths.get(filePath).getParent();
+        return parent != null ? parent.toString() : StringPool.EMPTY.getValue();
+    }
+
+    /**
+     * 规范化路径（解析 . 和 ..）
+     *
+     * @param path 原始路径
+     * @return 规范化后的绝对路径
+     */
+    public static String normalizePath(String path) {
+        if (StringUtils.isObjectBlank(path)) {
+            return StringPool.EMPTY.getValue();
+        }
+        try {
+            return Paths.get(path).toAbsolutePath().normalize().toString();
+        } catch (Exception e) {
+            return path;
+        }
     }
 
     // ==================== 内部方法 ====================

@@ -8,7 +8,14 @@ import lombok.NoArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.io.Serializable;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 
@@ -354,6 +361,179 @@ public class FileData implements Serializable {
     public FileData setOriginalNameAndFill(String originalName) {
         this.originalName = originalName;
         return autoFill();
+    }
+
+    // ==================== 校验方法 ====================
+
+    /**
+     * 校验文件大小是否在允许范围内
+     *
+     * @param maxSize 最大字节数
+     * @return true 表示文件大小合法
+     */
+    public boolean validateSize(long maxSize) {
+        return size != null && size > 0 && size <= maxSize;
+    }
+
+    /**
+     * 校验文件扩展名是否在允许列表中
+     *
+     * @param allowedExtensions 允许的扩展名列表（不含点号，小写）
+     * @return true 表示扩展名合法
+     */
+    public boolean validateExtension(String... allowedExtensions) {
+        String ext = getExtension();
+        if (ext == null || allowedExtensions == null || allowedExtensions.length == 0) {
+            return false;
+        }
+        for (String allowed : allowedExtensions) {
+            if (allowed != null && allowed.equalsIgnoreCase(ext)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 校验文件类型是否在允许列表中
+     *
+     * @param allowedTypes 允许的文件类型
+     * @return true 表示文件类型合法
+     */
+    public boolean validateFileType(FileType... allowedTypes) {
+        FileType type = getFileType();
+        if (type == null || allowedTypes == null || allowedTypes.length == 0) {
+            return false;
+        }
+        for (FileType allowed : allowedTypes) {
+            if (allowed == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ==================== 哈希计算 ====================
+
+    /**
+     * 计算文件内容的 MD5 哈希值并缓存到 {@link #hash}
+     *
+     * @return MD5 哈希字符串（32 位小写十六进制），内容为空返回 null
+     */
+    public String calculateMd5() {
+        return calculateHash("MD5");
+    }
+
+    /**
+     * 计算文件内容的 SHA-256 哈希值并缓存到 {@link #hash}
+     *
+     * @return SHA-256 哈希字符串（64 位小写十六进制），内容为空返回 null
+     */
+    public String calculateSha256() {
+        return calculateHash("SHA-256");
+    }
+
+    /**
+     * 计算文件内容的哈希值
+     *
+     * @param algorithm 哈希算法（MD5 / SHA-1 / SHA-256）
+     * @return 哈希字符串（小写十六进制），内容为空返回 null
+     */
+    public String calculateHash(String algorithm) {
+        if (content == null || content.length == 0) {
+            return null;
+        }
+        try {
+            MessageDigest md = MessageDigest.getInstance(algorithm);
+            byte[] digest = md.digest(content);
+            StringBuilder sb = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
+                sb.append(Character.forDigit(b & 0xF, 16));
+            }
+            this.hash = sb.toString();
+            return this.hash;
+        } catch (NoSuchAlgorithmException e) {
+            log.error("calculateHash failed: algorithm={}", algorithm, e);
+            return null;
+        }
+    }
+
+    // ==================== 文件输出 ====================
+
+    /**
+     * 将文件内容写入输出流（不关闭流）
+     *
+     * @param os 输出流
+     * @return this
+     * @throws IOException 写入失败时抛出
+     */
+    public FileData writeTo(OutputStream os) throws IOException {
+        if (os == null || content == null) {
+            return this;
+        }
+        os.write(content);
+        os.flush();
+        return this;
+    }
+
+    /**
+     * 将文件内容持久化到磁盘
+     *
+     * @param filePath 文件完整路径
+     * @return this
+     * @throws IOException 写入失败时抛出
+     */
+    public FileData writeTo(String filePath) throws IOException {
+        if (content == null) {
+            return this;
+        }
+        Path path = Paths.get(filePath);
+        Path parent = path.getParent();
+        if (parent != null && !Files.exists(parent)) {
+            Files.createDirectories(parent);
+        }
+        Files.write(path, content);
+        this.fullStoragePath = filePath;
+        this.storagePath = parent != null ? parent.toString() : null;
+        this.storedName = path.getFileName().toString();
+        this.persisted = true;
+        return this;
+    }
+
+    /**
+     * 追加内容到现有文件内容
+     *
+     * @param extra 额外内容
+     * @return this
+     */
+    public FileData appendContent(byte[] extra) {
+        if (extra == null || extra.length == 0) {
+            return this;
+        }
+        if (content == null) {
+            content = extra.clone();
+        } else {
+            byte[] merged = new byte[content.length + extra.length];
+            System.arraycopy(content, 0, merged, 0, content.length);
+            System.arraycopy(extra, 0, merged, content.length, extra.length);
+            content = merged;
+        }
+        size = (long) content.length;
+        return this;
+    }
+
+    /**
+     * 释放资源（清空内容与输出流）
+     */
+    public void release() {
+        if (content != null) {
+            content = null;
+        }
+        if (outputStream != null) {
+            outputStream.reset();
+            outputStream = null;
+        }
     }
 
     @Override
