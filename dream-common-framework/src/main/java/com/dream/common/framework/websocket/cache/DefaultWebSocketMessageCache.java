@@ -1,8 +1,8 @@
 package com.dream.common.framework.websocket.cache;
 
+import com.dream.common.framework.cache.CachesUtils;
 import com.dream.common.framework.websocket.api.WebSocketMessageCache;
 import com.dream.common.framework.websocket.model.WebSocketMessage;
-import com.dream.common.tool.utils.CachesCaffeineUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -11,10 +11,14 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 基于 CachesUtils（Caffeine）的默认消息缓存实现
+ * 基于 {@link CachesUtils} 的默认消息缓存实现
  * <p>
- * 使用本地 Caffeine 缓存存储离线消息，默认过期时间 24 小时，单用户最多 1000 条。
- * 适用于单机部署场景。分布式部署请替换为 Redis 实现。
+ * 通过统一缓存入口 {@link CachesUtils} 存储离线消息，自动享受 Redis 优先 + Caffeine 降级能力：
+ * <ul>
+ *   <li>Redis 在场时：消息存储在 Redis，支持分布式部署（多实例共享离线消息）</li>
+ *   <li>Redis 不可用时：自动降级到 Caffeine 本地缓存（单机可用，不中断业务）</li>
+ * </ul>
+ * 默认过期时间 24 小时，单用户最多 1000 条。
  * </p>
  *
  * <h2>缓存 Key 规则</h2>
@@ -42,7 +46,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
             return;
         }
         String key = buildKey(group, userId);
-        List<WebSocketMessage> messages = CachesCaffeineUtils.get(key);
+        List<WebSocketMessage> messages = CachesUtils.get(key);
         if (messages == null) {
             messages = new ArrayList<>();
         }
@@ -51,7 +55,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
             log.warn("用户 {}/{} 离线消息超过 {} 条，已移除最早的消息", group, userId, MAX_MESSAGES);
         }
         messages.add(message);
-        CachesCaffeineUtils.set(key, messages, EXPIRE_SECONDS, TimeUnit.SECONDS);
+        CachesUtils.set(key, messages, EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override
@@ -59,7 +63,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
         if (group == null || userId == null) {
             return Collections.emptyList();
         }
-        List<WebSocketMessage> messages = CachesCaffeineUtils.get(buildKey(group, userId));
+        List<WebSocketMessage> messages = CachesUtils.get(buildKey(group, userId));
         return messages != null ? new ArrayList<>(messages) : Collections.emptyList();
     }
 
@@ -68,7 +72,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
         if (group == null || userId == null) {
             return;
         }
-        CachesCaffeineUtils.delete(buildKey(group, userId));
+        CachesUtils.delete(buildKey(group, userId));
     }
 
     @Override

@@ -33,7 +33,7 @@ import org.springframework.web.socket.server.support.HttpSessionHandshakeInterce
  *
  * <h2>可覆盖的 Bean</h2>
  * <ul>
- *   <li>{@link WebSocketMessageCache}：默认使用 {@link DefaultWebSocketMessageCache}（基于 Caffeine）</li>
+ *   <li>{@link WebSocketMessageCache}：默认使用 {@link DefaultWebSocketMessageCache}（基于 CachesUtils，Redis 优先 Caffeine 降级）</li>
  *   <li>{@link WebSocketEventHandler}：默认空实现，业务方必须实现</li>
  *   <li>{@link WebSocketSessionManager}：默认内存管理，通常无需替换</li>
  * </ul>

@@ -21,6 +21,24 @@
     {
       "name": "logging.custom",
       "description": "自定义日志配置（logback-spring.xml 扩展）"
+    },
+    {
+      "name": "dream.cache",
+      "description": "统一缓存配置（Redis 优先，不可用降级 Caffeine）",
+      "type": "com.dream.common.framework.cache.config.CacheProperties",
+      "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
+    },
+    {
+      "name": "dream.cache.redis",
+      "description": "Redis 子配置（熔断探活）",
+      "type": "com.dream.common.framework.cache.config.CacheProperties$Redis",
+      "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
+    },
+    {
+      "name": "dream.cache.double-delete",
+      "description": "延时双删注解切面配置",
+      "type": "com.dream.common.framework.cache.config.CacheProperties$DoubleDelete",
+      "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
     }
   ],
   "properties": [
@@ -82,6 +100,60 @@
       "name": "logging.custom.console",
       "type": "java.lang.Boolean",
       "description": "是否启用控制台日志输出。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.cache.type",
+      "type": "java.lang.String",
+      "description": "缓存类型：AUTO（Redis 优先，不可用降级 Caffeine，默认）/ REDIS（强制 Redis）/ CAFFEINE（强制本地）。",
+      "defaultValue": "AUTO"
+    },
+    {
+      "name": "dream.cache.fallback-enabled",
+      "type": "java.lang.Boolean",
+      "description": "Redis 不可用时是否降级到 Caffeine（仅 type=AUTO 生效）。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.cache.default-expire",
+      "type": "java.lang.Long",
+      "description": "默认过期时间（秒）。",
+      "defaultValue": 180
+    },
+    {
+      "name": "dream.cache.redis.health-cooldown-seconds",
+      "type": "java.lang.Long",
+      "description": "Redis 熔断后再次探活的冷却时间（秒）。",
+      "defaultValue": 30
+    },
+    {
+      "name": "dream.cache.redis.ping-timeout-ms",
+      "type": "java.lang.Long",
+      "description": "Redis 探活 PING 超时时间（毫秒）。",
+      "defaultValue": 1000
+    },
+    {
+      "name": "dream.cache.double-delete.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用注解延时双删切面。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.cache.double-delete.default-delay-ms",
+      "type": "java.lang.Long",
+      "description": "延时双删默认二次删除延时（毫秒）。",
+      "defaultValue": 500
+    },
+    {
+      "name": "dream.cache.redisson.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 Redisson 分布式锁（需引入 redisson 依赖）。连接配置复用 spring.redis.*。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.cache.query-cache.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 Controller 查询缓存切面。",
       "defaultValue": true
     }
   ],
@@ -160,6 +232,62 @@
         {
           "value": false,
           "description": "禁用控制台输出。"
+        }
+      ]
+    },
+    {
+      "name": "dream.cache.type",
+      "values": [
+        {
+          "value": "AUTO",
+          "description": "自动：Redis 在场优先，不可用降级 Caffeine（默认）。"
+        },
+        {
+          "value": "REDIS",
+          "description": "强制 Redis；Redis 不可用不降级。"
+        },
+        {
+          "value": "CAFFEINE",
+          "description": "强制本地 Caffeine。"
+        }
+      ]
+    },
+    {
+      "name": "dream.cache.double-delete.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用延时双删切面（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用延时双删切面。"
+        }
+      ]
+    },
+    {
+      "name": "dream.cache.redisson.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用 Redisson 分布式锁（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用 Redisson 分布式锁。"
+        }
+      ]
+    },
+    {
+      "name": "dream.cache.query-cache.enabled",
+      "values": [
+        {
+          "value": true,
+          "description": "启用 Controller 查询缓存切面（默认）。"
+        },
+        {
+          "value": false,
+          "description": "禁用 Controller 查询缓存切面。"
         }
       ]
     }

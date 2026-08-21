@@ -40,6 +40,42 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- AOP：支撑 @CacheDoubleDelete 等注解切面 -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
+        <!-- Redis：可选依赖，未引入也不会报错（相关 Bean 按 @ConditionalOnClass 条件装配） -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Lettuce 连接池支持（可选），升级到 2.12.1 以使用 Duration API 替代过期的 setMaxWaitMillis 等 -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+            <version>2.12.1</version>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Redisson：分布式锁核心包（不使用 redisson-spring-boot-starter 以避免其自带的
+             RedissonAutoConfiguration 注册 RedissonConnectionFactory 与 LettuceConnectionFactory 冲突） -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- Redisson Spring Data 2.7 适配（RedissonClient ↔ RedisTemplate 桥接，可选） -->
+        <dependency>
+            <groupId>org.redisson</groupId>
+            <artifactId>redisson-spring-data-27</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <dependency>
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
