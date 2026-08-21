@@ -284,36 +284,82 @@ public class RedisCacheAutoConfiguration {
     /**
      * 构建通用连接池配置
      * <p>
-     * 使用 commons-pool2 2.12+ 的 {@link Duration} API（{@code setMaxWait} / {@code setTimeBetweenEvictionRuns}），
-     * 替代已过期的 {@code setMaxWaitMillis} / {@code setTimeBetweenEvictionRunsMillis}。
+     * 兼容 commons-pool2 2.11.x（Spring Boot 2.7.18 默认）和 2.12+：
+     * <ul>
+     *   <li>2.12+ 在场时优先使用 {@link Duration} API（{@code setMaxWait} / {@code setTimeBetweenEvictionRuns}）</li>
+     *   <li>2.11.x 在场时回退到 millis API（{@code setMaxWaitMillis} / {@code setTimeBetweenEvictionRunsMillis}）</li>
+     * </ul>
      * 当用户未配置 {@code spring.redis.lettuce.pool.*} 时使用生产级默认值。
      * </p>
      *
      * @param properties Spring Boot 官方 Redis 配置
      * @return GenericObjectPoolConfig
      */
+    @SuppressWarnings("deprecation")
     private GenericObjectPoolConfig<?> buildPoolConfig(RedisProperties properties) {
         GenericObjectPoolConfig<?> poolConfig = new GenericObjectPoolConfig<>();
         RedisProperties.Pool pool = properties.getLettuce().getPool();
 
+        int maxActive = DEFAULT_MAX_ACTIVE;
+        int maxIdle = DEFAULT_MAX_IDLE;
+        int minIdle = DEFAULT_MIN_IDLE;
+        Duration maxWait = DEFAULT_MAX_WAIT;
+        Duration evictionRuns = DEFAULT_TIME_BETWEEN_EVICTION_RUNS;
+
         if (pool != null) {
-            poolConfig.setMaxTotal(pool.getMaxActive() > 0 ? pool.getMaxActive() : DEFAULT_MAX_ACTIVE);
-            poolConfig.setMaxIdle(pool.getMaxIdle() > 0 ? pool.getMaxIdle() : DEFAULT_MAX_IDLE);
-            poolConfig.setMinIdle(pool.getMinIdle() > 0 ? pool.getMinIdle() : DEFAULT_MIN_IDLE);
-            poolConfig.setMaxWait(pool.getMaxWait() != null ? pool.getMaxWait() : DEFAULT_MAX_WAIT);
-            poolConfig.setTimeBetweenEvictionRuns(
-                    pool.getTimeBetweenEvictionRuns() != null
-                            ? pool.getTimeBetweenEvictionRuns()
-                            : DEFAULT_TIME_BETWEEN_EVICTION_RUNS);
-        } else {
-            poolConfig.setMaxTotal(DEFAULT_MAX_ACTIVE);
-            poolConfig.setMaxIdle(DEFAULT_MAX_IDLE);
-            poolConfig.setMinIdle(DEFAULT_MIN_IDLE);
-            poolConfig.setMaxWait(DEFAULT_MAX_WAIT);
-            poolConfig.setTimeBetweenEvictionRuns(DEFAULT_TIME_BETWEEN_EVICTION_RUNS);
+            maxActive = pool.getMaxActive() > 0 ? pool.getMaxActive() : DEFAULT_MAX_ACTIVE;
+            maxIdle = pool.getMaxIdle() > 0 ? pool.getMaxIdle() : DEFAULT_MAX_IDLE;
+            minIdle = pool.getMinIdle() > 0 ? pool.getMinIdle() : DEFAULT_MIN_IDLE;
+            if (pool.getMaxWait() != null) {
+                maxWait = pool.getMaxWait();
+            }
+            if (pool.getTimeBetweenEvictionRuns() != null) {
+                evictionRuns = pool.getTimeBetweenEvictionRuns();
+            }
         }
+
+        poolConfig.setMaxTotal(maxActive);
+        poolConfig.setMaxIdle(maxIdle);
+        poolConfig.setMinIdle(minIdle);
+
+        // 兼容 commons-pool2 2.11.x（无 Duration API）和 2.12+（Duration API + deprecated millis API）
+        setPoolDuration(poolConfig, "setMaxWait", maxWait, "setMaxWaitMillis", maxWait.toMillis());
+        setPoolDuration(poolConfig, "setTimeBetweenEvictionRuns", evictionRuns,
+                "setTimeBetweenEvictionRunsMillis", evictionRuns.toMillis());
+
         poolConfig.setTestWhileIdle(true);
         return poolConfig;
+    }
+
+    /**
+     * 反射设置连接池 Duration 参数，兼容 commons-pool2 2.11.x 和 2.12+
+     * <p>
+     * 优先尝试 Duration API（2.12+），不可用时回退到 millis API（2.11.x）。
+     * </p>
+     *
+     * @param config           连接池配置
+     * @param durationMethod   Duration API 方法名（如 {@code setMaxWait}）
+     * @param durationValue    Duration 值
+     * @param millisMethod     millis API 方法名（如 {@code setMaxWaitMillis}）
+     * @param millisValue      millis 值
+     */
+    private void setPoolDuration(GenericObjectPoolConfig<?> config,
+                                 String durationMethod, Duration durationValue,
+                                 String millisMethod, long millisValue) {
+        try {
+            java.lang.reflect.Method method = config.getClass().getMethod(durationMethod, Duration.class);
+            method.invoke(config, durationValue);
+        } catch (NoSuchMethodException e) {
+            // commons-pool2 2.11.x 没有 Duration API，回退到 millis
+            try {
+                java.lang.reflect.Method method = config.getClass().getMethod(millisMethod, long.class);
+                method.invoke(config, millisValue);
+            } catch (Exception ex) {
+                log.warn("Failed to set pool duration: {} / {}", durationMethod, millisMethod, ex);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to set pool duration: {}", durationMethod, e);
+        }
     }
 
     /**
