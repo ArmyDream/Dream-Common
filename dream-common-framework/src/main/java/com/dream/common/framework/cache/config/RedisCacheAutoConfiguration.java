@@ -7,6 +7,7 @@ import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.data.redis.RedisProperties;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
@@ -86,7 +87,8 @@ import java.util.List;
  */
 @Slf4j
 @Configuration
-@ConditionalOnClass(RedisTemplate.class)
+@ConditionalOnClass({RedisTemplate.class, RedisProperties.class})
+@EnableConfigurationProperties(RedisProperties.class)
 public class RedisCacheAutoConfiguration {
 
     /** 默认连接池最大活跃连接数 */
@@ -105,10 +107,14 @@ public class RedisCacheAutoConfiguration {
     private static final Duration DEFAULT_TIME_BETWEEN_EVICTION_RUNS = Duration.ofSeconds(30L);
 
     /**
-     * 构建 Lettuce 连接池工厂
+     * 构建 Lettuce 连接工厂
      * <p>
      * 基于 {@link RedisProperties}（{@code spring.redis.*}）构建 {@link LettuceConnectionFactory}，
-     * 自动适配单机 / 哨兵 / 集群模式，并启用连接池（使用 commons-pool2 2.12+ 的 {@link Duration} API）。
+     * 自动适配单机 / 哨兵 / 集群模式。
+     * </p>
+     * <p>
+     * <b>连接池降级</b>：当 commons-pool2 在类路径上时启用连接池（使用 Duration API）；
+     * commons-pool2 缺失时自动回退到非池化 Lettuce 连接，避免 {@code NoClassDefFoundError}。
      * </p>
      *
      * @param properties Spring Boot 官方 Redis 配置
@@ -118,24 +124,76 @@ public class RedisCacheAutoConfiguration {
     @Primary
     @ConditionalOnMissingBean(RedisConnectionFactory.class)
     public RedisConnectionFactory redisConnectionFactory(RedisProperties properties) {
-        GenericObjectPoolConfig<?> poolConfig = buildPoolConfig(properties);
-        LettucePoolingClientConfiguration.LettucePoolingClientConfigurationBuilder builder =
-                LettucePoolingClientConfiguration.builder().poolConfig(poolConfig);
-
-        if (properties.getTimeout() != null) {
-            builder.commandTimeout(properties.getTimeout());
-        } else {
-            builder.commandTimeout(Duration.ofSeconds(5L));
-        }
-
+        Duration commandTimeout = properties.getTimeout() != null
+                ? properties.getTimeout()
+                : Duration.ofSeconds(5L);
         RedisConfiguration redisConfig = buildRedisConfiguration(properties);
-        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisConfig, builder.build());
-        factory.afterPropertiesSet();
 
-        log.info("LettuceConnectionFactory initialized | mode={} | pool[maxActive={},maxIdle={},minIdle={}]",
+        if (isPoolAvailable()) {
+            return buildPooledConnectionFactory(properties, redisConfig, commandTimeout);
+        }
+        return buildNonPooledConnectionFactory(redisConfig, commandTimeout);
+    }
+
+    /**
+     * 构建（带连接池的）LettuceConnectionFactory
+     *
+     * @param properties     Redis 配置
+     * @param redisConfig    Redis 部署配置
+     * @param commandTimeout 命令超时
+     * @return LettuceConnectionFactory
+     */
+    private LettuceConnectionFactory buildPooledConnectionFactory(RedisProperties properties,
+                                                                 RedisConfiguration redisConfig,
+                                                                 Duration commandTimeout) {
+        GenericObjectPoolConfig<?> poolConfig = buildPoolConfig(properties);
+        LettucePoolingClientConfiguration config = LettucePoolingClientConfiguration.builder()
+                .poolConfig(poolConfig)
+                .commandTimeout(commandTimeout)
+                .build();
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisConfig, config);
+        factory.afterPropertiesSet();
+        log.info("LettuceConnectionFactory initialized (pooled) | mode={} | pool[maxActive={},maxIdle={},minIdle={}]",
                 detectMode(properties), poolConfig.getMaxTotal(),
                 poolConfig.getMaxIdle(), poolConfig.getMinIdle());
         return factory;
+    }
+
+    /**
+     * 构建（非池化的）LettuceConnectionFactory
+     * <p>
+     * 当 commons-pool2 不在类路径上时使用，与 Spring Boot 默认行为一致。
+     * </p>
+     *
+     * @param redisConfig    Redis 部署配置
+     * @param commandTimeout 命令超时
+     * @return LettuceConnectionFactory
+     */
+    private LettuceConnectionFactory buildNonPooledConnectionFactory(RedisConfiguration redisConfig,
+                                                                     Duration commandTimeout) {
+        org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration config =
+                org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration.builder()
+                        .commandTimeout(commandTimeout)
+                        .build();
+        LettuceConnectionFactory factory = new LettuceConnectionFactory(redisConfig, config);
+        factory.afterPropertiesSet();
+        log.warn("LettuceConnectionFactory initialized (non-pooled, commons-pool2 not found) | "
+                + "建议引入 commons-pool2 以启用连接池");
+        return factory;
+    }
+
+    /**
+     * 检查 commons-pool2 是否在类路径上
+     *
+     * @return true 表示 commons-pool2 可用
+     */
+    private boolean isPoolAvailable() {
+        try {
+            Class.forName("org.apache.commons.pool2.impl.GenericObjectPoolConfig");
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        }
     }
 
     /**
