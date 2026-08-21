@@ -2,7 +2,7 @@ package com.dream.common.framework.websocket.cache;
 
 import com.dream.common.framework.websocket.api.WebSocketMessageCache;
 import com.dream.common.framework.websocket.model.WebSocketMessage;
-import com.dream.common.tool.utils.CachesUtils;
+import com.dream.common.tool.utils.CachesCaffeineUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -42,7 +42,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
             return;
         }
         String key = buildKey(group, userId);
-        List<WebSocketMessage> messages = CachesUtils.get(key);
+        List<WebSocketMessage> messages = CachesCaffeineUtils.get(key);
         if (messages == null) {
             messages = new ArrayList<>();
         }
@@ -51,7 +51,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
             log.warn("用户 {}/{} 离线消息超过 {} 条，已移除最早的消息", group, userId, MAX_MESSAGES);
         }
         messages.add(message);
-        CachesUtils.set(key, messages, EXPIRE_SECONDS, TimeUnit.SECONDS);
+        CachesCaffeineUtils.set(key, messages, EXPIRE_SECONDS, TimeUnit.SECONDS);
     }
 
     @Override
@@ -59,7 +59,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
         if (group == null || userId == null) {
             return Collections.emptyList();
         }
-        List<WebSocketMessage> messages = CachesUtils.get(buildKey(group, userId));
+        List<WebSocketMessage> messages = CachesCaffeineUtils.get(buildKey(group, userId));
         return messages != null ? new ArrayList<>(messages) : Collections.emptyList();
     }
 
@@ -68,7 +68,7 @@ public class DefaultWebSocketMessageCache implements WebSocketMessageCache {
         if (group == null || userId == null) {
             return;
         }
-        CachesUtils.delete(buildKey(group, userId));
+        CachesCaffeineUtils.delete(buildKey(group, userId));
     }
 
     @Override

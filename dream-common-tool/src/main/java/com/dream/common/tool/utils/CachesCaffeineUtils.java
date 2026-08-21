@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  */
 @Slf4j
 @SuppressWarnings("all")
-public final class CachesUtils {
+public final class CachesCaffeineUtils {
 
     // ==================== 常量 ====================
 
@@ -63,7 +63,7 @@ public final class CachesUtils {
      */
     private static final long MAXIMUM_SIZE = Business.CACHE_MAXIMUM_SIZE;
 
-    private CachesUtils() {
+    private CachesCaffeineUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
     }
 
