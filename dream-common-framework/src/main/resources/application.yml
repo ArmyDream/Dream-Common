@@ -9,6 +9,8 @@ logging:
   custom:
     package: com.dream # 自定义包
     console: true # 控制台输出
+    sql: false # SQL 日志独立文件（dev 环境自动开启 DEBUG）
+    async-queue-size: 1024 # 异步日志队列大小
   level: # 日志级别  TRACE, DEBUG, INFO, WARN, ERROR, FATAL, OFF
     root: INFO
     biz: INFO

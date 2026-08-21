@@ -1,62 +1,73 @@
-<?xml version="1.0" encoding="UTF-8" ?>
-<!--<configuration scan="true" scanPeriod="30 seconds">-->
-<!--<configuration scan="true" scanPeriod="5 minutes">-->
-<configuration >
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    ====================================================================
+    Logback 配置（Spring Boot 2.7.x）
+    ====================================================================
+    特性：
+      1. 多环境隔离（dev/test 同步输出，prod 异步输出）
+      2. 日志分级：ALL / ERROR / WARN 独立文件
+      3. 链路追踪 traceId 自动注入（需配合 MDC）
+      4. 异步 Appender + 队列满丢弃策略
+      5. 按时间 + 大小滚动，自动清理历史
+      6. 第三方框架日志抑制
+      7. SQL 日志独立输出（可按需开启）
+    ====================================================================
+-->
+<configuration scan="true" scanPeriod="60 seconds">
 
     <!-- ==================== 基础属性（从 application.yml 读取） ==================== -->
 
     <!-- 应用名称 -->
     <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="dream"/>
 
-    <!-- 日志路径 -->
+    <!-- 日志根路径 -->
     <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="logs/${APP_NAME}"/>
 
-    <!-- 文件滚动：单文件上限 -->
+    <!-- 单文件上限 -->
     <springProperty scope="context" name="MAX_FILE_SIZE" source="logging.logback.rollingpolicy.max-file-size"
                     defaultValue="200MB"/>
 
-    <!-- 文件滚动：保留天数 -->
+    <!-- 保留天数 -->
     <springProperty scope="context" name="MAX_HISTORY" source="logging.logback.rollingpolicy.max-history"
                     defaultValue="30"/>
 
-    <!-- 文件滚动：所有归档文件总大小上限 -->
+    <!-- 归档文件总大小上限 -->
     <springProperty scope="context" name="TOTAL_SIZE_CAP" source="logging.logback.rollingpolicy.total-size-cap"
                     defaultValue="10GB"/>
 
     <!-- root 日志级别 -->
     <springProperty scope="context" name="ROOT_LEVEL" source="logging.level.root" defaultValue="INFO"/>
 
-    <!-- 业务包名（自定义配置） -->
+    <!-- 业务包名 -->
     <springProperty scope="context" name="BIZ_PACKAGE" source="logging.custom.package" defaultValue="com.dream"/>
 
     <!-- 业务包日志级别 -->
     <springProperty scope="context" name="BIZ_LEVEL" source="logging.level.biz" defaultValue="INFO"/>
 
-    <!-- 是否启用控制台（自定义配置） -->
+    <!-- 是否启用控制台 -->
     <springProperty scope="context" name="CONSOLE_ENABLED" source="logging.custom.console" defaultValue="true"/>
+
+    <!-- 是否启用 SQL 日志文件（默认 dev 开启，prod 关闭） -->
+    <springProperty scope="context" name="SQL_LOG_ENABLED" source="logging.custom.sql" defaultValue="false"/>
+
+    <!-- 异步队列大小 -->
+    <springProperty scope="context" name="ASYNC_QUEUE_SIZE" source="logging.custom.async-queue-size"
+                    defaultValue="1024"/>
 
     <contextName>${APP_NAME}</contextName>
 
     <!-- ==================== 日志格式 ==================== -->
 
     <!--
-    控制台格式（带颜色）
-    颜色方案：
-      时间    → 绿色(%green)
-      线程    → 红色(%red)
-      级别    → 高亮（ERROR 红、WARN 黄、INFO 蓝、DEBUG 绿）
-      类名    → 青色(%cyan)
-      链路ID  → 品红(%magenta)
-      消息    → 默认白
+        控制台格式（带颜色）
+        颜色方案：时间绿 / 线程红 / 级别高亮 / 类名青 / traceId 品红 / 消息白
     -->
-
-    <!-- 控制台格式（带颜色） -->
     <property name="CONSOLE_PATTERN"
-              value="%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %red([%thread]) %highlight(%-5level) %cyan(%logger{36}) %magenta([%X{traceId:-}]) - %msg%n"/>
+              value="%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %red([%thread]) %highlight(%-5level) %cyan(%logger{40}) %magenta([%X{traceId:-}]) - %msg%n"/>
 
-    <!-- 文件格式（无颜色） -->
+    <!-- 文件格式（无颜色，含完整类名） -->
     <property name="FILE_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{36} - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{60} - %msg%n"/>
 
     <!-- ==================== Appender：控制台 ==================== -->
 
@@ -76,7 +87,7 @@
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
             <maxHistory>${MAX_HISTORY}</maxHistory>
             <totalSizeCap>${TOTAL_SIZE_CAP}</totalSizeCap>
@@ -96,7 +107,7 @@
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/${APP_NAME}-error.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-error.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
             <maxHistory>${MAX_HISTORY}</maxHistory>
             <totalSizeCap>2GB</totalSizeCap>
@@ -118,7 +129,7 @@
             <charset>UTF-8</charset>
         </encoder>
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
-            <fileNamePattern>${LOG_PATH}/${APP_NAME}-warn.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-warn.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
             <maxFileSize>${MAX_FILE_SIZE}</maxFileSize>
             <maxHistory>${MAX_HISTORY}</maxHistory>
             <totalSizeCap>2GB</totalSizeCap>
@@ -126,12 +137,30 @@
         </rollingPolicy>
     </appender>
 
-    <!-- ==================== 异步 Appender（生产环境） ==================== -->
+    <!-- ==================== Appender：SQL 日志文件（可关闭） ==================== -->
+
+    <appender name="FILE_SQL" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-sql.log</file>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId:-}] %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/${APP_NAME}-sql.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>7</maxHistory>
+            <totalSizeCap>1GB</totalSizeCap>
+            <cleanHistoryOnStart>true</cleanHistoryOnStart>
+        </rollingPolicy>
+    </appender>
+
+    <!-- ==================== 异步 Appender（生产环境使用） ==================== -->
 
     <appender name="ASYNC_ALL" class="ch.qos.logback.classic.AsyncAppender">
-        <queueSize>1024</queueSize>
+        <queueSize>${ASYNC_QUEUE_SIZE}</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <includeCallerData>false</includeCallerData>
+        <neverBlock>true</neverBlock>
         <appender-ref ref="FILE_ALL"/>
     </appender>
 
@@ -139,6 +168,7 @@
         <queueSize>512</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <includeCallerData>false</includeCallerData>
+        <neverBlock>true</neverBlock>
         <appender-ref ref="FILE_ERROR"/>
     </appender>
 
@@ -146,21 +176,39 @@
         <queueSize>512</queueSize>
         <discardingThreshold>0</discardingThreshold>
         <includeCallerData>false</includeCallerData>
+        <neverBlock>true</neverBlock>
         <appender-ref ref="FILE_WARN"/>
     </appender>
 
-    <!-- ==================== 框架日志抑制 ==================== -->
+    <!-- ==================== 第三方框架日志抑制 ==================== -->
 
-    <!--<logger name="org.springframework" level="WARN"/>
+    <!-- Spring 框架 -->
+    <logger name="org.springframework" level="WARN"/>
     <logger name="org.springframework.boot" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>
-    <logger name="org.apache" level="WARN"/>
+
+    <!-- 数据库 -->
+    <logger name="com.alibaba.druid" level="WARN"/>
     <logger name="com.baomidou" level="WARN"/>
-    <logger name="com.alibaba" level="WARN"/>
-    <logger name="com.zaxxer" level="WARN"/>
     <logger name="org.hibernate" level="WARN"/>
     <logger name="org.mybatis" level="WARN"/>
-    <logger name="springfox" level="WARN"/>-->
+
+    <!-- 连接池 -->
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <logger name="io.lettuce" level="WARN"/>
+    <logger name="org.apache.commons.pool2" level="WARN"/>
+
+    <!-- Apache -->
+    <logger name="org.apache" level="WARN"/>
+    <logger name="org.apache.ibatis" level="WARN"/>
+
+    <!-- Redisson -->
+    <logger name="org.redisson" level="WARN"/>
+
+    <!-- MyBatis SQL（默认 INFO，仅 dev 环境开启 DEBUG） -->
+    <logger name="com.dream.common.data.mapper" level="INFO" additivity="false">
+        <appender-ref ref="FILE_SQL"/>
+    </logger>
 
     <!-- ==================== 业务 Logger（公共，不受 profile 影响） ==================== -->
 
@@ -175,9 +223,15 @@
 
     <!--
         【开发/测试环境】
-        控制台 + 同步文件输出
+        控制台 + 同步文件输出 + SQL DEBUG
     -->
     <springProfile name="dev,test,sit,pre,fat,staging">
+        <!-- 开发环境业务 SQL 开启 DEBUG -->
+        <logger name="com.dream.common.data.mapper" level="DEBUG" additivity="false">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE_SQL"/>
+        </logger>
+
         <root level="${ROOT_LEVEL}">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="FILE_ALL"/>
@@ -188,7 +242,7 @@
 
     <!--
         【生产/UAT 环境】
-        仅异步文件输出，无控制台
+        仅异步文件输出，无控制台，SQL 日志可按需开启
     -->
     <springProfile name="pro,prod,production,uat,dr">
         <root level="${ROOT_LEVEL}">
@@ -197,5 +251,12 @@
             <appender-ref ref="ASYNC_WARN"/>
         </root>
     </springProfile>
+
+    <!-- ==================== 默认兜底 ==================== -->
+
+    <!-- 没有匹配任何 profile 时也保证有控制台输出 -->
+    <root level="${ROOT_LEVEL}">
+        <appender-ref ref="CONSOLE"/>
+    </root>
 
 </configuration>
