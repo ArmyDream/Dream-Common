@@ -42,7 +42,7 @@ public @interface Dict {
     /**
      * 字典类型标识
      * <p>
-     * 用于关联外部字典数据（需实现 {@link com.dream.common.tool.dict.DictProvider}）
+     * 用于关联外部字典数据（需实现 {@link com.dream.common.tool.utils.dict.DictProvider}）
      */
     String type() default "";
 

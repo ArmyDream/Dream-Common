@@ -11,8 +11,15 @@ import java.util.List;
 /**
  * 字典项
  * <p>
- * 标注 {@link Tree} 注解，自身即为树节点，可直接构建树形结构
+ * 标注 {@link Tree} 注解，自身即为树节点，可直接构建树形结构。
+ * </p>
+ * <p>
+ * 用于表示一条字典数据，包含字典值、显示标签、图标、颜色、禁用状态、
+ * 终止状态、父级值（树形字典）、排序号、扩展数据等字段。
+ * </p>
  *
+ * @author dream
+ * @since 2026-08-21
  */
 @Data
 @AllArgsConstructor
@@ -24,10 +31,6 @@ import java.util.List;
         children = "children",
         sort = "sort"
 )
-/**
- *
- * @author dream
- */
 public class DictItem implements Serializable {
 
     private static final long serialVersionUID = 1L;

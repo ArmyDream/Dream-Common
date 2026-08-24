@@ -424,6 +424,187 @@ public final class DictUtils {
         return trimmed.equals(rootNodeValue);
     }
 
+    // ==================== 增删改操作 ====================
+
+    /**
+     * 判断当前提供者是否支持写入/删除操作
+     *
+     * @return {@code true} 表示只读，不支持写入；{@code false} 表示可写
+     */
+    public static boolean isReadOnly() {
+        return dictProvider == null || dictProvider.isReadOnly();
+    }
+
+    /**
+     * 新增单个字典项
+     * <p>若提供者未初始化或为只读，记录告警日志后直接返回，不抛出异常。</p>
+     *
+     * @param dictType 字典类型标识，不能为空白
+     * @param item     字典项，不能为 {@code null}
+     * @return {@code true} 表示新增成功
+     */
+    public static boolean addDictItem(String dictType, DictItem item) {
+        if (StringUtils.isBlank(dictType) || item == null) {
+            return false;
+        }
+        if (dictProvider == null) {
+            log.warn("DictProvider 未初始化，无法新增字典项，dictType={}", dictType);
+            return false;
+        }
+        if (dictProvider.isReadOnly()) {
+            log.warn("当前 DictProvider 为只读，不支持新增字典项，dictType={}", dictType);
+            return false;
+        }
+        try {
+            dictProvider.addDictItem(dictType, item);
+            dictProvider.refreshDict(dictType);
+            log.debug("新增字典项成功，dictType={}, value={}", dictType, item.getValue());
+            return true;
+        } catch (Exception e) {
+            log.error("新增字典项失败，dictType={}, value={}", dictType, item.getValue(), e);
+            return false;
+        }
+    }
+
+    /**
+     * 批量新增字典项
+     *
+     * @param dictType 字典类型标识，不能为空白
+     * @param items    字典项列表，不能为 {@code null} 或空
+     * @return 实际新增的字典项数量
+     */
+    public static int addDictItems(String dictType, List<DictItem> items) {
+        if (StringUtils.isBlank(dictType) || items == null || items.isEmpty()) {
+            return 0;
+        }
+        if (dictProvider == null || dictProvider.isReadOnly()) {
+            log.warn("DictProvider 未初始化或为只读，无法批量新增字典项，dictType={}", dictType);
+            return 0;
+        }
+        try {
+            dictProvider.addDictItems(dictType, items);
+            dictProvider.refreshDict(dictType);
+            log.debug("批量新增字典项成功，dictType={}, count={}", dictType, items.size());
+            return items.size();
+        } catch (Exception e) {
+            log.error("批量新增字典项失败，dictType={}", dictType, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 更新字典项（不存在则新增）
+     *
+     * @param dictType 字典类型标识，不能为空白
+     * @param item     字典项，不能为 {@code null}
+     * @return {@code true} 表示更新成功
+     */
+    public static boolean updateDictItem(String dictType, DictItem item) {
+        if (StringUtils.isBlank(dictType) || item == null) {
+            return false;
+        }
+        if (dictProvider == null || dictProvider.isReadOnly()) {
+            log.warn("DictProvider 未初始化或为只读，无法更新字典项，dictType={}", dictType);
+            return false;
+        }
+        try {
+            dictProvider.updateDictItem(dictType, item);
+            dictProvider.refreshDict(dictType);
+            log.debug("更新字典项成功，dictType={}, value={}", dictType, item.getValue());
+            return true;
+        } catch (Exception e) {
+            log.error("更新字典项失败，dictType={}, value={}", dictType, item.getValue(), e);
+            return false;
+        }
+    }
+
+    /**
+     * 根据字典值删除单个字典项
+     *
+     * @param dictType 字典类型标识，不能为空白
+     * @param value    字典值，不能为 {@code null}
+     * @return {@code true} 表示删除成功
+     */
+    public static boolean removeDictItem(String dictType, String value) {
+        if (StringUtils.isBlank(dictType) || value == null) {
+            return false;
+        }
+        if (dictProvider == null || dictProvider.isReadOnly()) {
+            log.warn("DictProvider 未初始化或为只读，无法删除字典项，dictType={}", dictType);
+            return false;
+        }
+        try {
+            boolean success = dictProvider.removeDictItem(dictType, value);
+            dictProvider.refreshDict(dictType);
+            if (success) {
+                log.debug("删除字典项成功，dictType={}, value={}", dictType, value);
+            } else {
+                log.debug("字典项不存在，未删除，dictType={}, value={}", dictType, value);
+            }
+            return success;
+        } catch (Exception e) {
+            log.error("删除字典项失败，dictType={}, value={}", dictType, value, e);
+            return false;
+        }
+    }
+
+    /**
+     * 删除指定字典类型的全部字典项
+     *
+     * @param dictType 字典类型标识，不能为空白
+     * @return 实际删除的字典项数量
+     */
+    public static int removeDictType(String dictType) {
+        if (StringUtils.isBlank(dictType)) {
+            return 0;
+        }
+        if (dictProvider == null || dictProvider.isReadOnly()) {
+            log.warn("DictProvider 未初始化或为只读，无法删除字典类型，dictType={}", dictType);
+            return 0;
+        }
+        try {
+            int count = dictProvider.removeDictType(dictType);
+            dictProvider.refreshDict(dictType);
+            log.debug("删除字典类型成功，dictType={}, count={}", dictType, count);
+            return count;
+        } catch (Exception e) {
+            log.error("删除字典类型失败，dictType={}", dictType, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 刷新指定字典类型的缓存
+     *
+     * @param dictType 字典类型标识
+     */
+    public static void refreshDict(String dictType) {
+        if (dictProvider == null) {
+            return;
+        }
+        try {
+            dictProvider.refreshDict(dictType);
+            log.debug("刷新字典缓存成功，dictType={}", dictType);
+        } catch (Exception e) {
+            log.error("刷新字典缓存失败，dictType={}", dictType, e);
+        }
+    }
+
+    /**
+     * 刷新全部字典缓存
+     */
+    public static void refreshAll() {
+        if (dictProvider == null) {
+            return;
+        }
+        try {
+            dictProvider.refreshAll();
+            log.debug("刷新全部字典缓存成功");
+        } catch (Exception e) {
+            log.error("刷新全部字典缓存失败", e);
+        }
+    }
+
     // ==================== 辅助方法 ====================
 
     private static List<Field> getDictFields(Class<?> clazz) {

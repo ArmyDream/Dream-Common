@@ -16,6 +16,12 @@
     </description>
 
     <dependencies>
+        <!-- dream-common-data：代码生成默认继承其基础类（BaseIdEntity/CommonMapper/CommonService 等） -->
+        <dependency>
+            <groupId>com.dream</groupId>
+            <artifactId>dream-common-data</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.velocity</groupId>
             <artifactId>velocity-engine-core</artifactId>
