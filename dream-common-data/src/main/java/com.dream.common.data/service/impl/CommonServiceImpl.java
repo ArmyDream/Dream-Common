@@ -24,7 +24,9 @@ import com.dream.common.data.utils.MybatisPlusUtils;
 import com.dream.common.data.utils.SensitiveUtil;
 import com.dream.common.tool.utils.dict.DictUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.lang.Nullable;
+import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.lang.reflect.Field;
@@ -58,6 +60,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author dream
  */
 @Slf4j
+@Service
 public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends ServiceImpl<M, T> implements CommonService<T> {
 
     /**
@@ -66,13 +69,16 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     private static final String DEFAULT_OPERATOR = "system";
 
     /**
-     * 数据变更记录 Mapper。
-     * <p>
-     * 通过构造器注入，若子类构造时未传入（传 {@code null}），则该字段为 {@code null}，
-     * 此时 {@link #recordDataChange} 不会进行持久化，仅跳过变更记录写入。
-     * </p>
+     * 数据变更记录 Mapper（可选依赖）。
+     * 通过 Setter 注入，Spring 容器中有该 Bean 则注入，没有则跳过。
+     * 遵循 Spring 官方建议：强制依赖用构造器，可选依赖用 Setter。
      */
-    private final CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper;
+    private CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper;
+
+    @Autowired(required = false)
+    public void setDataChangeRecordMapper(CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper) {
+        this.dataChangeRecordMapper = dataChangeRecordMapper;
+    }
 
     /**
      * 实体类类型缓存
@@ -80,18 +86,6 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     private final Map<String, Class<T>> entityClassTypeCache = new ConcurrentHashMap<>();
     private Class<T> entityClass;
 
-    /**
-     * 构造通用 Service 实现。
-     * <p>
-     * 子类可选择是否传入数据变更记录 Mapper。若传入 {@code null}，
-     * 则 {@link #dataChangeRecordMapper} 为 {@code null}，数据变更记录功能将不生效（不会持久化）。
-     * </p>
-     *
-     * @param dataChangeRecordMapper 数据变更记录 Mapper，可为 {@code null}
-     */
-    protected CommonServiceImpl(@Nullable CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper) {
-        this.dataChangeRecordMapper = dataChangeRecordMapper;
-    }
 
     /**
      * 获取实体类类型（解析子类继承时声明的泛型参数）。

@@ -39,6 +39,7 @@ import ${package.Service}.${table.serviceName};
 import ${package.Entity}.${entity};
 #if($hasSuper)
 import ${superControllerClassPackage};
+import com.dream.common.core.config.ControllerConfig;
 #end
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -79,17 +80,20 @@ public class ${table.controllerName}#if($hasSuper) extends ${superControllerClas
     public ${table.controllerName}(${table.serviceName} baseService) {
         super(baseService);
     }
-#end
 
-#if($hasSuper)
     /**
-     * 权限前缀：基础前缀 + 实体名
+     * 权限前缀、日志标题、是否记录日志
      * 如需为特定表覆盖，可在子类中重写此方法
      */
     @Override
-    protected String getPermissionPrefix() {
-        return "${finalPerm}";
+    protected ControllerConfig getControllerConfig() {
+        return new ControllerConfig("${finalPerm}", "$!{table.comment}管理", ${logEnabled});
     }
+
+#end
+
+#if($hasSuper)
+
 #end
 
 }

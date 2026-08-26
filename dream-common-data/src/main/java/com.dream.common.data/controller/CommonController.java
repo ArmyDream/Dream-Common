@@ -3,6 +3,7 @@ package com.dream.common.data.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.dream.common.core.annotation.Log;
 import com.dream.common.core.annotation.Permission;
+import com.dream.common.core.config.ControllerConfig;
 import com.dream.common.core.enums.OperationType;
 import com.dream.common.core.enums.PermissionType;
 import com.dream.common.core.exception.BusinessException;
@@ -30,24 +31,21 @@ import java.util.List;
  * </p>
  *
  * <h2>权限控制</h2>
- * <p>
- * 各方法默认标注 {@link Permission} 注解，权限标识采用 <b>动作后缀</b> 形式
- * （如 {@code "list"}、{@code "add"}、{@code "edit"}、{@code "delete"}），
- * 由 {@link #getPermissionPrefix()} 返回的 <b>模块前缀</b> 拼接为完整权限标识。
- * </p>
+
  * <p>
  * 权限解析规则（由 AOP 切面执行）：
  * <ul>
  *   <li>当 {@link Permission#value()} 不含冒号（如 {@code "list"}），完整权限 = {@code getPermissionPrefix() + ":" + value}</li>
  *   <li>当 {@link Permission#value()} 含冒号（如 {@code "system:user:list"}），直接作为完整权限使用</li>
  * </ul>
- * 子类重写 {@link #getPermissionPrefix()} 返回业务前缀即可，例如 {@code "system:user"}。
  * </p>
  *
  * <h2>操作日志</h2>
  * <p>
  * 各方法标注 {@link Log} 注解，声明操作类型（{@link OperationType}），
  * AOP 切面自动记录请求参数、响应结果、执行耗时等信息。
+ * </p>
+ * <p>
  * </p>
  *
  * <h2>使用示例</h2>
@@ -62,8 +60,8 @@ import java.util.List;
  *
  *     // 重写权限前缀，各方法权限将解析为 system:user:list / system:user:add / ...
  *     @Override
- *     protected String getPermissionPrefix() {
- *         return "system:user";
+ *     protected ControllerConfig getControllerConfig() {
+ *         return new ControllerConfig("system:user", "用户管理", true);
  *     }
  * }
  * }</pre>
@@ -85,11 +83,6 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * 实体类类型（懒加载缓存）
      */
     private Class<T> entityClass;
-
-    /**
-     * 权限前缀（懒加载缓存）
-     */
-    private String permissionPrefix;
 
     /**
      * 构造通用 Controller。
@@ -123,21 +116,12 @@ public abstract class CommonController<S extends CommonService<T>, T> {
     }
 
     /**
-     * 获取权限标识前缀。
-     * <p>
-     * 用于与 {@link Permission#value()} 中的动作后缀拼接为完整权限标识。
-     * 默认返回实体类简单名的小写形式（如 {@code User} → {@code user}），
-     * 子类应重写为标准的 {@code 模块:实体} 格式（如 {@code "system:user"}）。
-     * </p>
+     *  ControllerConfig 配置
      *
-     * @return 权限前缀
+     * @return  ControllerConfig
      */
-    protected String getPermissionPrefix() {
-        if (permissionPrefix == null) {
-            permissionPrefix = getEntityClass().getSimpleName().toLowerCase();
-            log.debug("使用默认权限前缀: {}（建议子类重写为 模块:实体 格式）", permissionPrefix);
-        }
-        return permissionPrefix;
+    protected ControllerConfig getControllerConfig() {
+        return new ControllerConfig("", "", true);
     }
 
     // ==================== 基础查询接口 ====================
@@ -149,7 +133,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 分页结果
      */
     @Permission(value = "list", type = PermissionType.LIST)
-    @Log(title = "分页查询", operationType = OperationType.QUERY)
+    @Log(operationType = OperationType.QUERY)
     @PostMapping("/page")
     public R<IPage<T>> page(@RequestBody CommonPageQuery<T> pageQuery) {
         return R.ok(baseService.findPage(pageQuery));
@@ -162,7 +146,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 数据列表
      */
     @Permission(value = "list", type = PermissionType.LIST)
-    @Log(title = "列表查询", operationType = OperationType.QUERY, isSaveResponseData = false)
+    @Log(operationType = OperationType.QUERY, isSaveResponseData = false)
     @PostMapping("/list")
     public R<List<T>> list(@RequestBody T query) {
         return R.ok(baseService.findList(query));
@@ -175,7 +159,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 单个实体；无匹配返回 {@code null}
      */
     @Permission(value = "query", type = PermissionType.VIEW)
-    @Log(title = "查询单条", operationType = OperationType.QUERY)
+    @Log(operationType = OperationType.QUERY)
     @PostMapping("/one")
     public R<T> one(@RequestBody T query) {
         return R.ok(baseService.findOne(query));
@@ -188,7 +172,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 实体；不存在返回 {@code null}
      */
     @Permission(value = "query", type = PermissionType.VIEW)
-    @Log(title = "根据ID查询", operationType = OperationType.VIEW)
+    @Log(operationType = OperationType.VIEW)
     @GetMapping("/get/{id}")
     public R<T> getById(@PathVariable String id) {
         return R.ok(baseService.findById(id));
@@ -201,7 +185,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 实体列表
      */
     @Permission(value = "query", type = PermissionType.VIEW)
-    @Log(title = "批量查询", operationType = OperationType.QUERY, isSaveResponseData = false)
+    @Log(operationType = OperationType.QUERY, isSaveResponseData = false)
     @PostMapping("/get/batch")
     public R<List<T>> getByIds(@RequestBody List<String> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -219,7 +203,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 新增后的实体（含已生成的主键）
      */
     @Permission(value = "add", type = PermissionType.ADD)
-    @Log(title = "新增", operationType = OperationType.INSERT)
+    @Log(operationType = OperationType.INSERT)
     @PostMapping("/add")
     public R<T> add(@RequestBody T entity) {
         return R.ok("新增成功", baseService.addEntity(entity));
@@ -232,7 +216,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 新增后的实体列表（含已生成的主键）
      */
     @Permission(value = "add", type = PermissionType.ADD)
-    @Log(title = "批量新增", operationType = OperationType.INSERT, isSaveResponseData = false)
+    @Log(operationType = OperationType.INSERT, isSaveResponseData = false)
     @PostMapping("/add/batch")
     public R<List<T>> addBatch(@RequestBody List<T> entityList) {
         if (entityList == null || entityList.isEmpty()) {
@@ -250,7 +234,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 修改后的实体
      */
     @Permission(value = "edit", type = PermissionType.EDIT)
-    @Log(title = "修改", operationType = OperationType.UPDATE)
+    @Log(operationType = OperationType.UPDATE)
     @PutMapping("/update")
     public R<T> update(@RequestBody T entity) {
         return R.ok("修改成功", baseService.updateEntity(entity));
@@ -265,7 +249,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 保存后的实体
      */
     @Permission(value = {"add", "edit"}, logical = Permission.Logical.OR, type = PermissionType.EDIT)
-    @Log(title = "新增或修改", operationType = OperationType.UPDATE)
+    @Log(operationType = OperationType.UPDATE)
     @PostMapping("/save")
     public R<T> save(@RequestBody T entity) {
         return R.ok("保存成功", baseService.saveOrUpdateEntity(entity));
@@ -280,7 +264,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 是否删除成功
      */
     @Permission(value = "delete", type = PermissionType.DELETE)
-    @Log(title = "删除", operationType = OperationType.DELETE)
+    @Log(operationType = OperationType.DELETE)
     @DeleteMapping("/delete/{id}")
     public R<Boolean> deleteById(@PathVariable String id) {
         boolean success = baseService.removeById(id);
@@ -294,7 +278,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 是否删除成功
      */
     @Permission(value = "delete", type = PermissionType.DELETE)
-    @Log(title = "批量删除", operationType = OperationType.DELETE)
+    @Log(operationType = OperationType.DELETE)
     @DeleteMapping("/delete/batch")
     public R<Boolean> deleteBatch(@RequestBody List<String> ids) {
         if (ids == null || ids.isEmpty()) {
@@ -313,7 +297,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @return 是否完整（未被篡改）
      */
     @Permission(value = "query", type = PermissionType.VIEW)
-    @Log(title = "数据完整性校验", operationType = OperationType.VIEW)
+    @Log(operationType = OperationType.VIEW)
     @GetMapping("/check/integrity/{id}")
     public R<Boolean> checkIntegrity(@PathVariable String id) {
         return R.ok(baseService.checkDataIntegrity(id));

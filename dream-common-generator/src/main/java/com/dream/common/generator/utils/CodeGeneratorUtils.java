@@ -207,6 +207,8 @@ public class CodeGeneratorUtils {
         Map<String, Object> customMap = new HashMap<>();
         customMap.put("baseRequestMapping", config.getBaseRequestMapping());
         customMap.put("basePermissionPrefix", config.getBasePermissionPrefix());
+        customMap.put("logEnabled", config.isLogEnabled());
+        customMap.put("dataChangeRecordPersistent", config.isDataChangeRecordPersistent());
 
         // ⚠️ 注入父类全限定名（用于模板中判断）
         Class<?> superControllerClass = config.getSuperControllerClass();
@@ -382,6 +384,16 @@ public class CodeGeneratorUtils {
          * <p>若未指定，默认使用表名</p>
          */
         private String basePermissionPrefix;
+
+        /**
+         * 是否启用操作日志记录，默认 true。
+         */
+        private boolean logEnabled = true;
+
+        /**
+         * 是否入库数据变更记录，默认 false。
+         */
+        private boolean dataChangeRecordPersistent = false;
 
         // ==================== 表配置 ====================
 

@@ -45,19 +45,6 @@ open class ${table.serviceImplName} : ${superServiceImplClass}<${table.mapperNam
 #else
 public class ${table.serviceImplName} extends ${superServiceImplClass}<${table.mapperName}, ${entity}>#if($hasServiceInterface) implements ${table.serviceName}#end {
 
-#if($isCommonServiceImpl)
-    /**
-     * 无参构造器，传入空的数据变更记录 Mapper（不启用持久化变更记录）
-     * <p>如果需要在业务中记录数据变更，请通过构造器注入 CommonMapper{@code <DataChangeRecordEntity>}</p>
-     */
-    public ${table.serviceImplName}() {
-        super(null);
-    }
-
-#else
-    public ${table.serviceImplName}() {
-    }
-#end
 
 }
 #end
