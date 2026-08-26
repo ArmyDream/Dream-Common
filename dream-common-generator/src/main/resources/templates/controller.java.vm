@@ -1,0 +1,96 @@
+## ==================== 自定义属性取值（正确访问 Map） ====================
+#set($basePath = $!{baseRequestMapping})
+#set($basePerm = $!{basePermissionPrefix})
+#set($entityPath = $table.entityPath)
+
+## ==================== 拼接最终路径 ====================
+#if($basePath)
+    #set($finalPath = $basePath)
+    #if(!$finalPath.endsWith("/"))
+        #set($finalPath = "${finalPath}/")
+    #end
+    #set($finalPath = "${finalPath}${entityPath}")
+#else
+    #set($finalPath = "/${entityPath}")
+#end
+
+## ==================== 拼接最终权限前缀 ====================
+#if($basePerm)
+    #set($finalPerm = "${basePerm}:${entityPath}")
+#else
+    #set($finalPerm = $entityPath)
+#end
+
+## ==================== 判断父类 ====================
+#set($hasSuper = false)
+#if(${superControllerClassPackage} && ${superControllerClassPackage} != "")
+    #set($hasSuper = true)
+#end
+
+#set($isCommonController = false)
+#if(${superControllerClassName} == "com.dream.common.data.controller.CommonController")
+    #set($isCommonController = true)
+#end
+
+## ==================== 包声明 ====================
+package ${package.Controller};
+
+import ${package.Service}.${table.serviceName};
+import ${package.Entity}.${entity};
+#if($hasSuper)
+import ${superControllerClassPackage};
+#end
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.RequestMapping;
+#if(${restControllerStyle})
+import org.springframework.web.bind.annotation.RestController;
+#else
+import org.springframework.stereotype.Controller;
+#end
+#if(${swagger2})
+import io.swagger.annotations.Api;
+#end
+import lombok.extern.slf4j.Slf4j;
+
+/**
+ * <p>
+ * $!{table.comment} 前端控制器
+ * </p>
+ *
+ * @author ${author}
+ * @since ${date}
+ */
+@Slf4j
+#if(${restControllerStyle})
+@RestController
+#else
+@Controller
+#end
+#if(${swagger2})
+@Api(tags = "$!{table.comment}管理")
+#end
+@RequestMapping("${finalPath}")
+#if(${kotlin})
+        class ${table.controllerName}#if($hasSuper) : ${superControllerClass}<${table.serviceName}, ${entity}>#end {
+#else
+public class ${table.controllerName}#if($hasSuper) extends ${superControllerClass}<${table.serviceName}, ${entity}>#end {
+#if($isCommonController)
+    @Autowired
+    public ${table.controllerName}(${table.serviceName} baseService) {
+        super(baseService);
+    }
+#end
+
+#if($hasSuper)
+    /**
+     * 权限前缀：基础前缀 + 实体名
+     * 如需为特定表覆盖，可在子类中重写此方法
+     */
+    @Override
+    protected String getPermissionPrefix() {
+        return "${finalPerm}";
+    }
+#end
+
+}
+#end

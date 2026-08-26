@@ -1,6 +1,11 @@
 package com.dream.common.data.controller;
 
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.dream.common.core.annotation.Log;
+import com.dream.common.core.annotation.Permission;
+import com.dream.common.core.enums.OperationType;
+import com.dream.common.core.enums.PermissionType;
+import com.dream.common.core.exception.BusinessException;
 import com.dream.common.core.utils.R;
 import com.dream.common.data.entity.CommonPageQuery;
 import com.dream.common.data.service.CommonService;
@@ -18,17 +23,47 @@ import java.util.List;
  * 子类继承本类并指定 Service 与实体类型即可复用这些接口，无需重复编写。
  * </p>
  * <p>
- * 使用 {@link R} 作为统一响应格式，异常时返回 {@link R#fail()} 系列失败响应。
- * 路径前缀由子类通过 {@link RequestMapping} 指定。
+ * 使用 {@link R} 作为统一响应格式。Controller 层<b>不捕获异常</b>，
+ * 所有异常（业务异常、参数校验异常、唯一键冲突、系统异常等）统一上抛，
+ * 由 {@code GlobalExceptionHandler} 全局处理器拦截并转换为标准失败响应，
+ * 保证 HTTP 状态码语义正确（400/403/500 等）。
+ * </p>
+ *
+ * <h2>权限控制</h2>
+ * <p>
+ * 各方法默认标注 {@link Permission} 注解，权限标识采用 <b>动作后缀</b> 形式
+ * （如 {@code "list"}、{@code "add"}、{@code "edit"}、{@code "delete"}），
+ * 由 {@link #getPermissionPrefix()} 返回的 <b>模块前缀</b> 拼接为完整权限标识。
  * </p>
  * <p>
- * 使用示例：
+ * 权限解析规则（由 AOP 切面执行）：
+ * <ul>
+ *   <li>当 {@link Permission#value()} 不含冒号（如 {@code "list"}），完整权限 = {@code getPermissionPrefix() + ":" + value}</li>
+ *   <li>当 {@link Permission#value()} 含冒号（如 {@code "system:user:list"}），直接作为完整权限使用</li>
+ * </ul>
+ * 子类重写 {@link #getPermissionPrefix()} 返回业务前缀即可，例如 {@code "system:user"}。
+ * </p>
+ *
+ * <h2>操作日志</h2>
+ * <p>
+ * 各方法标注 {@link Log} 注解，声明操作类型（{@link OperationType}），
+ * AOP 切面自动记录请求参数、响应结果、执行耗时等信息。
+ * </p>
+ *
+ * <h2>使用示例</h2>
  * <pre>{@code
  * @RestController
  * @RequestMapping("/user")
  * public class UserController extends CommonController<UserService, User> {
+ *
  *     public UserController(UserService baseService) {
  *         super(baseService);
+ *     }
+ *
+ *     // 重写权限前缀，各方法权限将解析为 system:user:list / system:user:add / ...
+ *     @Override
+ *     protected String getPermissionPrefix() {
+ *         return "system:user";
  *     }
  * }
  * }</pre>
@@ -50,6 +85,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * 实体类类型（懒加载缓存）
      */
     private Class<T> entityClass;
+
+    /**
+     * 权限前缀（懒加载缓存）
+     */
+    private String permissionPrefix;
 
     /**
      * 构造通用 Controller。
@@ -83,21 +123,21 @@ public abstract class CommonController<S extends CommonService<T>, T> {
     }
 
     /**
-     * 将 {@code R<Void>} 适配为任意类型的 {@code R}。
+     * 获取权限标识前缀。
      * <p>
-     * 由于 {@link R#fail(String)}、{@link R#badRequest(String)} 等方法返回
-     * {@code R<Void>}，而本类各接口的返回类型为 {@code R<T>}、{@code R<List<T>>} 等，
-     * 此处通过泛型强转进行适配。{@link R} 内部使用 Map 存储数据，强转后调用
-     * {@link R#getData()} 返回 {@code null}，符合失败响应无数据的语义。
+     * 用于与 {@link Permission#value()} 中的动作后缀拼接为完整权限标识。
+     * 默认返回实体类简单名的小写形式（如 {@code User} → {@code user}），
+     * 子类应重写为标准的 {@code 模块:实体} 格式（如 {@code "system:user"}）。
      * </p>
      *
-     * @param r   原始失败响应
-     * @param <E> 目标数据类型
-     * @return 适配后的失败响应
+     * @return 权限前缀
      */
-    @SuppressWarnings("unchecked")
-    private <E> R<E> adapt(R<Void> r) {
-        return (R<E>) (R<?>) r;
+    protected String getPermissionPrefix() {
+        if (permissionPrefix == null) {
+            permissionPrefix = getEntityClass().getSimpleName().toLowerCase();
+            log.debug("使用默认权限前缀: {}（建议子类重写为 模块:实体 格式）", permissionPrefix);
+        }
+        return permissionPrefix;
     }
 
     // ==================== 基础查询接口 ====================
@@ -108,15 +148,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param pageQuery 分页查询参数（含查询条件与排序字段）
      * @return 分页结果
      */
+    @Permission(value = "list", type = PermissionType.LIST)
+    @Log(title = "分页查询", operationType = OperationType.QUERY)
     @PostMapping("/page")
     public R<IPage<T>> page(@RequestBody CommonPageQuery<T> pageQuery) {
-        try {
-            IPage<T> page = baseService.findPage(pageQuery);
-            return R.ok(page);
-        } catch (Exception e) {
-            log.error("分页查询失败", e);
-            return adapt(R.fail("分页查询失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.findPage(pageQuery));
     }
 
     /**
@@ -125,15 +161,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param query 查询条件实体
      * @return 数据列表
      */
+    @Permission(value = "list", type = PermissionType.LIST)
+    @Log(title = "列表查询", operationType = OperationType.QUERY, isSaveResponseData = false)
     @PostMapping("/list")
     public R<List<T>> list(@RequestBody T query) {
-        try {
-            List<T> list = baseService.findList(query);
-            return R.ok(list);
-        } catch (Exception e) {
-            log.error("列表查询失败", e);
-            return adapt(R.fail("列表查询失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.findList(query));
     }
 
     /**
@@ -142,15 +174,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param query 查询条件实体
      * @return 单个实体；无匹配返回 {@code null}
      */
+    @Permission(value = "query", type = PermissionType.VIEW)
+    @Log(title = "查询单条", operationType = OperationType.QUERY)
     @PostMapping("/one")
     public R<T> one(@RequestBody T query) {
-        try {
-            T entity = baseService.findOne(query);
-            return R.ok(entity);
-        } catch (Exception e) {
-            log.error("查询单个实体失败", e);
-            return adapt(R.fail("查询单个实体失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.findOne(query));
     }
 
     /**
@@ -159,15 +187,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param id 主键 ID
      * @return 实体；不存在返回 {@code null}
      */
+    @Permission(value = "query", type = PermissionType.VIEW)
+    @Log(title = "根据ID查询", operationType = OperationType.VIEW)
     @GetMapping("/get/{id}")
     public R<T> getById(@PathVariable String id) {
-        try {
-            T entity = baseService.findById(id);
-            return R.ok(entity);
-        } catch (Exception e) {
-            log.error("根据ID查询失败，ID：{}", id, e);
-            return adapt(R.fail("根据ID查询失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.findById(id));
     }
 
     /**
@@ -176,18 +200,14 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param ids ID列表
      * @return 实体列表
      */
+    @Permission(value = "query", type = PermissionType.VIEW)
+    @Log(title = "批量查询", operationType = OperationType.QUERY, isSaveResponseData = false)
     @PostMapping("/get/batch")
     public R<List<T>> getByIds(@RequestBody List<String> ids) {
         if (ids == null || ids.isEmpty()) {
-            return adapt(R.badRequest("ID列表不能为空"));
+            throw BusinessException.badRequest("ID列表不能为空");
         }
-        try {
-            List<T> list = baseService.listByIds(ids);
-            return R.ok(list);
-        } catch (Exception e) {
-            log.error("批量查询失败", e);
-            return adapt(R.fail("批量查询失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.listByIds(ids));
     }
 
     // ==================== 新增接口 ====================
@@ -198,15 +218,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param entity 实体对象
      * @return 新增后的实体（含已生成的主键）
      */
+    @Permission(value = "add", type = PermissionType.ADD)
+    @Log(title = "新增", operationType = OperationType.INSERT)
     @PostMapping("/add")
     public R<T> add(@RequestBody T entity) {
-        try {
-            T result = baseService.addEntity(entity);
-            return R.ok("新增成功", result);
-        } catch (Exception e) {
-            log.error("新增失败", e);
-            return adapt(R.fail("新增失败：" + e.getMessage()));
-        }
+        return R.ok("新增成功", baseService.addEntity(entity));
     }
 
     /**
@@ -215,18 +231,14 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param entityList 实体列表
      * @return 新增后的实体列表（含已生成的主键）
      */
+    @Permission(value = "add", type = PermissionType.ADD)
+    @Log(title = "批量新增", operationType = OperationType.INSERT, isSaveResponseData = false)
     @PostMapping("/add/batch")
     public R<List<T>> addBatch(@RequestBody List<T> entityList) {
         if (entityList == null || entityList.isEmpty()) {
-            return adapt(R.badRequest("数据列表不能为空"));
+            throw BusinessException.badRequest("数据列表不能为空");
         }
-        try {
-            List<T> resultList = baseService.addBatch(entityList);
-            return R.ok("批量新增成功", resultList);
-        } catch (Exception e) {
-            log.error("批量新增失败", e);
-            return adapt(R.fail("批量新增失败：" + e.getMessage()));
-        }
+        return R.ok("批量新增成功", baseService.addBatch(entityList));
     }
 
     // ==================== 修改接口 ====================
@@ -237,15 +249,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param entity 实体对象（必须包含主键 ID）
      * @return 修改后的实体
      */
+    @Permission(value = "edit", type = PermissionType.EDIT)
+    @Log(title = "修改", operationType = OperationType.UPDATE)
     @PutMapping("/update")
     public R<T> update(@RequestBody T entity) {
-        try {
-            T result = baseService.updateEntity(entity);
-            return R.ok("修改成功", result);
-        } catch (Exception e) {
-            log.error("修改失败", e);
-            return adapt(R.fail("修改失败：" + e.getMessage()));
-        }
+        return R.ok("修改成功", baseService.updateEntity(entity));
     }
 
     // ==================== 新增或修改接口 ====================
@@ -256,15 +264,11 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param entity 实体对象
      * @return 保存后的实体
      */
+    @Permission(value = {"add", "edit"}, logical = Permission.Logical.OR, type = PermissionType.EDIT)
+    @Log(title = "新增或修改", operationType = OperationType.UPDATE)
     @PostMapping("/save")
     public R<T> save(@RequestBody T entity) {
-        try {
-            T result = baseService.saveOrUpdateEntity(entity);
-            return R.ok("保存成功", result);
-        } catch (Exception e) {
-            log.error("保存失败", e);
-            return adapt(R.fail("保存失败：" + e.getMessage()));
-        }
+        return R.ok("保存成功", baseService.saveOrUpdateEntity(entity));
     }
 
     // ==================== 删除接口 ====================
@@ -275,15 +279,12 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param id 主键 ID
      * @return 是否删除成功
      */
+    @Permission(value = "delete", type = PermissionType.DELETE)
+    @Log(title = "删除", operationType = OperationType.DELETE)
     @DeleteMapping("/delete/{id}")
     public R<Boolean> deleteById(@PathVariable String id) {
-        try {
-            boolean success = baseService.removeById(id);
-            return R.ok(success ? "删除成功" : "删除失败", success);
-        } catch (Exception e) {
-            log.error("删除失败，ID：{}", id, e);
-            return adapt(R.fail("删除失败：" + e.getMessage()));
-        }
+        boolean success = baseService.removeById(id);
+        return R.ok(success ? "删除成功" : "删除失败", success);
     }
 
     /**
@@ -292,18 +293,15 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param ids ID列表
      * @return 是否删除成功
      */
+    @Permission(value = "delete", type = PermissionType.DELETE)
+    @Log(title = "批量删除", operationType = OperationType.DELETE)
     @DeleteMapping("/delete/batch")
     public R<Boolean> deleteBatch(@RequestBody List<String> ids) {
         if (ids == null || ids.isEmpty()) {
-            return adapt(R.badRequest("ID列表不能为空"));
+            throw BusinessException.badRequest("ID列表不能为空");
         }
-        try {
-            boolean success = baseService.removeByIds(ids);
-            return R.ok(success ? "批量删除成功" : "批量删除失败", success);
-        } catch (Exception e) {
-            log.error("批量删除失败", e);
-            return adapt(R.fail("批量删除失败：" + e.getMessage()));
-        }
+        boolean success = baseService.removeByIds(ids);
+        return R.ok(success ? "批量删除成功" : "批量删除失败", success);
     }
 
     // ==================== 数据完整性接口 ====================
@@ -314,14 +312,10 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param id 数据 ID
      * @return 是否完整（未被篡改）
      */
+    @Permission(value = "query", type = PermissionType.VIEW)
+    @Log(title = "数据完整性校验", operationType = OperationType.VIEW)
     @GetMapping("/check/integrity/{id}")
     public R<Boolean> checkIntegrity(@PathVariable String id) {
-        try {
-            boolean result = baseService.checkDataIntegrity(id);
-            return R.ok(result);
-        } catch (Exception e) {
-            log.error("数据完整性检查失败，ID：{}", id, e);
-            return adapt(R.fail("数据完整性检查失败：" + e.getMessage()));
-        }
+        return R.ok(baseService.checkDataIntegrity(id));
     }
 }

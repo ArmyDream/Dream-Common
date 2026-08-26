@@ -1,0 +1,63 @@
+## ==================== 判断是否生成 Service 接口 ====================
+#set($hasServiceInterface = false)
+#if(${generateService})
+    #set($hasServiceInterface = true)
+#end
+
+## ==================== 判断父类是否为 CommonServiceImpl ====================
+#set($isCommonServiceImpl = false)
+#if(${superServiceImplClassName} == "com.dream.common.data.service.impl.CommonServiceImpl")
+    #set($isCommonServiceImpl = true)
+#end
+
+## ==================== 包声明 ====================
+package ${package.ServiceImpl};
+
+import ${package.Entity}.${entity};
+import ${package.Mapper}.${table.mapperName};
+#if($hasServiceInterface)
+import ${package.Service}.${table.serviceName};
+#end
+import ${superServiceImplClassPackage};
+import org.springframework.stereotype.Service;
+#if($isCommonServiceImpl)
+import lombok.extern.slf4j.Slf4j;
+#end
+
+/**
+ * <p>
+ * $!{table.comment} 服务实现类
+ * </p>
+ *
+ * @author ${author}
+ * @since ${date}
+ */
+#if($isCommonServiceImpl)
+@Slf4j
+#end
+@Service
+#if(${kotlin})
+open class ${table.serviceImplName} : ${superServiceImplClass}<${table.mapperName}, ${entity}>()#if($hasServiceInterface), ${table.serviceName}#end {
+    #if($isCommonServiceImpl)
+            constructor() : super(null)
+    #end
+        }
+#else
+public class ${table.serviceImplName} extends ${superServiceImplClass}<${table.mapperName}, ${entity}>#if($hasServiceInterface) implements ${table.serviceName}#end {
+
+#if($isCommonServiceImpl)
+    /**
+     * 无参构造器，传入空的数据变更记录 Mapper（不启用持久化变更记录）
+     * <p>如果需要在业务中记录数据变更，请通过构造器注入 CommonMapper{@code <DataChangeRecordEntity>}</p>
+     */
+    public ${table.serviceImplName}() {
+        super(null);
+    }
+
+#else
+    public ${table.serviceImplName}() {
+    }
+#end
+
+}
+#end

@@ -20,6 +20,7 @@
         <dependency>
             <groupId>com.dream</groupId>
             <artifactId>dream-common-data</artifactId>
+            <scope>provided</scope>
         </dependency>
 
         <dependency>
