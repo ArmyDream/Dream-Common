@@ -1,8 +1,8 @@
 package com.dream.common.data.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.spring.service.IService;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.spring.service.IService;
 import com.dream.common.data.entity.CommonPageQuery;
 
 import java.util.List;

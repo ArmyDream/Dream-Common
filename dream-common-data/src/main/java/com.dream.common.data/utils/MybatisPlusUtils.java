@@ -65,7 +65,7 @@ public class MybatisPlusUtils {
         Boolean finalIsNumeric = isNumeric;
         return ids.stream()
                 .filter(StringUtils::hasText)
-                .map(id -> finalIsNumeric ? id : "'" + id + "'")
+                .map(id -> finalIsNumeric ? id : "'" + id.replace("'", "''") + "'")
                 .collect(Collectors.joining(","));
     }
 

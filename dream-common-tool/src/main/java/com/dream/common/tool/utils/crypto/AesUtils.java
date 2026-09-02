@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
@@ -19,14 +21,14 @@ import java.util.Objects;
  * AES 对称加密工具类
  * <p>
  * 提供 AES-128/192/256 加密解密能力，支持 ECB 和 GCM 两种模式。
- * 推荐使用 GCM 模式（认证加密，安全性更高）。
+ * <b>推荐使用 GCM 模式（认证加密，安全性更高）</b>；ECB 方法已标记过时，仅供兼容历史数据。
  * </p>
  * <p>
  * 核心能力：
  * <ul>
- *   <li>{@link #encrypt(String, String)} / {@link #decrypt(String, String)} —— AES/ECB 加解密</li>
+ *   <li>{@link #encrypt(String, String)} / {@link #decrypt(String, String)} —— AES/ECB 加解密（<b>已过时</b>，仅兼容历史数据）</li>
  *   <li>{@link #encryptGcm(String, String)} / {@link #decryptGcm(String, String)} —— AES/GCM 加解密（推荐）</li>
- *   <li>{@link #encryptWithSalt(String, String, String)} —— 带盐值加密</li>
+ *   <li>{@link #encryptWithSalt(String, String, String)} —— 带盐值加密（PBKDF2 密钥派生 + GCM）</li>
  *   <li>{@link #generateKey()} / {@link #generateKey(int)} —— 生成随机密钥</li>
  * </ul>
  * </p>
@@ -55,6 +57,9 @@ public final class AesUtils {
     /** 默认密钥长度 */
     private static final int DEFAULT_KEY_SIZE = 256;
 
+    /** PBKDF2 迭代次数（OWASP 建议不低于 600,000，此处取 100,000 兼顾性能与安全） */
+    private static final int PBKDF2_ITERATIONS = 100_000;
+
     /** 安全随机数生成器 */
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -66,12 +71,18 @@ public final class AesUtils {
 
     /**
      * AES/ECB 加密（字符串 → Base64）
+     * <p>
+     * <b>已过时</b>：ECB 分组模式下相同明文块产生相同密文，明文结构（长度、重复块）可被统计分析，
+     * 仅用于兼容历史数据；新业务请使用 {@link #encryptGcm(String, String)}。
+     * </p>
      *
      * @param data 明文数据，不能为 null
      * @param key  密钥（16/24/32 字节，对应 AES-128/192/256）
      * @return Base64 编码的密文
      * @throws BusinessException 如果加密失败
+     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #encryptGcm(String, String)}
      */
+    @Deprecated
     public static String encrypt(String data, String key) {
         Objects.requireNonNull(data, "data must not be null");
         Objects.requireNonNull(key, "key must not be null");
@@ -91,12 +102,17 @@ public final class AesUtils {
 
     /**
      * AES/ECB 解密（Base64 → 字符串）
+     * <p>
+     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于解密历史密文；新业务请使用 {@link #decryptGcm(String, String)}。
+     * </p>
      *
      * @param encryptedData Base64 编码的密文，不能为 null
      * @param key           密钥（16/24/32 字节）
      * @return 解密后的明文
      * @throws BusinessException 如果解密失败
+     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #decryptGcm(String, String)}
      */
+    @Deprecated
     public static String decrypt(String encryptedData, String key) {
         Objects.requireNonNull(encryptedData, "encryptedData must not be null");
         Objects.requireNonNull(key, "key must not be null");
@@ -116,12 +132,17 @@ public final class AesUtils {
 
     /**
      * AES/ECB 加密（字节数组）
+     * <p>
+     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于兼容历史数据；新业务请使用 {@link #encryptGcm(byte[], byte[])}。
+     * </p>
      *
      * @param data 明文数据
      * @param key  密钥字节数组（16/24/32 字节）
      * @return 密文字节数组
      * @throws BusinessException 如果加密失败
+     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #encryptGcm(byte[], byte[])}
      */
+    @Deprecated
     public static byte[] encrypt(byte[] data, byte[] key) {
         Objects.requireNonNull(data, "data must not be null");
         Objects.requireNonNull(key, "key must not be null");
@@ -139,12 +160,17 @@ public final class AesUtils {
 
     /**
      * AES/ECB 解密（字节数组）
+     * <p>
+     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于解密历史密文；新业务请使用 {@link #decryptGcm(byte[], byte[])}。
+     * </p>
      *
      * @param encryptedData 密文字节数组
      * @param key           密钥字节数组（16/24/32 字节）
      * @return 明文字节数组
      * @throws BusinessException 如果解密失败
+     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #decryptGcm(byte[], byte[])}
      */
+    @Deprecated
     public static byte[] decrypt(byte[] encryptedData, byte[] key) {
         Objects.requireNonNull(encryptedData, "encryptedData must not be null");
         Objects.requireNonNull(key, "key must not be null");
@@ -507,26 +533,18 @@ public final class AesUtils {
     }
 
     /**
-     * 从密码和盐值派生密钥（PBKDF2）
+     * 从密码和盐值派生密钥（PBKDF2WithHmacSHA256）
+     * <p>
+     * 使用标准 PBKDF2（HMAC-SHA256）派生 256 位 AES 密钥，
+     * 迭代次数为 {@link #PBKDF2_ITERATIONS}，抵御暴力猜测与彩虹表攻击。
+     * </p>
      */
     private static byte[] deriveKey(String password, byte[] salt) {
         try {
-            // 简单实现：使用 SHA-256 多次迭代
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] input = password.getBytes(CharsetEnum.UTF_8.getCharset());
-            byte[] combined = new byte[input.length + salt.length];
-            System.arraycopy(input, 0, combined, 0, input.length);
-            System.arraycopy(salt, 0, combined, input.length, salt.length);
-
-            // 迭代 1000 次
-            byte[] hash = combined;
-            for (int i = 0; i < 1000; i++) {
-                hash = md.digest(hash);
-            }
-
-            // 取前 32 字节作为 AES-256 密钥
-            byte[] key = new byte[32];
-            System.arraycopy(hash, 0, key, 0, Math.min(hash.length, 32));
+            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, PBKDF2_ITERATIONS, 256);
+            byte[] key = factory.generateSecret(spec).getEncoded();
+            spec.clearPassword();
             return key;
         } catch (Exception e) {
             log.error("Key derivation failed", e);

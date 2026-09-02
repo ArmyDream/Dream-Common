@@ -46,6 +46,9 @@ public final class ExcelValidUtils {
      * @return 带注解的字段列表
      */
     public static List<Field> getExcelValidFields(Class<?> clazz) {
+        if (clazz == null) {
+            return new ArrayList<>();
+        }
         return ReflectionUtils.getFieldsWithAnnotation(clazz, ExcelValid.class);
     }
 
@@ -357,6 +360,9 @@ public final class ExcelValidUtils {
      */
     public static Map<String, Field> buildExcelValidFieldMap(Class<?> clazz) {
         Map<String, Field> map = new LinkedHashMap<>();
+        if (clazz == null) {
+            return map;
+        }
         for (Field field : getExcelValidFields(clazz)) {
             String displayName = getExcelValidFieldName(field);
             map.put(displayName, field);

@@ -1,0 +1,4 @@
+com.dream.common.framework.cache.config.CacheAutoConfiguration
+com.dream.common.framework.cache.config.RedisCacheAutoConfiguration
+com.dream.common.framework.cache.config.RedissonAutoConfiguration
+com.dream.common.framework.config.FilterAutoConfig

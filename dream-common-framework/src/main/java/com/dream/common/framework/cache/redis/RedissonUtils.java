@@ -68,9 +68,6 @@ public class RedissonUtils {
     /** 默认租约时间（秒），-1 表示 Redisson 默认（30s 并启用 watchdog 自动续期） */
     public static final long DEFAULT_LEASE_SECONDS = -1L;
 
-    /** 默认获取锁失败返回值（用于 nullable 风格 API） */
-    private static final Object NULL = null;
-
     /** 底层 Redisson 客户端 */
     private final RedissonClient redissonClient;
 

@@ -64,11 +64,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends ServiceImpl<M, T> implements CommonService<T> {
 
     /**
-     * 当无法获取到当前操作人时使用的默认值
-     */
-    private static final String DEFAULT_OPERATOR = "system";
-
-    /**
      * 数据变更记录 Mapper（可选依赖）。
      * 通过 Setter 注入，Spring 容器中有该 Bean 则注入，没有则跳过。
      * 遵循 Spring 官方建议：强制依赖用构造器，可选依赖用 Setter。
@@ -161,6 +156,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                 if (orderField.getTableAlias() != null && !orderField.getTableAlias().isEmpty()) {
                     column = orderField.getTableAlias() + "." + column;
                 }
+                // 排序列名白名单校验，防止 ORDER BY 注入
+                column = validateColumnName(column);
                 queryWrapper.orderBy(true, orderField.isAsc(), column);
             }
         }
@@ -538,6 +535,28 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             }
         }
         return sb.toString();
+    }
+
+    /**
+     * 校验列名是否为合法的数据库标识符（表别名.列名 或 列名）。
+     * <p>
+     * 仅允许字母、数字、下划线及单个点号（表别名分隔符），
+     * 从源头阻断 ORDER BY 等位置的 SQL 注入（MyBatis-Plus 对排序列不做参数化转义）。
+     * </p>
+     *
+     * @param column 原始列名
+     * @return 校验通过的列名
+     * @throws IllegalArgumentException 列名非法时抛出
+     */
+    protected String validateColumnName(String column) {
+        if (column == null || column.isEmpty()) {
+            throw new IllegalArgumentException("排序列名不能为空");
+        }
+        if (!column.matches("[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)?")
+                || column.contains("..") || column.endsWith(".")) {
+            throw new IllegalArgumentException("非法的排序列名: " + column);
+        }
+        return column;
     }
 
     /**

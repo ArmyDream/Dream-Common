@@ -4,12 +4,18 @@ import com.dream.common.framework.cache.CacheOperations;
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.data.redis.core.ZSetOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
+import org.springframework.data.redis.serializer.RedisSerializer;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -52,8 +58,15 @@ import java.util.function.Supplier;
 @Slf4j
 public class RedisUtils implements CacheOperations {
 
-    /** Lua 脚本：CAS 自增（仅当 key 存在时自增） */
+    /**
+     * Lua 脚本：CAS 自增（仅当 key 存在时自增）
+     */
     private static final DefaultRedisScript<Long> INCR_IF_PRESENT_SCRIPT;
+
+    /**
+     * SCAN 单次游标批量拉取数量
+     */
+    private static final long SCAN_BATCH_SIZE = 1000L;
 
     static {
         INCR_IF_PRESENT_SCRIPT = new DefaultRedisScript<>();
@@ -64,7 +77,9 @@ public class RedisUtils implements CacheOperations {
         INCR_IF_PRESENT_SCRIPT.setResultType(Long.class);
     }
 
-    /** 底层 RedisTemplate（String key + JSON value 序列化） */
+    /**
+     * 底层 RedisTemplate（String key + JSON value 序列化）
+     */
     private final RedisTemplate<String, Object> redisTemplate;
 
     /**
@@ -392,17 +407,43 @@ public class RedisUtils implements CacheOperations {
     }
 
     /**
-     * 模糊匹配 key
+     * 模糊匹配 key（基于 SCAN 游标，非阻塞，避免阻塞 Redis 主线程）
+     * <p>生产环境应使用本方法替代 KEYS 命令。</p>
      *
      * @param pattern 模式，如 {@code user:*}
-     * @return 匹配的 key 集合（生产环境慎用 KEYS，建议 SCAN）
+     * @return 匹配的 key 集合；异常时返回空集合
      */
     public Set<String> keys(String pattern) {
         if (StringUtils.isBlank(pattern)) {
             return Collections.emptySet();
         }
-        Set<String> keys = redisTemplate.keys(pattern);
-        return keys == null ? Collections.emptySet() : keys;
+        Set<String> matched = new HashSet<>();
+        try {
+            @SuppressWarnings("unchecked")
+            RedisSerializer<String> keySerializer = (RedisSerializer<String>) redisTemplate.getKeySerializer();
+            Set<String> result = redisTemplate.execute((RedisCallback<Set<String>>) connection -> {
+                Set<String> scanResult = new HashSet<>();
+                ScanOptions options = ScanOptions.scanOptions().match(pattern).count(SCAN_BATCH_SIZE).build();
+                try (Cursor<byte[]> cursor = connection.scan(options)) {
+                    while (cursor.hasNext()) {
+                        byte[] keyBytes = cursor.next();
+                        String key = keySerializer == null
+                                ? new String(keyBytes, StandardCharsets.UTF_8)
+                                : keySerializer.deserialize(keyBytes);
+                        if (key != null && !key.isEmpty()) {
+                            scanResult.add(key);
+                        }
+                    }
+                }
+                return scanResult;
+            });
+            if (result != null) {
+                matched.addAll(result);
+            }
+        } catch (Exception e) {
+            log.warn("[Redis] SCAN failed, pattern={}, err={}", pattern, e.getMessage());
+        }
+        return matched;
     }
 
     /**

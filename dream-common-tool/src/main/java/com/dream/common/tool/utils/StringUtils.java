@@ -662,15 +662,22 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
         }
         StringBuilder sb = new StringBuilder(str.length() + 4);
         char[] chars = str.toCharArray();
+        boolean lastIsUpper = false;
         for (int i = 0; i < chars.length; i++) {
             char c = chars[i];
             if (Character.isUpperCase(c)) {
-                if (i > 0 && !Character.isUpperCase(chars[i - 1])) {
+                boolean prevIsLowerOrDigit = i > 0
+                        && (Character.isLowerCase(chars[i - 1]) || Character.isDigit(chars[i - 1]));
+                boolean nextIsLower = i < chars.length - 1 && Character.isLowerCase(chars[i + 1]);
+                // 小写/数字 转大写，或连续大写块后接小写时插入下划线，如 HTTPUtil → http_util
+                if (prevIsLowerOrDigit || (lastIsUpper && nextIsLower)) {
                     sb.append(StringPool.UNDERSCORE.getValue());
                 }
                 sb.append(Character.toLowerCase(c));
+                lastIsUpper = true;
             } else {
                 sb.append(c);
+                lastIsUpper = false;
             }
         }
         String result = sb.toString();
@@ -1533,8 +1540,11 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 分片后的集合列表；list 为空返回空列表
      */
     public static <T> List<List<T>> listChunk(List<T> list, int chunkSize) {
-        if (isObjectBlank(list)) {
+        if (list == null || list.isEmpty()) {
             return new ArrayList<>();
+        }
+        if (chunkSize <= 0) {
+            throw new IllegalArgumentException("chunkSize must be positive, actual=" + chunkSize);
         }
         return IntStream.range(0, (int) Math.ceil((double) list.size() / chunkSize))
                 .mapToObj(i -> list.subList(i * chunkSize, Math.min((i + 1) * chunkSize, list.size())))

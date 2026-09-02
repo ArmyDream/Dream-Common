@@ -11,6 +11,8 @@ import org.aspectj.lang.annotation.Aspect;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 权限校验切面
@@ -81,8 +83,9 @@ public class PermissionAspect {
         String[] permissions = resolvePermissions(joinPoint, permission);
 
         if (permissions.length == 0) {
-            log.warn("权限标识为空，跳过校验：{}", joinPoint.getSignature().toShortString());
-            return joinPoint.proceed();
+            // fail-closed：标注了 @Permission 却解析不出任何权限标识，视为配置错误，拒绝放行
+            throw new SecurityException("权限校验配置错误：@Permission 未解析出有效权限标识，方法="
+                    + joinPoint.getSignature().toShortString());
         }
 
         // 2. 执行 Sa-Token 权限校验
@@ -144,20 +147,58 @@ public class PermissionAspect {
         if (target == null) {
             return null;
         }
+        Method method = findMethod(target.getClass(), "getControllerConfig");
+        if (method == null) {
+            log.debug("目标对象无 getControllerConfig 方法：{}", target.getClass().getName());
+            return null;
+        }
         try {
-            Method method = target.getClass().getMethod("getControllerConfig");
-            method.setAccessible(true);
             Object result = method.invoke(target);
             if (result instanceof ControllerConfig) {
                 return ((ControllerConfig) result).getPermissionPrefix();
             }
-        } catch (NoSuchMethodException e) {
-            // 目标对象无 getControllerConfig 方法，返回 null
-            log.debug("目标对象无 getControllerConfig 方法：{}", target.getClass().getName());
-        } catch (Exception e) {
-            log.warn("调用 getControllerConfig 失败：{}", e.getMessage());
+            // 返回值类型错误 → fail-closed，禁止以缺省前缀放行
+            throw new SecurityException("权限前缀解析失败：getControllerConfig() 返回类型异常，class="
+                    + target.getClass().getName() + ", actual="
+                    + (result == null ? "null" : result.getClass().getName()));
+        } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
+            throw new SecurityException("权限前缀解析失败：getControllerConfig() 调用异常，class="
+                    + target.getClass().getName(), e);
         }
-        return null;
+    }
+
+    /**
+     * 方法缓存：Class → getControllerConfig 方法（沿父类链查找）
+     */
+    private static final Map<Class<?>, Method> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * 沿类继承链查找指定方法。
+     * <p>
+     * 使用 {@link Class#getDeclaredMethod} 可获取 protected / private 方法
+     * （如 {@code CommonController.getControllerConfig()} 为 protected），
+     * 并 {@code setAccessible(true)} 保证可调用，兼容 CGLIB 代理子类。
+     * </p>
+     *
+     * @param clazz      目标类（含继承关系）
+     * @param methodName 方法名
+     * @return 找到的方法；不存在返回 {@code null}
+     */
+    private Method findMethod(Class<?> clazz, String methodName) {
+        return CONFIG_METHOD_CACHE.computeIfAbsent(clazz, c -> {
+            Class<?> current = c;
+            while (current != null && current != Object.class) {
+                try {
+                    Method method = current.getDeclaredMethod(methodName);
+                    method.setAccessible(true);
+                    return method;
+                } catch (NoSuchMethodException ignored) {
+                    // 继续向父类查找
+                }
+                current = current.getSuperclass();
+            }
+            return null;
+        });
     }
 
     /**

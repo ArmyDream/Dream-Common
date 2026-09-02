@@ -24,6 +24,8 @@
     </modules>
 
     <properties>
+        <!-- 工程统一版本号：与父工程 com.dream:dream 的 dream.version 保持一致，供各模块 dependencyManagement 使用 -->
+        <dream.version>1.0.0</dream.version>
     </properties>
 
     <description>

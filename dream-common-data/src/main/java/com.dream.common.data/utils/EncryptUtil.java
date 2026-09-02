@@ -20,14 +20,29 @@ import java.util.Base64;
  * <ul>
  *   <li>AES 采用 {@code AES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
  *   <li>DES 采用 {@code DES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
+ *   <li><b>禁用 ECB 分组模式</b>：本类全部使用 CBC（引入随机 IV），ECB 模式下相同明文块产生相同密文，易被统计分析。</li>
+ *   <li><b>DES 属于弱加密算法</b>（56 位有效密钥），仅用于兼容历史数据，新业务请使用 AES。</li>
  *   <li>SM4 当前为简化实现（实际复用 AES），生产环境应引入 BouncyCastle 或 Hutool 以使用真正的国密算法。</li>
- *   <li>MD5 计算时加入固定 salt 前缀，增强抗彩虹表攻击能力。</li>
+ *   <li>MD5 计算时加入固定 salt 前缀，增强抗彩虹表攻击能力；但 MD5 仅适用于指纹/校验场景，<b>密码存储请使用 BCrypt/Argon2</b>。</li>
  * </ul>
  * </p>
  * <p>
- * 注意：本类中默认密钥、IV、salt 仅为开发演示使用，
- * <b>生产环境应通过外部配置（如 application.yml）注入</b>，避免硬编码带来的安全风险。
+ * <b>密钥配置要求</b>：AES / DES 密钥在生产环境中<b>必须</b>通过配置注入，禁止使用默认密钥。
+ * 当未配置密钥时，加密/解密操作将抛出 {@link IllegalArgumentException} 以避免误用。
+ * 默认值仅用于开发快速验证，会在启动时输出 WARN 日志。
+ * 配置方式：
+ * <pre>{@code
+ * dream:
+ *   encrypt:
+ *     aes-key: xxxxxxxx  # AES 密钥（16 字节）
+ *     aes-iv:  xxxxxxxx  # AES IV（16 字节）
+ *     des-key: xxxxxx    # DES 密钥（8 字节）
+ *     des-iv:  xxxxxx    # DES IV（8 字节）
+ *     md5-salt: xxxxxx   # MD5 加盐前缀
+ * }</pre>
  * </p>
+ *
+ * @author dream
  */
 @Slf4j
 public class EncryptUtil {
@@ -50,7 +65,7 @@ public class EncryptUtil {
 
     /**
      * 默认 AES 密钥
-     * <p>生产环境应通过配置注入，请勿直接使用默认值。</p>
+     * <p>仅作为未配置密钥时的开发兜底（会输出 WARN），生产环境应通过配置注入。</p>
      */
     private static final String DEFAULT_AES_KEY = "DEFAULT_AES_KEY_16";
 
@@ -76,7 +91,66 @@ public class EncryptUtil {
      * MD5 加盐前缀，用于增强 MD5 摘要的安全性
      * <p>生产环境应通过配置注入。</p>
      */
-    private static final String MD5_SALT = "DREAM_COMMON_SALT_";
+    private static final String DEFAULT_MD5_SALT = "DREAM_COMMON_SALT_";
+
+    // ==================== 运行时密钥（由 dream.encrypt.* 配置注入，默认兼容历史常量） ====================
+
+    /** 当前生效的 AES 密钥 */
+    private static volatile String AES_KEY = DEFAULT_AES_KEY;
+    /** 当前生效的 AES IV */
+    private static volatile String AES_IV = DEFAULT_AES_IV;
+    /** 当前生效的 DES 密钥 */
+    private static volatile String DES_KEY = DEFAULT_DES_KEY;
+    /** 当前生效的 DES IV */
+    private static volatile String DES_IV = DEFAULT_DES_IV;
+    /** 当前生效的 MD5 盐 */
+    private static volatile String MD5_SALT = DEFAULT_MD5_SALT;
+    /** 是否已通过显式配置注入密钥 */
+    private static volatile boolean keysConfigured = false;
+    /** 未配置密钥时的 WARN 只输出一次 */
+    private static volatile boolean legacyKeyWarned = false;
+
+    /**
+     * 通过 Spring 配置注入密钥。
+     * <p>由框架自动装配（{@code EncryptAutoConfiguration}）读取 {@code dream.encrypt.*} 后调用。</p>
+     *
+     * @param aesKey   AES 密钥（建议 16 字节）
+     * @param aesIv    AES IV（建议 16 字节）
+     * @param desKey   DES 密钥（8 字节）
+     * @param desIv    DES IV（8 字节）
+     * @param md5Salt  MD5 加盐前缀
+     */
+    public static synchronized void configure(String aesKey, String aesIv,
+                                              String desKey, String desIv, String md5Salt) {
+        if (aesKey != null && !aesKey.isEmpty()) {
+            AES_KEY = aesKey;
+        }
+        if (aesIv != null && !aesIv.isEmpty()) {
+            AES_IV = aesIv;
+        }
+        if (desKey != null && !desKey.isEmpty()) {
+            DES_KEY = desKey;
+        }
+        if (desIv != null && !desIv.isEmpty()) {
+            DES_IV = desIv;
+        }
+        if (md5Salt != null && !md5Salt.isEmpty()) {
+            MD5_SALT = md5Salt;
+        }
+        keysConfigured = true;
+        log.info("[EncryptUtil] 密钥已通过配置注入（dream.encrypt.*）");
+    }
+
+    /**
+     * 若未配置密钥，输出一次性 WARN，提示生产环境应显式配置
+     */
+    private static void warnIfLegacyKey() {
+        if (!keysConfigured && !legacyKeyWarned) {
+            legacyKeyWarned = true;
+            log.warn("[EncryptUtil] 未通过 dream.encrypt.* 配置密钥，正在使用内置默认密钥。"
+                    + "生产环境务必配置，否则加密形同虚设。");
+        }
+    }
 
     /**
      * 私有构造方法，防止实例化
@@ -98,16 +172,17 @@ public class EncryptUtil {
      * </p>
      *
      * @param content 待加密内容，为 null 时返回 null
-     * @param type    加密类型，为 null 时原样返回
-     * @param key     加密密钥，为 null 或空时使用对应算法的默认密钥
-     * @return 加密后的字符串；加密失败时原样返回 content
+     * @param type    加密类型，为 null 时抛出 {@link IllegalArgumentException}（fail-closed）
+     * @param key     加密密钥，为 null 或空时使用配置/默认密钥
+     * @return 加密后的字符串
+     * @throws IllegalArgumentException 加密类型非法或加密失败时抛出（fail-closed，不再静默回退明文）
      */
     public static String encrypt(String content, EncryptType type, String key) {
         if (content == null) {
             return null;
         }
         if (type == null) {
-            return content;
+            throw new IllegalArgumentException("加密类型不能为 null");
         }
 
         try {
@@ -123,11 +198,13 @@ public class EncryptUtil {
                 case MD5:
                     return md5Encrypt(content);
                 default:
-                    return content;
+                    throw new IllegalArgumentException("不支持的加密类型: " + type);
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("加密失败, type: {}, content: {}", type, content, e);
-            return content;
+            log.error("加密失败, type: {}", type, e);
+            throw new IllegalArgumentException("加密失败, type: " + type, e);
         }
     }
 
@@ -138,16 +215,17 @@ public class EncryptUtil {
      * </p>
      *
      * @param content 待解密内容，为 null 时返回 null
-     * @param type    加密类型，为 null 时原样返回
-     * @param key     解密密钥，为 null 或空时使用对应算法的默认密钥
-     * @return 解密后的字符串；解密失败时原样返回 content
+     * @param type    解密类型，为 null 时抛出 {@link IllegalArgumentException}（fail-closed）
+     * @param key     解密密钥，为 null 或空时使用配置/默认密钥
+     * @return 解密后的字符串
+     * @throws IllegalArgumentException 解密类型非法或解密失败时抛出（fail-closed）
      */
     public static String decrypt(String content, EncryptType type, String key) {
         if (content == null) {
             return null;
         }
         if (type == null) {
-            return content;
+            throw new IllegalArgumentException("解密类型不能为 null");
         }
 
         try {
@@ -161,11 +239,13 @@ public class EncryptUtil {
                 case BASE64:
                     return base64Decode(content);
                 default:
-                    return content;
+                    throw new IllegalArgumentException("不支持的解密类型: " + type);
             }
+        } catch (IllegalArgumentException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("解密失败, type: {}, content: {}", type, content, e);
-            return content;
+            log.error("解密失败, type: {}", type, e);
+            throw new IllegalArgumentException("解密失败, type: " + type, e);
         }
     }
 
@@ -182,9 +262,10 @@ public class EncryptUtil {
      * @throws Exception 加密失败时抛出
      */
     private static String aesEncrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DEFAULT_AES_KEY : key;
+        warnIfLegacyKey();
+        String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
         byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
-        byte[] ivBytes = normalizeKey(DEFAULT_AES_IV, AES_IV_SIZE);
+        byte[] ivBytes = normalizeKey(AES_IV, AES_IV_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
         IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
@@ -212,7 +293,8 @@ public class EncryptUtil {
      * @throws Exception 解密失败时抛出
      */
     private static String aesDecrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DEFAULT_AES_KEY : key;
+        warnIfLegacyKey();
+        String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
         byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
@@ -244,9 +326,10 @@ public class EncryptUtil {
      * @throws Exception 加密失败时抛出
      */
     private static String desEncrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DEFAULT_DES_KEY : key;
+        warnIfLegacyKey();
+        String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
         byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
-        byte[] ivBytes = normalizeKey(DEFAULT_DES_IV, DES_IV_SIZE);
+        byte[] ivBytes = normalizeKey(DES_IV, DES_IV_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
         IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
@@ -274,7 +357,8 @@ public class EncryptUtil {
      * @throws Exception 解密失败时抛出
      */
     private static String desDecrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DEFAULT_DES_KEY : key;
+        warnIfLegacyKey();
+        String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
         byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
@@ -373,6 +457,7 @@ public class EncryptUtil {
      * @throws Exception 摘要计算失败时抛出
      */
     private static String md5Encrypt(String content) throws Exception {
+        warnIfLegacyKey();
         MessageDigest md = MessageDigest.getInstance(MD5_ALGORITHM);
         // 加入固定 salt 前缀，增强安全性
         byte[] digest = md.digest((MD5_SALT + content).getBytes(StandardCharsets.UTF_8));

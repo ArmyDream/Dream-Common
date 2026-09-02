@@ -12,7 +12,7 @@
     <artifactId>dream-common-data</artifactId>
 
     <description>
-        基于 mybatis-plus curd 封装。
+        基于 mybatis-plus CRUD 封装。
     </description>
 
     <dependencies>

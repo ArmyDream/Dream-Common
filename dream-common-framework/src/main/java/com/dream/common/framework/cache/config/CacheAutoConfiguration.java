@@ -1,8 +1,13 @@
 package com.dream.common.framework.cache.config;
 
+import com.dream.common.framework.cache.CachesUtils;
+import com.dream.common.framework.cache.aspect.CacheDoubleDeleteAspect;
+import com.dream.common.framework.cache.aspect.QueryCacheAspect;
+import com.dream.common.framework.cache.caffeine.CaffeineCacheOperations;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 
 /**
  * 统一缓存自动装配入口
@@ -25,12 +30,18 @@ import org.springframework.context.annotation.Configuration;
  * {@link RedisCacheAutoConfiguration}（独立类，带 {@code @ConditionalOnClass}）中装配，
  * Redis 依赖缺失时该类不会被加载。
  * </p>
+ * <p>
+ * <b>Bean 注册</b>：通过 {@link Import} 显式注册缓存模块的 @Component Bean
+ * （{@link CachesUtils} / {@link CaffeineCacheOperations} / {@link QueryCacheAspect} /
+ * {@link CacheDoubleDeleteAspect}），使本模块在无业务方 ComponentScan 覆盖时也能自动装配。
+ * </p>
  *
  * @author dream
  */
 @Slf4j
 @Configuration
 @EnableConfigurationProperties(CacheProperties.class)
+@Import({CachesUtils.class, CaffeineCacheOperations.class, QueryCacheAspect.class, CacheDoubleDeleteAspect.class})
 public class CacheAutoConfiguration {
 
     /**

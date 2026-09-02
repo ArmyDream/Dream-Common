@@ -4,7 +4,7 @@
       "name": "dream.filter.trace",
       "description": "链路追踪过滤器配置",
       "type": "com.dream.common.framework.filter.TraceIdFilter",
-      "sourceType": "com.dream.common.framework.filter.FilterAutoConfig"
+      "sourceType": "com.dream.common.framework.config.FilterAutoConfig"
     },
     {
       "name": "dream.filter.access-log",

@@ -79,9 +79,12 @@ public class CaffeineCacheOperations implements CacheOperations {
 
     @Override
     public boolean delete(String key) {
+        if (key == null || key.isEmpty()) {
+            return false;
+        }
         boolean exists = CachesCaffeineUtils.contains(key);
         CachesCaffeineUtils.delete(key);
-        return true;
+        return exists;
     }
 
     @Override

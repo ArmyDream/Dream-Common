@@ -163,20 +163,31 @@ public class ImportDataProcessorAdapter<T> implements ImportDataProcessor<T> {
 
     /**
      * 批量删除
-     * <p>当 {@code conditions} 类型不匹配实体类时记录错误日志并忽略。</p>
+     * <p>当 {@code conditions} 类型不匹配实体类时记录错误日志并忽略；
+     * 当条件实体不包含任何查询条件字段时拒绝删除，避免空条件导致全表删除。</p>
      *
      * @param conditions 删除条件，类型应与实体类一致
      */
     @Override
     public void batchDelete(Object conditions) {
-        if (conditions != null) {
-            try {
-                @SuppressWarnings("unchecked")
-                T condition = (T) conditions;
-                service.remove(service.buildQueryWrapper(condition));
-            } catch (ClassCastException e) {
-                log.error("删除条件类型转换失败", e);
+        if (conditions == null) {
+            log.error("批量删除条件不能为 null，已忽略");
+            return;
+        }
+        try {
+            @SuppressWarnings("unchecked")
+            T condition = (T) conditions;
+            com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<T> wrapper =
+                    service.buildQueryWrapper(condition);
+            // 空条件防护：无任何查询条件时拒绝删除，避免全表删除
+            if (wrapper.isEmptyOfWhere()) {
+                log.error("批量删除条件不包含任何查询字段，已拒绝执行以避免全表删除: {}",
+                        condition.getClass().getName());
+                throw new IllegalArgumentException("删除条件不包含任何查询字段，拒绝执行批量删除");
             }
+            service.remove(wrapper);
+        } catch (ClassCastException e) {
+            log.error("删除条件类型转换失败", e);
         }
     }
 

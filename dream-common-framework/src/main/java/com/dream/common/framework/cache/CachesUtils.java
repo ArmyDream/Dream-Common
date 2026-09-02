@@ -178,17 +178,23 @@ public class CachesUtils {
 
     /**
      * 标记主缓存（Redis）熔断
+     * <p>
+     * 首次失败记录完整 WARN；恢复期探活失败仅刷新失败时间戳（记录 DEBUG），
+     * 使下次探活重新进入冷却等待，避免冷却到期后每个请求都直连 Redis 反复探活。
+     * </p>
      *
      * @param reason 原因
      * @param e      异常
      */
     private static void markUnhealthy(String reason, Exception e) {
-        if (!primaryHealthy) {
-            return;
-        }
+        boolean firstFailure = primaryHealthy;
         primaryHealthy = false;
         lastFailureTime = System.currentTimeMillis();
-        log.warn("[CachesUtils] Redis 触发熔断，降级 Caffeine | reason={} | err={}", reason, e.getMessage());
+        if (firstFailure) {
+            log.warn("[CachesUtils] Redis 触发熔断，降级 Caffeine | reason={} | err={}", reason, e.getMessage());
+        } else if (log.isDebugEnabled()) {
+            log.debug("[CachesUtils] Redis 探活失败，继续保持熔断 | reason={}", reason);
+        }
     }
 
     /**

@@ -52,16 +52,19 @@ public final class MathUtils {
     private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
     private static final BigDecimal ONE_THOUSAND = new BigDecimal("1000");
 
-    /** 格式化器缓存（线程安全） */
-    private static final NumberFormat MONEY_FORMAT = NumberFormat.getCurrencyInstance();
-    private static final NumberFormat PERCENT_FORMAT = NumberFormat.getPercentInstance();
-
-    static {
-        MONEY_FORMAT.setMaximumFractionDigits(DEF_SCALE);
-        MONEY_FORMAT.setMinimumFractionDigits(DEF_SCALE);
-        PERCENT_FORMAT.setMaximumFractionDigits(DEF_SCALE);
-        PERCENT_FORMAT.setMinimumFractionDigits(DEF_SCALE);
-    }
+    /** 格式化器缓存（ThreadLocal 隔离，NumberFormat 非线程安全） */
+    private static final ThreadLocal<NumberFormat> MONEY_FORMAT = ThreadLocal.withInitial(() -> {
+        NumberFormat nf = NumberFormat.getCurrencyInstance();
+        nf.setMaximumFractionDigits(DEF_SCALE);
+        nf.setMinimumFractionDigits(DEF_SCALE);
+        return nf;
+    });
+    private static final ThreadLocal<NumberFormat> PERCENT_FORMAT = ThreadLocal.withInitial(() -> {
+        NumberFormat nf = NumberFormat.getPercentInstance();
+        nf.setMaximumFractionDigits(DEF_SCALE);
+        nf.setMinimumFractionDigits(DEF_SCALE);
+        return nf;
+    });
 
     private MathUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
@@ -769,7 +772,7 @@ public final class MathUtils {
         if (value == null) {
             return "";
         }
-        String result = MONEY_FORMAT.format(toBigDecimal(value));
+        String result = MONEY_FORMAT.get().format(toBigDecimal(value));
         if (log.isDebugEnabled()) {
             log.debug("formatCurrency: {} → {}", value, result);
         }
@@ -786,7 +789,7 @@ public final class MathUtils {
         if (value == null) {
             return "";
         }
-        String result = PERCENT_FORMAT.format(toBigDecimal(value));
+        String result = PERCENT_FORMAT.get().format(toBigDecimal(value));
         if (log.isDebugEnabled()) {
             log.debug("formatPercent: {} → {}", value, result);
         }

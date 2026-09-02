@@ -396,10 +396,10 @@ public class R<T> implements Serializable {
     }
 
     /**
-     * 获取原始 Map（谨慎使用，防止修改）
+     * 获取原始 Map（返回防御性副本，防止外部直接修改内部数据）
      */
     protected LinkedHashMap<String, Object> getMap() {
-        return map;
+        return new LinkedHashMap<>(map);
     }
 
     /**

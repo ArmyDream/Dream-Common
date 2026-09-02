@@ -14,7 +14,9 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -189,36 +191,35 @@ public class CodeGeneratorUtils {
             }
         });
 
-        // 模板配置（根据开关禁用对应模板）  过期 ,已 使用 strategyConfig 配置
-      /*  generator.templateConfig(builder -> {
-            if (!config.isGenerateController()) {
-                builder.disable(TemplateType.CONTROLLER);
-            }
-            if (!config.isGenerateService()) {
-                builder.disable(TemplateType.SERVICE, TemplateType.SERVICE_IMPL);
-            }
-            if (!config.isGenerateMapper()) {
-                builder.disable(TemplateType.MAPPER);
-            }
-            // 注意：Entity 模板默认始终启用，暂无开关控制
-        });*/
-
         // 注入自定义属性（用于模板中访问配置值）
         Map<String, Object> customMap = new HashMap<>();
         customMap.put("baseRequestMapping", config.getBaseRequestMapping());
         customMap.put("basePermissionPrefix", config.getBasePermissionPrefix());
         customMap.put("logEnabled", config.isLogEnabled());
         customMap.put("dataChangeRecordPersistent", config.isDataChangeRecordPersistent());
+        customMap.put("generateService", config.isGenerateService());
 
         // ⚠️ 注入父类全限定名（用于模板中判断）
+        // 模板变量约定：
+        //   *XxxClassPackage → 父类全限定名（import / ${hasXxx} 判断）
+        //   *XxxClassName    → 父类全限定名（精确类名比对，如 isCommonController）
+        //   *XxxClass        → 父类简单类名（extends 子句）
         Class<?> superControllerClass = config.getSuperControllerClass();
-        customMap.put("superControllerClassName", superControllerClass != null ?
-                superControllerClass.getName() : "");
+        String superControllerClassName = superControllerClass != null ? superControllerClass.getName() : "";
+        customMap.put("superControllerClassPackage", superControllerClassName);
+        customMap.put("superControllerClassName", superControllerClassName);
+        customMap.put("superControllerClass", superControllerClass != null ? superControllerClass.getSimpleName() : "");
 
         Class<?> superServiceImplClass = config.getSuperServiceImplClass();
-        customMap.put("superServiceImplClassName", superServiceImplClass != null ?
-                superServiceImplClass.getName() : "");
+        String superServiceImplClassName = superServiceImplClass != null ? superServiceImplClass.getName() : "";
+        customMap.put("superServiceImplClassPackage", superServiceImplClassName);
+        customMap.put("superServiceImplClassName", superServiceImplClassName);
+        customMap.put("superServiceImplClass", superServiceImplClass != null ? superServiceImplClass.getSimpleName() : "");
 
+        // Entity 模板引用的导入集合与类注解（默认为空，避免 Velocity 未定义变量告警；业务方可扩展）
+        customMap.put("importEntityFrameworkPackages", config.getImportEntityFrameworkPackages());
+        customMap.put("importEntityJavaPackages", config.getImportEntityJavaPackages());
+        customMap.put("entityClassAnnotations", config.getEntityClassAnnotations());
 
         generator.injectionConfig(builder -> builder.customMap(customMap));
 
@@ -394,6 +395,21 @@ public class CodeGeneratorUtils {
          * 是否入库数据变更记录，默认 false。
          */
         private boolean dataChangeRecordPersistent = false;
+
+        /**
+         * 实体模板额外导入的框架类（全限定类名集合，默认空）
+         */
+        private List<String> importEntityFrameworkPackages = new ArrayList<>();
+
+        /**
+         * 实体模板额外导入的 JDK/第三方类（全限定类名集合，默认空）
+         */
+        private List<String> importEntityJavaPackages = new ArrayList<>();
+
+        /**
+         * 实体类附加注解（模板中以注解申明文本渲染，默认空）
+         */
+        private List<String> entityClassAnnotations = new ArrayList<>();
 
         // ==================== 表配置 ====================
 

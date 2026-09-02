@@ -681,7 +681,8 @@ public final class AssertUtils {
      * @throws BusinessException 超出范围时抛出
      */
     public static <T extends Number> T inRange(T value, Number min, Number max, String message) {
-        if (value == null || value.doubleValue() < min.doubleValue() || value.doubleValue() > max.doubleValue()) {
+        if (value == null || min == null || max == null
+                || value.doubleValue() < min.doubleValue() || value.doubleValue() > max.doubleValue()) {
             throw new BusinessException(message);
         }
         return value;
@@ -700,7 +701,8 @@ public final class AssertUtils {
      * @throws BusinessException 超出范围时抛出
      */
     public static <T extends Number> T inRange(T value, Number min, Number max, ResponseCode responseCode, String message) {
-        if (value == null || value.doubleValue() < min.doubleValue() || value.doubleValue() > max.doubleValue()) {
+        if (value == null || min == null || max == null
+                || value.doubleValue() < min.doubleValue() || value.doubleValue() > max.doubleValue()) {
             throw new BusinessException(responseCode, message);
         }
         return value;
@@ -717,7 +719,7 @@ public final class AssertUtils {
      * @throws BusinessException 不满足时抛出
      */
     public static <T extends Number> T greaterThan(T value, Number target, String message) {
-        if (value == null || value.doubleValue() <= target.doubleValue()) {
+        if (value == null || target == null || value.doubleValue() <= target.doubleValue()) {
             throw new BusinessException(message);
         }
         return value;
@@ -734,7 +736,7 @@ public final class AssertUtils {
      * @throws BusinessException 不满足时抛出
      */
     public static <T extends Number> T greaterOrEqual(T value, Number target, String message) {
-        if (value == null || value.doubleValue() < target.doubleValue()) {
+        if (value == null || target == null || value.doubleValue() < target.doubleValue()) {
             throw new BusinessException(message);
         }
         return value;
@@ -751,7 +753,7 @@ public final class AssertUtils {
      * @throws BusinessException 不满足时抛出
      */
     public static <T extends Number> T lessThan(T value, Number target, String message) {
-        if (value == null || value.doubleValue() >= target.doubleValue()) {
+        if (value == null || target == null || value.doubleValue() >= target.doubleValue()) {
             throw new BusinessException(message);
         }
         return value;
@@ -768,7 +770,7 @@ public final class AssertUtils {
      * @throws BusinessException 不满足时抛出
      */
     public static <T extends Number> T lessOrEqual(T value, Number target, String message) {
-        if (value == null || value.doubleValue() > target.doubleValue()) {
+        if (value == null || target == null || value.doubleValue() > target.doubleValue()) {
             throw new BusinessException(message);
         }
         return value;
