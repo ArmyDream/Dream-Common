@@ -17,5 +17,15 @@
         提供纯 Java 的基础能力。
         零依赖、可被任何模块引用。
     </description>
+    <dependencies>
+        <!-- ===== SLF4J  ===== -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <optional>true</optional>
+            <scope>provided</scope>
+        </dependency>
+
+    </dependencies>
 
 </project>

@@ -50,7 +50,7 @@ import java.util.Objects;
 @Slf4j
 @RestControllerAdvice
 @ConditionalOnProperty(prefix = "dream.advice.response", name = "enabled", havingValue = "true", matchIfMissing = true)
-@Order(20) // 值越大，执行越靠后。
+@Order   // 改为最低优先级，确保最后执行。值越大，执行越靠后。
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
     private final ObjectMapper objectMapper;

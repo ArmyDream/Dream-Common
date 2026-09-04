@@ -3,6 +3,8 @@ package com.dream.common.security.aspect;
 import cn.dev33.satoken.stp.StpUtil;
 import com.dream.common.core.annotation.Permission;
 import com.dream.common.core.config.ControllerConfig;
+import com.dream.common.core.enums.ResponseCode;
+import com.dream.common.core.exception.BusinessException;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -15,96 +17,48 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 权限校验切面
- * <p>
- * 拦截标注 {@link Permission} 注解的 Controller 方法，基于 Sa-Token 进行权限校验。
- * 支持动态前缀拼接：当目标对象存在 {@code getPermissionPrefix()} 方法时，
- * 自动拼接 {@code 前缀 + ":" + 动作后缀} 为完整权限标识。
- * </p>
- *
- * <h2>权限解析规则</h2>
- * <ul>
- *   <li>当 {@link Permission#value()} 不含冒号（如 {@code "list"}），
- *       完整权限 = {@code getPermissionPrefix() + ":" + value}</li>
- *   <li>当 {@link Permission#value()} 含冒号（如 {@code "system:user:list"}），
- *       直接作为完整权限使用</li>
- *   <li>目标对象无 {@code getPermissionPrefix()} 方法时，{@code value} 原样使用</li>
- * </ul>
- *
- * <h2>多权限逻辑</h2>
- * <ul>
- *   <li>{@link Permission.Logical#AND}：用户必须拥有全部权限（默认）</li>
- *   <li>{@link Permission.Logical#OR}：用户拥有任意一个权限即可</li>
- * </ul>
- *
- * <h2>异常处理</h2>
- * <p>
- * Sa-Token 校验失败时抛出 {@code NotPermissionException}（无权限）或
- * {@code NotLoginException}（未登录），异常直接上抛，由全局异常处理器统一处理。
- * </p>
- *
- * <h2>使用示例</h2>
- * <pre>{@code
- * // CommonController 子类自动生效
- * @RestController
- * @RequestMapping("/user")
- * public class UserController extends CommonController<UserService, User> {
- *     public UserController(UserService baseService) { super(baseService); }
- *
- *     @Override
- *     protected String getPermissionPrefix() { return "system:user"; }
- * }
- *
- * // 也支持独立 Controller 直接标注
- * @Permission("system:user:export")
- * @PostMapping("/export")
- * public R<Void> export() { ... }
- * }</pre>
+ * 权限校验切面，拦截标注 {@link Permission} 注解的方法，基于 Sa-Token 进行权限校验。
+ * <p>支持通过 {@link ControllerConfig#getPermissionPrefix()} 动态拼接权限前缀。</p>
  *
  * @author dream
  * @since 2026-08-24
- * @see Permission
  */
 @Slf4j
 @Aspect
 public class PermissionAspect {
 
+    private static final Map<Class<?>, Method> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
+
     /**
-     * 拦截所有标注 {@link Permission} 注解的方法，执行权限校验。
+     * 环绕通知：校验权限后执行目标方法。
      *
-     * @param joinPoint  AOP 连接点
+     * @param joinPoint  连接点
      * @param permission 权限注解
-     * @return 方法执行结果
-     * @throws Throwable 方法执行异常或权限校验失败
+     * @return 目标方法返回值
+     * @throws Throwable 目标方法抛出的异常或权限校验异常
      */
     @Around("@annotation(permission)")
     public Object around(ProceedingJoinPoint joinPoint, Permission permission) throws Throwable {
-        // 1. 解析完整权限标识
         String[] permissions = resolvePermissions(joinPoint, permission);
-
         if (permissions.length == 0) {
-            // fail-closed：标注了 @Permission 却解析不出任何权限标识，视为配置错误，拒绝放行
-            throw new SecurityException("权限校验配置错误：@Permission 未解析出有效权限标识，方法="
-                    + joinPoint.getSignature().toShortString());
+            throw new BusinessException(ResponseCode.FORBIDDEN,
+                    "权限校验配置错误：@Permission 未解析出有效权限标识，方法="
+                            + joinPoint.getSignature().toShortString());
         }
 
-        // 2. 执行 Sa-Token 权限校验
         checkPermissions(permissions, permission.logical());
-
-        log.debug("权限校验通过：{}", String.join(",", permissions));
+        if (log.isDebugEnabled()) {
+            log.debug("权限校验通过：{}", String.join(",", permissions));
+        }
         return joinPoint.proceed();
     }
 
     /**
-     * 解析完整权限标识数组
-     * <p>
-     * 对不含冒号的 {@code value}，通过反射调用目标对象的 {@code getPermissionPrefix()}
-     * 拼接完整权限标识；含冒号的直接使用。
-     * </p>
+     * 解析完整权限标识数组。
      *
-     * @param joinPoint  AOP 连接点
-     * @param permission 权限注解
-     * @return 完整权限标识数组
+     * @param joinPoint  连接点
+     * @param permission 注解
+     * @return 权限标识数组
      */
     private String[] resolvePermissions(ProceedingJoinPoint joinPoint, Permission permission) {
         String[] values = permission.value();
@@ -112,22 +66,17 @@ public class PermissionAspect {
             return new String[0];
         }
 
-        // 获取权限前缀（反射调用 getPermissionPrefix）
         String prefix = getPermissionPrefix(joinPoint.getTarget());
-
         List<String> resolved = new ArrayList<>(values.length);
         for (String value : values) {
             if (value == null || value.trim().isEmpty()) {
                 continue;
             }
             if (value.contains(":")) {
-                // 含冒号，直接作为完整权限标识
                 resolved.add(value);
             } else if (prefix != null && !prefix.trim().isEmpty()) {
-                // 拼接前缀
                 resolved.add(prefix + ":" + value);
             } else {
-                // 无前缀，原样使用
                 resolved.add(value);
             }
         }
@@ -135,13 +84,11 @@ public class PermissionAspect {
     }
 
     /**
-     * 通过反射获取目标对象的权限前缀
-     * <p>
-     * 尝试调用 {@code getControllerConfig()} 方法；若目标对象无此方法，返回 {@code null}。
-     * </p>
+     * 通过反射获取目标对象的权限前缀。
      *
      * @param target 目标对象
-     * @return 权限前缀；不存在返回 {@code null}
+     * @return 权限前缀，若获取失败返回 {@code null}
+     * @throws BusinessException 当方法调用异常或返回类型不匹配时抛出
      */
     private String getPermissionPrefix(Object target) {
         if (target == null) {
@@ -149,40 +96,34 @@ public class PermissionAspect {
         }
         Method method = findMethod(target.getClass(), "getControllerConfig");
         if (method == null) {
-            log.debug("目标对象无 getControllerConfig 方法：{}", target.getClass().getName());
             return null;
         }
         try {
             Object result = method.invoke(target);
+            if (result == null) {
+                return null;
+            }
             if (result instanceof ControllerConfig) {
                 return ((ControllerConfig) result).getPermissionPrefix();
             }
-            // 返回值类型错误 → fail-closed，禁止以缺省前缀放行
-            throw new SecurityException("权限前缀解析失败：getControllerConfig() 返回类型异常，class="
-                    + target.getClass().getName() + ", actual="
-                    + (result == null ? "null" : result.getClass().getName()));
-        } catch (IllegalAccessException | java.lang.reflect.InvocationTargetException e) {
-            throw new SecurityException("权限前缀解析失败：getControllerConfig() 调用异常，class="
-                    + target.getClass().getName(), e);
+            throw new BusinessException(ResponseCode.FORBIDDEN,
+                    "权限前缀解析失败：getControllerConfig() 返回类型异常，class="
+                            + target.getClass().getName() + ", actual=" + result.getClass().getName());
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BusinessException(ResponseCode.FORBIDDEN,
+                    "权限前缀解析失败：getControllerConfig() 调用异常，class="
+                            + target.getClass().getName(), e);
         }
     }
 
     /**
-     * 方法缓存：Class → getControllerConfig 方法（沿父类链查找）
-     */
-    private static final Map<Class<?>, Method> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
-
-    /**
-     * 沿类继承链查找指定方法。
-     * <p>
-     * 使用 {@link Class#getDeclaredMethod} 可获取 protected / private 方法
-     * （如 {@code CommonController.getControllerConfig()} 为 protected），
-     * 并 {@code setAccessible(true)} 保证可调用，兼容 CGLIB 代理子类。
-     * </p>
+     * 沿继承链查找指定方法（支持 protected/private）。
      *
-     * @param clazz      目标类（含继承关系）
+     * @param clazz      类
      * @param methodName 方法名
-     * @return 找到的方法；不存在返回 {@code null}
+     * @return 方法对象，未找到返回 {@code null}
      */
     private Method findMethod(Class<?> clazz, String methodName) {
         return CONFIG_METHOD_CACHE.computeIfAbsent(clazz, c -> {
@@ -193,7 +134,6 @@ public class PermissionAspect {
                     method.setAccessible(true);
                     return method;
                 } catch (NoSuchMethodException ignored) {
-                    // 继续向父类查找
                 }
                 current = current.getSuperclass();
             }
@@ -202,10 +142,10 @@ public class PermissionAspect {
     }
 
     /**
-     * 执行 Sa-Token 权限校验
+     * 执行 Sa-Token 权限校验。
      *
-     * @param permissions 完整权限标识数组
-     * @param logical     多权限逻辑关系
+     * @param permissions 权限标识数组
+     * @param logical     逻辑关系（AND/OR）
      */
     private void checkPermissions(String[] permissions, Permission.Logical logical) {
         if (permissions.length == 1) {

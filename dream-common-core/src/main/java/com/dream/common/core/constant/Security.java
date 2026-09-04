@@ -33,6 +33,15 @@ public final class Security {
     public static final String CACHE_PREFIX_LOCK = "lock:";
     public static final String CACHE_PREFIX_FAIL = "login_fail:";
     public static final String CACHE_PREFIX_BLACKLIST = "blacklist:";
+    /**
+     * 路由白名单路径缓存 key。
+     * <p>
+     * 业务系统可通过 {@code CachesUtils.set(EXCLUDE_PATHS_CACHE_KEY, "/api/**,/login")}
+     * 动态注入白名单路径，缓存中多个路径以逗号隔开。
+     * 启动时与 {@code dream.security.interceptor.exclude-paths} 配置项合并。
+     * </p>
+     */
+    public static final String CACHE_PREFIX_EXCLUDE_PATHS = "security:exclude-paths:";
 
     /**
      * 令牌秘钥

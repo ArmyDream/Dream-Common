@@ -3,9 +3,11 @@ package com.dream.common.framework.utils;
 import com.dream.common.core.enums.CharsetEnum;
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.context.request.WebRequest;
 
 import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
@@ -504,6 +506,21 @@ public final class ServletUtils {
         }
         sb.append(request.getContextPath());
         return sb.toString();
+    }
+
+    public static String getRequestUri(WebRequest request) {
+        if (request instanceof NativeWebRequest) {
+            HttpServletRequest httpReq = ((NativeWebRequest) request).getNativeRequest(HttpServletRequest.class);
+            if (httpReq != null) {
+                String uri = httpReq.getRequestURI();
+                String qs = httpReq.getQueryString();
+                return qs != null ? uri + "?" + qs : uri;
+            }
+        }
+        if (request != null) {
+            return request.getDescription(false);
+        }
+        return "unknown";
     }
 
     // ==================== URL 编解码 ====================

@@ -63,11 +63,11 @@
         颜色方案：时间绿 / 线程红 / 级别高亮 / 类名青 / traceId 品红 / 消息白
     -->
     <property name="CONSOLE_PATTERN"
-              value="%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %red([%thread]) %highlight(%-5level) %cyan(%logger{40}) %magenta([%X{traceId:-}]) - %msg%n"/>
+              value="%green(%d{yyyy-MM-dd HH:mm:ss.SSS}) %red([%thread]) %highlight(%-5level) %cyan(%logger{40})-%L %magenta([%X{traceId:-}]) - %msg%n"/>
 
     <!-- 文件格式（无颜色，含完整类名） -->
     <property name="FILE_PATTERN"
-              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{60} - %msg%n"/>
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-}] %logger{60}-%L - %msg%n"/>
 
     <!-- ==================== Appender：控制台 ==================== -->
 
@@ -182,33 +182,33 @@
 
     <!-- ==================== 第三方框架日志抑制 ==================== -->
 
-    <!-- Spring 框架 -->
+<!--    &lt;!&ndash; Spring 框架 &ndash;&gt;
     <logger name="org.springframework" level="WARN"/>
     <logger name="org.springframework.boot" level="INFO"/>
     <logger name="org.springframework.web" level="INFO"/>
 
-    <!-- 数据库 -->
+    &lt;!&ndash; 数据库 &ndash;&gt;
     <logger name="com.alibaba.druid" level="WARN"/>
     <logger name="com.baomidou" level="WARN"/>
     <logger name="org.hibernate" level="WARN"/>
     <logger name="org.mybatis" level="WARN"/>
 
-    <!-- 连接池 -->
+    &lt;!&ndash; 连接池 &ndash;&gt;
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <logger name="io.lettuce" level="WARN"/>
     <logger name="org.apache.commons.pool2" level="WARN"/>
 
-    <!-- Apache -->
+    &lt;!&ndash; Apache &ndash;&gt;
     <logger name="org.apache" level="WARN"/>
     <logger name="org.apache.ibatis" level="WARN"/>
 
-    <!-- Redisson -->
+    &lt;!&ndash; Redisson &ndash;&gt;
     <logger name="org.redisson" level="WARN"/>
 
-    <!-- MyBatis SQL（默认 INFO，仅 dev 环境开启 DEBUG） -->
+    &lt;!&ndash; MyBatis SQL（默认 INFO，仅 dev 环境开启 DEBUG） &ndash;&gt;
     <logger name="com.dream.common.data.mapper" level="INFO" additivity="false">
         <appender-ref ref="FILE_SQL"/>
-    </logger>
+    </logger>-->
 
     <!-- ==================== 业务 Logger（公共，不受 profile 影响） ==================== -->
 

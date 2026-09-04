@@ -1,8 +1,10 @@
 package com.dream.common.advice.handler;
 
-import com.dream.common.advice.api.ExceptionHandlerDelegate;
+import com.dream.common.core.api.ExceptionHandlerDelegate;
+import com.dream.common.core.constant.OrderValue;
 import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.exception.BusinessException;
+import com.dream.common.core.utils.HandleUtils;
 import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -75,7 +77,7 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 @ConditionalOnProperty(prefix = "dream.advice.exception", name = "enabled", havingValue = "true", matchIfMissing = true)
 @SuppressWarnings("DataFlowIssue")
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order // 值越大，执行越靠后。
 public class GlobalExceptionHandler {
 
     private final ExceptionHandlerDelegate delegate;
@@ -100,27 +102,9 @@ public class GlobalExceptionHandler {
                                     @Nullable Exception ex,
                                     @Nullable WebRequest request,
                                     boolean apply,
-                                    @Nullable BiFunction<Exception, WebRequest, R<?>> handler) {
-        if (delegate == null || ex == null) {
-            return null;
-        }
-        try {
-            delegate.onException(ex, request);
-        } catch (Exception e) {
-            log.warn("onException 处理失败 ==> {}", e.getMessage(), e);
-        }
-        if (handler == null) {
-            return null;
-        }
-        try {
-            if (apply) {
-                return handler.apply(ex, request);
-            }
-        } catch (Exception e) {
-            log.warn("委托异常处理失败 ==> {}", e.getMessage(), e);
-            return null;
-        }
-        return null;
+                                    @Nullable BiFunction<Exception, Object, R<?>> handler) {
+
+        return HandleUtils.handleWithDelegate(delegate, ex, request, apply, handler);
     }
 
     // ==================== 业务异常 ====================
@@ -305,7 +289,7 @@ public class GlobalExceptionHandler {
         log.error("Servlet 异常: uri={}", getRequestUri(request), ex);
 
         R<?> result = handleWithDelegate(delegate, ex, request,true,
-                (e, r) -> delegate.handleServletException((ServletException) e, r));
+                (e, r) -> delegate.handleServletException(e, r));
         if (result != null) {
             return result;
         }
@@ -447,23 +431,9 @@ public class GlobalExceptionHandler {
      */
     private R<?> failWithTrace(ResponseCode code, Throwable ex) {
         if (showStackTrace && ex != null) {
-            return R.fail(code, code.getLabel(), buildStackTrace(ex));
+            return R.fail(code, code.getLabel(), HandleUtils.stackTraceToString(ex));
         }
         return R.fail(code);
-    }
-
-    /**
-     * 将异常堆栈转换为字符串。
-     *
-     * @param ex 异常
-     * @return 堆栈字符串
-     */
-    private String buildStackTrace(Throwable ex) {
-        StringWriter sw = new StringWriter();
-        try (PrintWriter pw = new PrintWriter(sw)) {
-            ex.printStackTrace(pw);
-        }
-        return sw.toString();
     }
 
     private String extractValidationMessage(List<FieldError> fieldErrors) {
@@ -484,9 +454,8 @@ public class GlobalExceptionHandler {
                 return qs != null ? uri + "?" + qs : uri;
             }
         }
-        if (request != null && request.getDescription(false) != null) {
-            String desc = request.getDescription(false);
-            return desc.startsWith("uri=") ? desc.substring(4) : desc;
+        if (request != null) {
+            return request.getDescription(false);
         }
         return "unknown";
     }

@@ -1,1 +1,2 @@
 com.dream.common.security.config.SecurityAutoConfiguration
+com.dream.common.security.config.SaTokenWebConfig

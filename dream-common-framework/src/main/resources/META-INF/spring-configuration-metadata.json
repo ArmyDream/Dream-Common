@@ -39,6 +39,12 @@
       "description": "延时双删注解切面配置",
       "type": "com.dream.common.framework.cache.config.CacheProperties$DoubleDelete",
       "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
+    },
+    {
+      "name": "dream.cache.login-cache",
+      "description": "登录信息缓存子配置",
+      "type": "com.dream.common.framework.cache.config.CacheProperties$LoginCache",
+      "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
     }
   ],
   "properties": [
@@ -81,7 +87,85 @@
     {
       "name": "dream.filter.security-header.strict-transport-security",
       "type": "java.lang.String",
-      "description": "Strict-Transport-Security 头值，默认空（不输出）；HTTPS 场景可配置如 max-age=31536000。",
+      "description": "Strict-Transport-Security 头值，默认空（不输出）；HTTPS 场景可配置如 max-age=31536000; includeSubDomains; preload。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.referrer-policy",
+      "type": "java.lang.String",
+      "description": "Referrer-Policy 头值，控制 Referer 发送策略。可选：no-referrer / same-origin / strict-origin-when-cross-origin 等。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.content-security-policy",
+      "type": "java.lang.String",
+      "description": "Content-Security-Policy 头值，限制资源加载来源。示例：default-src 'self'。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.x-permitted-cross-domain-policies",
+      "type": "java.lang.String",
+      "description": "X-Permitted-Cross-Domain-Policies 头值，控制跨域策略文件（Flash/PDF）。可选：none / master-only / by-content-type / by-ftp-filename / all。",
+      "defaultValue": "master-only"
+    },
+    {
+      "name": "dream.filter.security-header.x-download-options",
+      "type": "java.lang.String",
+      "description": "X-Download-Options 头值，禁止 IE 自动打开下载文件。",
+      "defaultValue": "noopen"
+    },
+    {
+      "name": "dream.filter.security-header.cross-origin-embedder-policy",
+      "type": "java.lang.String",
+      "description": "Cross-Origin-Embedder-Policy (COEP) 头值。可选：unsafe-none / require-corp。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.cross-origin-opener-policy",
+      "type": "java.lang.String",
+      "description": "Cross-Origin-Opener-Policy (COOP) 头值。可选：unsafe-none / same-origin-allow-popups / same-origin。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.cross-origin-resource-policy",
+      "type": "java.lang.String",
+      "description": "Cross-Origin-Resource-Policy (CORP) 头值。可选：same-site / same-origin / cross-origin。",
+      "defaultValue": "cross-origin"
+    },
+    {
+      "name": "dream.filter.security-header.permissions-policy",
+      "type": "java.lang.String",
+      "description": "Permissions-Policy 头值，控制浏览器功能权限。示例：geolocation=(self),camera=(),microphone=()。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.clear-site-data",
+      "type": "java.lang.String",
+      "description": "Clear-Site-Data 头值，清除浏览器数据。警告：每次响应均生效，通常仅用于登出接口。可选：cache / cookies / storage / executionContexts / *。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.cache-control",
+      "type": "java.lang.String",
+      "description": "Cache-Control 头值。设为 no-cache 时同时输出 Expires: -1 和 Pragma: no-cache。默认空（不输出）。",
+      "defaultValue": ""
+    },
+    {
+      "name": "dream.filter.security-header.cookie-secure",
+      "type": "java.lang.Boolean",
+      "description": "是否为 Cookie 追加 Secure 标识（仅 HTTPS 传输）。",
+      "defaultValue": false
+    },
+    {
+      "name": "dream.filter.security-header.cookie-http-only",
+      "type": "java.lang.Boolean",
+      "description": "是否为 Cookie 追加 HttpOnly 标识（禁止 JS 读取）。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.filter.security-header.cookie-same-site",
+      "type": "java.lang.String",
+      "description": "Cookie SameSite 策略。可选：Lax / Strict / None。设为 None 时须同时开启 cookie-secure。默认空（不追加）。",
       "defaultValue": ""
     },
     {
@@ -155,6 +239,12 @@
       "type": "java.lang.Boolean",
       "description": "是否启用 Controller 查询缓存切面。",
       "defaultValue": true
+    },
+    {
+      "name": "dream.cache.login-cache.expire-seconds",
+      "type": "java.lang.Long",
+      "description": "登录信息缓存过期时间（秒），建议与 Sa-Token token 超时一致。",
+      "defaultValue": 86400
     }
   ],
   "hints": [
