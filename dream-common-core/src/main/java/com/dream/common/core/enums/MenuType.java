@@ -56,8 +56,4 @@ public enum MenuType implements BaseEnum<String> {
         return this == LINK;
     }
 
-    public static MenuType fromValue(String value) {
-        return BaseEnum.fromValue(MenuType.class, value);
-    }
-
 }

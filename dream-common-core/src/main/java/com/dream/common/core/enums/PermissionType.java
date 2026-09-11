@@ -44,7 +44,4 @@ public enum PermissionType implements BaseEnum<String> {
         return color;
     }
 
-    public static PermissionType fromValue(String value) {
-        return BaseEnum.fromValue(PermissionType.class, value);
-    }
 }

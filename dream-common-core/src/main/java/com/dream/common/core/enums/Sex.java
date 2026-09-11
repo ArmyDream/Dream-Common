@@ -39,7 +39,4 @@ public enum Sex implements BaseEnum<String> {
         return color;
     }
 
-    public static Sex fromValue(String value) {
-        return BaseEnum.fromValue(Sex.class, value);
-    }
 }

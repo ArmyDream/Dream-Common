@@ -40,7 +40,4 @@ public enum LogStatus implements BaseEnum<String> {
         return color;
     }
 
-    public static LogStatus fromValue(String value) {
-        return BaseEnum.fromValue(LogStatus.class, value);
-    }
 }

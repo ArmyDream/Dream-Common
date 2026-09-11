@@ -160,7 +160,4 @@ public enum DictType implements BaseEnum<String> {
         }
     }
 
-    public static DictType fromValue(String value) {
-        return BaseEnum.fromValue(DictType.class, value);
-    }
 }

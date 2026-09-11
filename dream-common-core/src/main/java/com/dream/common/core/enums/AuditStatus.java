@@ -77,8 +77,4 @@ public enum AuditStatus implements BaseEnum<String> {
     public boolean isWaiting() {
         return this == PENDING || this == AUDITING;
     }
-
-    public static AuditStatus fromValue(String value) {
-        return BaseEnum.fromValue(AuditStatus.class, value);
-    }
 }

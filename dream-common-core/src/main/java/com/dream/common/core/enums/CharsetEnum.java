@@ -154,37 +154,21 @@ public enum CharsetEnum implements BaseEnum<String> {
     }
 
     /**
-     * 根据编码名称获取枚举
-     */
-    public static CharsetEnum fromValue(String value) {
-        return BaseEnum.fromValue(CharsetEnum.class, value);
-    }
-
-    /**
-     * 根据 Java Charset 对象获取枚举
+     * 根据 Java Charset 对象获取枚举（按标准名称匹配）。
+     *
+     * <p>按名称而非对象比较，兼容 Charset 别名（如 UTF8 / UTF-8）。
+     * 内部委托 {@link BaseEnum#fromField(Class, java.util.function.Function, Object)}，
+     * 无需重复遍历代码。</p>
+     *
+     * @param charset Charset 对象，可为 {@code null}
+     * @return 匹配的枚举；未找到或参数为 {@code null} 时返回 {@code null}
      */
     public static CharsetEnum fromCharset(Charset charset) {
         if (charset == null) {
             return null;
         }
-        String name = charset.name();
-        for (CharsetEnum charsetEnum : values()) {
-            if (charsetEnum.charset.name().equals(name)) {
-                return charsetEnum;
-            }
-        }
-        return null;
+        return BaseEnum.fromField(
+                CharsetEnum.class, CharsetEnum::getCharsetName, charset.name());
     }
 
-    /**
-     * 获取所有支持的编码列表
-     */
-    public static String[] getNames() {
-        CharsetEnum[] values = values();
-        String[] names = new String[values.length];
-        for (int i = 0; i < values.length; i++) {
-            names[i] = values[i].value;
-        }
-        return names;
-    }
 }

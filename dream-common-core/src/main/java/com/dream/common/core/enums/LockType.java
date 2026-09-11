@@ -105,7 +105,4 @@ public enum LockType implements BaseEnum<String> {
         }
     }
 
-    public static LockType fromValue(String value) {
-        return BaseEnum.fromValue(LockType.class, value);
-    }
 }

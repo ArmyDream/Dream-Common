@@ -77,7 +77,4 @@ public enum LogLevel implements BaseEnum<String> {
         return color;
     }
 
-    public static LogLevel fromValue(String value) {
-        return BaseEnum.fromValue(LogLevel.class, value);
-    }
 }

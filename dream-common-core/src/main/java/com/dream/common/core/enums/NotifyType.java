@@ -49,10 +49,6 @@ public enum NotifyType implements BaseEnum<String> {
         return labelZh;
     }
 
-    public static NotifyType fromValue(String value) {
-        return BaseEnum.fromValue(NotifyType.class, value);
-    }
-
     @Override
     public String getColor() {
         switch (this) {

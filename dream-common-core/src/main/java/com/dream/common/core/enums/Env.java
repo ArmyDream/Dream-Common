@@ -64,8 +64,4 @@ public enum Env implements BaseEnum<String> {
         return this == DEMO;
     }
 
-    public static Env fromValue(String value) {
-        return BaseEnum.fromValue(Env.class, value);
-    }
-
 }

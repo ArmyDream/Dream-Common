@@ -20,11 +20,13 @@ public final class Security {
     public static final String AUTH_DIGEST = "Digest";
 
     // ==================== 缓存 Key 前缀 ====================
-    public static final String CACHE_PREFIX_TOKEN = "token:";
-    public static final String CACHE_PREFIX_USER = "user:";
-    public static final String CACHE_PREFIX_ROLE = "role:";
-    public static final String CACHE_PREFIX_PERM = "perm:";
-    public static final String CACHE_PREFIX_PERMISSION = "permission:";
+    public static final String CACHE_PREFIX_TOKEN = "dream:security:token:";
+    public static final String CACHE_PREFIX_SESSION = "dream:security:session:";
+    public static final String CACHE_PREFIX_USER = "dream:security:user:";
+    public static final String CACHE_PREFIX_ROLE = "dream:security:role:";
+    public static final String CACHE_PREFIX_PERM = "dream:security:perm:";
+    /** 在线用户列表（用于踢人、监控） */
+    public static final String CACHE_PREFIX_ONLINE = "dream:security:online:";
     public static final String CACHE_PREFIX_MENU = "menu:";
     public static final String CACHE_PREFIX_DICT = "dict:";
     public static final String CACHE_PREFIX_CONFIG = "config:";
@@ -33,6 +35,7 @@ public final class Security {
     public static final String CACHE_PREFIX_LOCK = "lock:";
     public static final String CACHE_PREFIX_FAIL = "login_fail:";
     public static final String CACHE_PREFIX_BLACKLIST = "blacklist:";
+
     /**
      * 路由白名单路径缓存 key。
      * <p>

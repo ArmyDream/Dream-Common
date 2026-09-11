@@ -13,7 +13,7 @@
     <artifactId>dream-common-core</artifactId>
 
     <description>
-        最底层，不依赖任何第三方库。
+        最底层，不依赖任何第三方库。（日志库除外）
         提供纯 Java 的基础能力。
         零依赖、可被任何模块引用。
     </description>

@@ -102,7 +102,4 @@ public enum FileSource implements BaseEnum<String> {
         }
     }
 
-    public static FileSource fromValue(String value) {
-        return BaseEnum.fromValue(FileSource.class, value);
-    }
 }

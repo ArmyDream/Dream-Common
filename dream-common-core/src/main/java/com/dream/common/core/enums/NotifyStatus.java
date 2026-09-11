@@ -90,7 +90,4 @@ public enum NotifyStatus implements BaseEnum<String> {
         return this == SUCCESS || this == FAILED || this == READ || this == CANCELLED;
     }
 
-    public static NotifyStatus fromValue(String value) {
-        return BaseEnum.fromValue(NotifyStatus.class, value);
-    }
 }

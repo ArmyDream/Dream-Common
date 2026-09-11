@@ -178,45 +178,6 @@ public enum DateFormat implements BaseEnum<String> {
     }
 
     /**
-     * 根据日期字符串自动匹配对应的格式，返回格式字符串
-     *
-     * @param dateStr 日期字符串
-     * @return 匹配的格式字符串，未匹配返回 null
-     */
-    public static String matchPatternStr(String dateStr) {
-        DateFormat format = matchPattern(dateStr);
-        return format != null ? format.getPattern() : null;
-    }
-
-    /**
-     * 根据日期字符串自动匹配对应的格式，带默认值
-     *
-     * @param dateStr       日期字符串
-     * @param defaultFormat 未匹配时的默认格式
-     * @return 匹配的格式枚举
-     */
-    public static DateFormat matchPatternOrDefault(String dateStr, DateFormat defaultFormat) {
-        DateFormat matched = matchPattern(dateStr);
-        return matched != null ? matched : defaultFormat;
-    }
-
-    public static DateFormat fromPattern(String pattern) {
-        if (pattern == null || pattern.isEmpty()) {
-            return null;
-        }
-        for (DateFormat format : values()) {
-            if (format.pattern.equals(pattern)) {
-                return format;
-            }
-        }
-        return null;
-    }
-
-    public static DateFormat fromValue(String value) {
-        return BaseEnum.fromValue(DateFormat.class, value);
-    }
-
-    /**
      * 获取所有的 Pattern，用于校验
      * 排查 数据库、Oracle、MyBatis 的时间格式
      */

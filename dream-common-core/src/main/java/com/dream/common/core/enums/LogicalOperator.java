@@ -91,7 +91,4 @@ public enum LogicalOperator implements BaseEnum<String> {
         }
     }
 
-    public static LogicalOperator fromValue(String value) {
-        return BaseEnum.fromValue(LogicalOperator.class, value);
-    }
 }

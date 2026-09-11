@@ -40,8 +40,4 @@ public enum RoleType implements BaseEnum<String> {
         return color;
     }
 
-    public static RoleType fromValue(String value) {
-        return BaseEnum.fromValue(RoleType.class, value);
-    }
-
 }

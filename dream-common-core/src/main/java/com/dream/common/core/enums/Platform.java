@@ -41,7 +41,4 @@ public enum Platform implements BaseEnum<String> {
         return color;
     }
 
-    public static Platform fromValue(String value) {
-        return BaseEnum.fromValue(Platform.class, value);
-    }
 }

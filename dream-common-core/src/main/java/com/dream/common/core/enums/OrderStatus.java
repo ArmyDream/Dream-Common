@@ -119,7 +119,4 @@ public enum OrderStatus implements BaseEnum<String> {
         return this == PENDING || this == PAID || this == SHIPPED || this == RECEIVED;
     }
 
-    public static OrderStatus fromValue(String value) {
-        return BaseEnum.fromValue(OrderStatus.class, value);
-    }
 }

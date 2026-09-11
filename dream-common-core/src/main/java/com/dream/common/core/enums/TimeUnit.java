@@ -57,10 +57,6 @@ public enum TimeUnit implements BaseEnum<String> {
         return labelZh;
     }
 
-    public static TimeUnit fromValue(String value) {
-        return BaseEnum.fromValue(TimeUnit.class, value);
-    }
-
     /**
      * 转换为毫秒数
      *

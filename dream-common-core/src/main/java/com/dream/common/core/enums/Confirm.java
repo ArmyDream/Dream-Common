@@ -37,7 +37,4 @@ public enum Confirm implements BaseEnum<String> {
         return color;
     }
 
-    public static Confirm fromValue(String value) {
-        return BaseEnum.fromValue(Confirm.class, value);
-    }
 }

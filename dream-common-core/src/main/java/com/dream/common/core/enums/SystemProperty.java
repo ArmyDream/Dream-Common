@@ -391,25 +391,4 @@ public enum SystemProperty implements BaseEnum<String> {
         );
     }
 
-    // ==================== 静态方法 ====================
-
-    public static SystemProperty fromKey(String key) {
-        if (key == null || key.isEmpty()) {
-            return null;
-        }
-        for (SystemProperty item : values()) {
-            if (item.key.equals(key)) {
-                return item;
-            }
-        }
-        return null;
-    }
-
-    public static SystemProperty fromValue(String value) {
-        return BaseEnum.fromValue(SystemProperty.class, value);
-    }
-
-    public static boolean exists(String key) {
-        return fromKey(key) != null;
-    }
 }

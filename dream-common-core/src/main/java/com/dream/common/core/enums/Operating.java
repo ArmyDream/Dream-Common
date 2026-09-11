@@ -82,7 +82,4 @@ public enum Operating implements BaseEnum<String> {
         }
     }
 
-    public static Operating fromValue(String value) {
-        return BaseEnum.fromValue(Operating.class, value);
-    }
 }

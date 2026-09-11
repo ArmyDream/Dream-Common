@@ -234,7 +234,4 @@ public enum ContentType implements BaseEnum<String> {
         }
     }
 
-    public static ContentType fromValue(String value) {
-        return BaseEnum.fromValue(ContentType.class, value);
-    }
 }

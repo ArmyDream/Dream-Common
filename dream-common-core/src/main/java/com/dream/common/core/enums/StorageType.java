@@ -93,8 +93,4 @@ public enum StorageType implements BaseEnum<String> {
                 return "#13C2C2";
         }
     }
-
-    public static StorageType fromValue(String value) {
-        return BaseEnum.fromValue(StorageType.class, value);
-    }
 }

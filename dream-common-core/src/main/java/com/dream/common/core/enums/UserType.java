@@ -88,7 +88,4 @@ public enum UserType implements BaseEnum<String> {
         return this != GUEST && this != TEST;
     }
 
-    public static UserType fromValue(String value) {
-        return BaseEnum.fromValue(UserType.class, value);
-    }
 }

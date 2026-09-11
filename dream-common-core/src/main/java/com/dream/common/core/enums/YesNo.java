@@ -45,7 +45,4 @@ public enum YesNo implements BaseEnum<String> {
         return this == NO;
     }
 
-    public static YesNo fromValue(String value) {
-        return BaseEnum.fromValue(YesNo.class, value);
-    }
 }

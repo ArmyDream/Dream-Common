@@ -132,7 +132,4 @@ public enum DesensitizeType implements BaseEnum<String> {
         }
     }
 
-    public static DesensitizeType fromValue(String value) {
-        return BaseEnum.fromValue(DesensitizeType.class, value);
-    }
 }

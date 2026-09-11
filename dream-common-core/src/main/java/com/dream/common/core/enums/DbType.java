@@ -429,18 +429,6 @@ public enum DbType implements BaseEnum<String> {
 
     // ==================== 静态方法 ====================
 
-    public static DbType fromValue(String value) {
-        return BaseEnum.fromValue(DbType.class, value);
-    }
-
-    public static DbType fromValueOrDefault(String value, DbType defaultValue) {
-        return BaseEnum.fromValueOrDefault(DbType.class, value, defaultValue);
-    }
-
-    public static boolean exists(String value) {
-        return BaseEnum.exists(DbType.class, value);
-    }
-
     /**
      * 根据 JDBC URL 自动识别数据库类型
      */

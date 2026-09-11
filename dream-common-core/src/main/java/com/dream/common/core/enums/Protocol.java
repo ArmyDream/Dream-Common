@@ -183,7 +183,4 @@ public enum Protocol implements BaseEnum<String> {
         }
     }
 
-    public static Protocol fromValue(String value) {
-        return BaseEnum.fromValue(Protocol.class, value);
-    }
 }

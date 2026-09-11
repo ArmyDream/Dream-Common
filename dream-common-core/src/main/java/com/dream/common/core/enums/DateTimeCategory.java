@@ -67,7 +67,4 @@ public enum DateTimeCategory implements BaseEnum<String> {
         return this == TIME || this == DATETIME || this == COMPACT;
     }
 
-    public static DateTimeCategory fromValue(String value) {
-        return BaseEnum.fromValue(DateTimeCategory.class, value);
-    }
 }

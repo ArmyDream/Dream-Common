@@ -73,7 +73,4 @@ public enum RateLimiterType implements BaseEnum<String> {
         }
     }
 
-    public static RateLimiterType fromValue(String value) {
-        return BaseEnum.fromValue(RateLimiterType.class, value);
-    }
 }

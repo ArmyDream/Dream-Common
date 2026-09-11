@@ -92,47 +92,4 @@ public enum FileCat implements BaseEnum<String> {
         return description;
     }
 
-    // ==================== 静态工具方法 ====================
-
-    /**
-     * 根据值查找分类
-     *
-     * @param value 分类值
-     * @return 匹配的分类，未找到返回 null
-     */
-    public static FileCat fromValue(String value) {
-        return BaseEnum.fromValue(FileCat.class, value);
-    }
-
-    /**
-     * 根据值查找分类，找不到返回默认值
-     *
-     * @param value        分类值
-     * @param defaultValue 默认分类
-     * @return 匹配的分类或默认值
-     */
-    public static FileCat fromValueOrDefault(String value, FileCat defaultValue) {
-        return BaseEnum.fromValueOrDefault(FileCat.class, value, defaultValue);
-    }
-
-    /**
-     * 判断值是否存在
-     *
-     * @param value 分类值
-     * @return 存在返回 true
-     */
-    public static boolean exists(String value) {
-        return BaseEnum.exists(FileCat.class, value);
-    }
-
-    /**
-     * 获取所有分类的 value 列表
-     *
-     * @return value 列表
-     */
-    public static String[] valuesArray() {
-        return Arrays.stream(values())
-                .map(FileCat::getValue)
-                .toArray(String[]::new);
-    }
 }

@@ -5,7 +5,7 @@ package com.dream.common.core.enums;
  *
  * @author dream
  */
-public enum Status implements BaseEnum<String> {
+public enum EnableStatus implements BaseEnum<String> {
 
     ENABLE("0", "启用", "success"),
     DISABLE("1", "停用", "danger");
@@ -16,7 +16,7 @@ public enum Status implements BaseEnum<String> {
 
     private final String color;
 
-    Status(String value, String label, String color) {
+    EnableStatus(String value, String label, String color) {
         this.value = value;
         this.label = label;
         this.color = color;
@@ -37,7 +37,4 @@ public enum Status implements BaseEnum<String> {
         return color;
     }
 
-    public static Status fromValue(String value) {
-        return BaseEnum.fromValue(Status.class, value);
-    }
 }

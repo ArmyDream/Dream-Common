@@ -323,18 +323,4 @@ public enum ResponseCode implements BaseEnum<Integer> {
         return labelEn + " (" + value + ")";
     }
 
-    // ==================== 静态方法 ====================
-
-    public static ResponseCode fromValue(Integer value) {
-        return BaseEnum.fromValue(ResponseCode.class, value);
-    }
-
-    public static ResponseCode fromValueOrDefault(Integer value, ResponseCode defaultValue) {
-        return BaseEnum.fromValueOrDefault(ResponseCode.class, value, defaultValue);
-    }
-
-    public static boolean exists(Integer value) {
-        return BaseEnum.exists(ResponseCode.class, value);
-    }
-
 }

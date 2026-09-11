@@ -255,17 +255,4 @@ public enum Language implements BaseEnum<String> {
         return ZH_CN;
     }
 
-    // ==================== 静态方法 ====================
-
-    public static Language fromValue(String value) {
-        return BaseEnum.fromValue(Language.class, value);
-    }
-
-    public static Language fromValueOrDefault(String value, Language defaultValue) {
-        return BaseEnum.fromValueOrDefault(Language.class, value, defaultValue);
-    }
-
-    public static boolean exists(String value) {
-        return BaseEnum.exists(Language.class, value);
-    }
 }

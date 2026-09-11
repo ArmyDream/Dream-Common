@@ -335,21 +335,4 @@ public enum ConditionType implements BaseEnum<String> {
         }
     }
 
-    // ==================== 静态方法 ====================
-
-    public static ConditionType fromValue(String value) {
-        return BaseEnum.fromValue(ConditionType.class, value);
-    }
-
-    public static ConditionType fromSymbol(String symbol) {
-        if (symbol == null || symbol.isEmpty()) {
-            return null;
-        }
-        for (ConditionType operator : values()) {
-            if (operator.symbol.equals(symbol)) {
-                return operator;
-            }
-        }
-        return null;
-    }
 }

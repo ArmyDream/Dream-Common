@@ -77,8 +77,4 @@ public enum LogType implements BaseEnum<String> {
         }
     }
 
-    public static LogType fromValue(String value) {
-        return BaseEnum.fromValue(LogType.class, value);
-    }
-
 }

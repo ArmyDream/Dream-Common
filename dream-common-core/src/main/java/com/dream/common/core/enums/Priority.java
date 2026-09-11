@@ -90,7 +90,4 @@ public enum Priority implements BaseEnum<String> {
         return this == URGENT || this == HIGHEST;
     }
 
-    public static Priority fromValue(String value) {
-        return BaseEnum.fromValue(Priority.class, value);
-    }
 }

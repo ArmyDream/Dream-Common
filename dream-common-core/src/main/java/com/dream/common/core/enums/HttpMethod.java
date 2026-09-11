@@ -50,19 +50,6 @@ public enum HttpMethod implements BaseEnum<String> {
         return this == GET || this == HEAD || this == OPTIONS;
     }
 
-    public static HttpMethod resolve( String method) {
-        for (HttpMethod httpMethod : values()) {
-            if (httpMethod.name().equalsIgnoreCase(method)) {
-                return httpMethod;
-            }
-        }
-        return null;
-    }
-
-    public boolean matches(String method) {
-        return (this == resolve(method));
-    }
-
     @Override
     public String getColor() {
         switch (this) {
@@ -79,10 +66,6 @@ public enum HttpMethod implements BaseEnum<String> {
             default:
                 return "#8C8C8C";
         }
-    }
-
-    public static HttpMethod fromValue(String value) {
-        return BaseEnum.fromValue(HttpMethod.class, value);
     }
 
 }

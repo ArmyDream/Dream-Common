@@ -112,7 +112,4 @@ public enum TimeZone implements BaseEnum<String> {
         }
     }
 
-    public static TimeZone fromValue(String value) {
-        return BaseEnum.fromValue(TimeZone.class, value);
-    }
 }

@@ -256,17 +256,4 @@ public enum Crypto implements BaseEnum<String> {
                 || isJwtAlgorithm();
     }
 
-    // ==================== 静态方法 ====================
-
-    public static Crypto fromValue(String value) {
-        return BaseEnum.fromValue(Crypto.class, value);
-    }
-
-    public static Crypto fromValueOrDefault(String value, Crypto defaultValue) {
-        return BaseEnum.fromValueOrDefault(Crypto.class, value, defaultValue);
-    }
-
-    public static boolean exists(String value) {
-        return BaseEnum.exists(Crypto.class, value);
-    }
 }

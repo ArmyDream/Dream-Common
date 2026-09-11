@@ -109,7 +109,4 @@ public enum PayType implements BaseEnum<String> {
         return this == WECHAT || this == ALIPAY || this == APPLE_PAY || this == PAYPAL;
     }
 
-    public static PayType fromValue(String value) {
-        return BaseEnum.fromValue(PayType.class, value);
-    }
 }

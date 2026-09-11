@@ -45,7 +45,4 @@ public enum SortDirection implements BaseEnum<String> {
         return this == DESC;
     }
 
-    public static SortDirection fromValue(String value) {
-        return BaseEnum.fromValue(SortDirection.class, value);
-    }
 }

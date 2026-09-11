@@ -103,7 +103,4 @@ public enum CaptchaType implements BaseEnum<String> {
         }
     }
 
-    public static CaptchaType fromValue(String value) {
-        return BaseEnum.fromValue(CaptchaType.class, value);
-    }
 }

@@ -159,7 +159,4 @@ public enum LoginType implements BaseEnum<String> {
         }
     }
 
-    public static LoginType fromValue(String value) {
-        return BaseEnum.fromValue(LoginType.class, value);
-    }
 }

@@ -173,13 +173,4 @@ public enum OperationType implements BaseEnum<String> {
         return this == LOGIN || this == LOGOUT || this == REGISTER;
     }
 
-    // ==================== 静态方法 ====================
-
-    public static OperationType fromValue(String value) {
-        return BaseEnum.fromValue(OperationType.class, value);
-    }
-
-    public static boolean exists(String value) {
-        return BaseEnum.exists(OperationType.class, value);
-    }
 }

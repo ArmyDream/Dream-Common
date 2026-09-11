@@ -57,10 +57,6 @@ public enum JobStatus implements BaseEnum<String> {
         return labelZh;
     }
 
-    public static JobStatus fromValue(String value) {
-        return BaseEnum.fromValue(JobStatus.class, value);
-    }
-
     /**
      * 是否为运行中状态
      */

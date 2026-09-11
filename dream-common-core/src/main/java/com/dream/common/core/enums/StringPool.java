@@ -6,8 +6,6 @@ package com.dream.common.core.enums;
  * 统一管理项目中常用的字符和字符串常量
  * <p>
  * 注意：部分常量存在 value 相同的情况（如 DASH 和 MINUS 均为 "-"），
- * {@link #fromValue(String)} 方法会返回第一个匹配的枚举。
- * 如果需要精确匹配，请直接引用枚举常量而非使用 fromValue()。
  *
  * @author dream
  */
@@ -664,9 +662,5 @@ public enum StringPool implements BaseEnum<String> {
             default:
                 return "#8C8C8C";
         }
-    }
-
-    public static StringPool fromValue(String value) {
-        return BaseEnum.fromValue(StringPool.class, value);
     }
 }

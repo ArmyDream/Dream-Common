@@ -37,8 +37,4 @@ public enum Delete implements BaseEnum<String> {
         return color;
     }
 
-    public static Delete fromValue(String value) {
-        return BaseEnum.fromValue(Delete.class, value);
-    }
-
 }

@@ -102,7 +102,4 @@ public enum PayStatus implements BaseEnum<String> {
         return this == PENDING || this == PAYING;
     }
 
-    public static PayStatus fromValue(String value) {
-        return BaseEnum.fromValue(PayStatus.class, value);
-    }
 }

@@ -31,7 +31,4 @@ public enum KeyUsage implements BaseEnum<String> {
         return label;
     }
 
-    public static KeyUsage fromValue(String value) {
-        return BaseEnum.fromValue(KeyUsage.class, value);
-    }
 }
