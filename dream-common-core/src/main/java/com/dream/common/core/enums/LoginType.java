@@ -80,7 +80,12 @@ public enum LoginType implements BaseEnum<String> {
     /**
      * 免密登录（信任设备）
      */
-    TRUSTED("trusted", "免密登录");
+    TRUSTED("trusted", "免密登录"),
+
+    /**
+     * 其他登录
+     */
+    OTHER("other", "其他登录");
 
     private final String value;
     private final String label;

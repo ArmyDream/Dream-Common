@@ -1,5 +1,6 @@
 package com.dream.common.core.utils;
 
+import com.dream.common.core.enums.BaseEnum;
 import com.dream.common.core.enums.SystemProperty;
 
 import java.lang.management.ManagementFactory;
@@ -102,7 +103,7 @@ public final class SystemUtils {
         if (isBlank(key)) {
             return null;
         }
-        SystemProperty property = SystemProperty.fromKey(key);
+        SystemProperty property = BaseEnum.fromValue(SystemProperty.class, key);
         return property != null ? property.getProperty() : null;
     }
 

@@ -1,16 +1,16 @@
 package com.dream.common.core.enums;
 
 /**
- * 菜单类型枚举
+ * 菜单类型：M 目录 / C 菜单 / F 按钮
+ * 枚举
  *
  * @author dream
  */
 public enum MenuType implements BaseEnum<String> {
 
-    DIRECTORY("D", "目录", "primary"),
-    MENU("M", "菜单", "success"),
-    BUTTON("B", "按钮", "warning"),
-    LINK("L", "外链", "danger");
+    M("M", "目录", "primary"),
+    C("C", "菜单", "warning"),
+    F("F", "按钮", "danger");
 
     private final String value;
 
@@ -37,23 +37,6 @@ public enum MenuType implements BaseEnum<String> {
     @Override
     public String getColor() {
         return color;
-    }
-
-
-    public boolean isDirectory() {
-        return this == DIRECTORY;
-    }
-
-    public boolean isMenu() {
-        return this == MENU;
-    }
-
-    public boolean isButton() {
-        return this == BUTTON;
-    }
-
-    public boolean isLink() {
-        return this == LINK;
     }
 
 }

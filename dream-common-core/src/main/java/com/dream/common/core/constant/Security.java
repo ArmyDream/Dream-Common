@@ -27,9 +27,9 @@ public final class Security {
     public static final String CACHE_PREFIX_PERM = "dream:security:perm:";
     /** 在线用户列表（用于踢人、监控） */
     public static final String CACHE_PREFIX_ONLINE = "dream:security:online:";
-    public static final String CACHE_PREFIX_MENU = "menu:";
-    public static final String CACHE_PREFIX_DICT = "dict:";
-    public static final String CACHE_PREFIX_CONFIG = "config:";
+    public static final String CACHE_PREFIX_MENU = "dream:sys:menu:";
+    public static final String CACHE_PREFIX_DICT = "dream:sys:dict:";
+    public static final String CACHE_PREFIX_CONFIG = "dream:sys:config:";
     public static final String CACHE_PREFIX_CAPTCHA = "captcha:";
     public static final String CACHE_PREFIX_RATE_LIMIT = "rate_limit:";
     public static final String CACHE_PREFIX_LOCK = "lock:";

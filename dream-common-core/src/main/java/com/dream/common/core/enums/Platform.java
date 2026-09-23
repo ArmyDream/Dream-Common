@@ -12,7 +12,8 @@ public enum Platform implements BaseEnum<String> {
     APP("app", "App", "danger"),
     WECHAT("wechat", "微信小程序", "success"),
     ALIPAY("alipay", "支付宝小程序", "primary"),
-    H5("h5", "H5", "primary");
+    H5("h5", "H5", "primary"),
+    OTHER("other", "其他", "info");
 
     private final String value;
 

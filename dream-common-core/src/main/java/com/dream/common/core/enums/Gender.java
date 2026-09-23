@@ -5,7 +5,7 @@ package com.dream.common.core.enums;
  *
  * @author dream
  */
-public enum Sex implements BaseEnum<String> {
+public enum Gender implements BaseEnum<String> {
 
     MAN("0", "男", "primary"),
     WOMAN("1", "女", "danger"),
@@ -18,7 +18,7 @@ public enum Sex implements BaseEnum<String> {
 
     private final String color;
 
-    Sex(String value, String label, String color) {
+    Gender(String value, String label, String color) {
         this.value = value;
         this.label = label;
         this.color = color;

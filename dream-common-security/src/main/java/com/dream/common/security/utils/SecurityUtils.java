@@ -1,10 +1,9 @@
 package com.dream.common.security.utils;
 
-import cn.dev33.satoken.session.SaSession;
 import cn.dev33.satoken.stp.StpUtil;
 import com.dream.common.core.constant.Security;
+import com.dream.common.core.vo.sys.UserProfileVo;
 import com.dream.common.framework.cache.CachesUtils;
-import com.dream.common.security.vo.LoginUser;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.TimeUnit;
@@ -34,7 +33,7 @@ public final class SecurityUtils {
      * @param loginUser 登录用户信息，必须包含 userId
      * @throws IllegalArgumentException 当 loginUser 或 userId 为 null 时抛出
      */
-    public static void login(LoginUser loginUser) {
+    public static void login(UserProfileVo loginUser) {
         login(loginUser, LOGIN_USER_CACHE_EXPIRE_SECONDS);
     }
 
@@ -45,12 +44,12 @@ public final class SecurityUtils {
      * @param timeout   令牌有效期（秒）
      * @throws IllegalArgumentException 当 loginUser 或 userId 为 null 时抛出
      */
-    public static void login(LoginUser loginUser, long timeout) {
+    public static void login(UserProfileVo loginUser, long timeout) {
         if (loginUser == null || loginUser.getUserId() == null) {
             throw new IllegalArgumentException("登录用户信息或 userId 不能为空");
         }
-        loginUser.setLoginTime(System.currentTimeMillis());
-        loginUser.setExpireTime(System.currentTimeMillis() + timeout * 1000L);
+//        loginUser.setLoginTime(System.currentTimeMillis());
+//        loginUser.setExpireTime(System.currentTimeMillis() + timeout * 1000L);
 
         StpUtil.login(loginUser.getUserId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
                 .setTimeout(timeout));
@@ -125,9 +124,9 @@ public final class SecurityUtils {
     /**
      * 从缓存获取当前登录用户完整信息。
      *
-     * @return LoginUser，未登录或缓存不存在返回 {@code null}
+     * @return UserProfileVo，未登录或缓存不存在返回 {@code null}
      */
-    public static LoginUser getLoginUser() {
+    public static UserProfileVo getLoginUser() {
         if (!StpUtil.isLogin()) {
             return null;
         }
@@ -138,25 +137,25 @@ public final class SecurityUtils {
     /**
      * 获取当前登录用户信息，缓存未命中时通过加载器从数据库加载并回填缓存。
      *
-     * @param loader 数据加载器，返回 LoginUser（可为 null）
+     * @param loader 数据加载器，返回 UserProfileVo（可为 null）
      * @return 用户信息，未登录或加载失败返回 {@code null}
      */
-    public static LoginUser getLoginUser(Supplier<LoginUser> loader) {
+    public static UserProfileVo getLoginUser(Supplier<UserProfileVo> loader) {
         if (!StpUtil.isLogin() || loader == null) {
             return null;
         }
         String userId = StpUtil.getLoginIdAsString();
         String cacheKey = buildUserCacheKey(userId);
-        LoginUser cached = CachesUtils.get(cacheKey);
+        UserProfileVo cached = CachesUtils.get(cacheKey);
         if (cached != null) {
             return cached;
         }
-        LoginUser user = loader.get();
+        UserProfileVo user = loader.get();
         if (user != null) {
             user.setUserId(userId);
-            if (user.getLoginTime() == null) {
+            /*if (user.getLoginTime() == null) {
                 user.setLoginTime(System.currentTimeMillis());
-            }
+            }*/
             cacheLoginUser(user);
             log.debug("懒加载登录用户并回填缓存 | userId={}", userId);
         } else {
@@ -170,7 +169,7 @@ public final class SecurityUtils {
      *
      * @param loginUser 最新的用户信息
      */
-    public static void refreshLoginUser(LoginUser loginUser) {
+    public static void refreshLoginUser(UserProfileVo loginUser) {
         if (loginUser == null || loginUser.getUserId() == null) {
             return;
         }
@@ -374,11 +373,11 @@ public final class SecurityUtils {
         return Security.CACHE_PREFIX_USER + userId;
     }
 
-    private static void cacheLoginUser(LoginUser loginUser) {
+    private static void cacheLoginUser(UserProfileVo loginUser) {
         cacheLoginUser(loginUser, LOGIN_USER_CACHE_EXPIRE_SECONDS);
     }
 
-    private static void cacheLoginUser(LoginUser loginUser, long expire) {
+    private static void cacheLoginUser(UserProfileVo loginUser, long expire) {
         String cacheKey = buildUserCacheKey(loginUser.getUserId());
         CachesUtils.set(cacheKey, loginUser, expire, TimeUnit.SECONDS);
     }

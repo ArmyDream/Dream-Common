@@ -2,9 +2,9 @@ package com.dream.common.security.provider;
 
 import cn.dev33.satoken.stp.StpInterface;
 import com.dream.common.core.constant.Security;
+import com.dream.common.core.vo.sys.RoleVo;
+import com.dream.common.core.vo.sys.UserProfileVo;
 import com.dream.common.framework.cache.CachesUtils;
-import com.dream.common.security.vo.LoginUser;
-import com.dream.common.security.vo.RoleInfo;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -17,7 +17,7 @@ import java.util.List;
 
 /**
  * Sa-Token 权限数据提供者。
- * <p>从 {@link CachesUtils} 缓存中读取 {@link LoginUser}，提取权限和角色列表。</p>
+ * <p>从 {@link CachesUtils} 缓存中读取 {@link UserProfileVo}，提取权限和角色列表。</p>
  *
  * @author dream
  * @since 2026-09-03
@@ -37,7 +37,7 @@ public class StpInterfaceImpl implements StpInterface {
         if (loginId == null) {
             return Collections.emptyList();
         }
-        LoginUser loginUser = loadLoginUser(loginId.toString());
+        UserProfileVo loginUser = loadLoginUser(loginId.toString());
         if (loginUser == null || loginUser.getPermissions() == null) {
             return Collections.emptyList();
         }
@@ -52,13 +52,13 @@ public class StpInterfaceImpl implements StpInterface {
         if (loginId == null) {
             return Collections.emptyList();
         }
-        LoginUser loginUser = loadLoginUser(loginId.toString());
+        UserProfileVo loginUser = loadLoginUser(loginId.toString());
         if (loginUser == null || loginUser.getRoles() == null) {
             return Collections.emptyList();
         }
-        List<RoleInfo> roles = loginUser.getRoles();
+        List<RoleVo> roles = loginUser.getRoles();
         List<String> roleCodes = new ArrayList<>(roles.size());
-        for (RoleInfo role : roles) {
+        for (RoleVo role : roles) {
             if (role.getRoleCode() != null) {
                 roleCodes.add(role.getRoleCode());
             }
@@ -70,9 +70,9 @@ public class StpInterfaceImpl implements StpInterface {
      * 从缓存加载用户信息。
      *
      * @param userId 用户ID
-     * @return LoginUser，缓存不存在时返回 {@code null}
+     * @return UserProfileVo，缓存不存在时返回 {@code null}
      */
-    private LoginUser loadLoginUser(String userId) {
+    private UserProfileVo loadLoginUser(String userId) {
         try {
             return CachesUtils.get(Security.CACHE_PREFIX_USER + userId);
         } catch (Exception e) {
