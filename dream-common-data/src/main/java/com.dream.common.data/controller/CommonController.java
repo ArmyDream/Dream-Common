@@ -158,7 +158,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param query 查询条件实体
      * @return 单个实体；无匹配返回 {@code null}
      */
-    @Permission(value = "query", type = PermissionType.VIEW)
+    @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.QUERY)
     @PostMapping("/one")
     public R<T> one(@RequestBody T query) {
@@ -171,7 +171,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param id 主键 ID
      * @return 实体；不存在返回 {@code null}
      */
-    @Permission(value = "query", type = PermissionType.VIEW)
+    @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.VIEW)
     @GetMapping("/get/{id}")
     public R<T> getById(@PathVariable String id) {
@@ -184,7 +184,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param ids ID列表
      * @return 实体列表
      */
-    @Permission(value = "query", type = PermissionType.VIEW)
+    @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.QUERY, isSaveResponseData = false)
     @PostMapping("/get/batch")
     public R<List<T>> getByIds(@RequestBody List<String> ids) {
@@ -296,7 +296,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      * @param id 数据 ID
      * @return 是否完整（未被篡改）
      */
-    @Permission(value = "query", type = PermissionType.VIEW)
+    @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.VIEW)
     @GetMapping("/check/integrity/{id}")
     public R<Boolean> checkIntegrity(@PathVariable String id) {

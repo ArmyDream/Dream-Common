@@ -96,7 +96,7 @@ public @interface Permission {
      *
      * @return 权限按钮类型
      */
-    PermissionType type() default PermissionType.VIEW;
+    PermissionType type() default PermissionType.LIST;
 
     /**
      * 多权限逻辑运算符
