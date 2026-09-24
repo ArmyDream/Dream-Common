@@ -34,12 +34,15 @@ import org.springframework.web.context.request.WebRequest;
  * </ul>
  * <p>
  * 过滤器链阶段（DispatcherServlet 之前）的 Sa-Token 异常由
- * {@link com.dream.common.security.config.SaTokenWebConfig} 的 {@code setError} 处理，
- * 本处理器无法拦截。
+ * {@link SaTokenFilterErrorHandler} 处理，本处理器无法拦截。
  * </p>
  * <p>
- * 业务方可通过实现 {@link ExceptionHandlerDelegate#handleUnknownException(Exception, Object)}
- * 注入自定义响应（返回非 {@code null} 即覆盖默认）。
+ * 业务方可通过实现 {@link ExceptionHandlerDelegate#handleUnknownException} 注入自定义响应
+ * （返回非 {@code null} 即覆盖默认）。
+ * </p>
+ * <p>
+ * 由 {@link com.dream.common.security.config.SecurityAutoConfiguration} 通过 {@code @Import}
+ * 注册，类上的 {@code @RestControllerAdvice} 供 Spring MVC 识别。
  * </p>
  *
  * @author dream
@@ -76,14 +79,7 @@ public class SaTokenExceptionHandler {
     public R<?> handleNotLogin(NotLoginException e, WebRequest req) {
         log.warn("[Sa-Token] 未登录 | path={} | type={} | msg={}",
                 ServletUtils.getRequestUri(req), e.getType(), e.getMessage());
-        R<?> custom = HandleUtils.handleWithDelegate(delegate, e, req, true,
-                (ex, r) -> {
-                    if (delegate != null) {
-                        return delegate.handleUnknownException(ex, r);
-                    }
-                    return null;
-                });
-        return custom != null ? custom : R.fail(ResponseCode.UNAUTHORIZED, "未登录或登录已过期，请重新登录");
+        return customOrDefault(e, req, R.fail(ResponseCode.UNAUTHORIZED, "未登录或登录已过期，请重新登录"));
     }
 
     /**
@@ -97,14 +93,7 @@ public class SaTokenExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public R<?> handleNotPermission(NotPermissionException e, WebRequest req) {
         log.warn("[Sa-Token] 无权限 | path={} | code={}", ServletUtils.getRequestUri(req), e.getCode());
-        R<?> custom = HandleUtils.handleWithDelegate(delegate, e, req, true,
-                (ex, r) -> {
-                    if (delegate != null) {
-                        return delegate.handleUnknownException(ex, r);
-                    }
-                    return null;
-                });
-        return custom != null ? custom : R.fail(ResponseCode.FORBIDDEN, "无权限：" + e.getCode());
+        return customOrDefault(e, req, R.fail(ResponseCode.FORBIDDEN, "无权限：" + e.getCode()));
     }
 
     /**
@@ -118,14 +107,7 @@ public class SaTokenExceptionHandler {
     @ResponseStatus(HttpStatus.FORBIDDEN)
     public R<?> handleNotRole(NotRoleException e, WebRequest req) {
         log.warn("[Sa-Token] 角色不足 | path={} | role={}", ServletUtils.getRequestUri(req), e.getRole());
-        R<?> custom = HandleUtils.handleWithDelegate(delegate, e, req, true,
-                (ex, r) -> {
-                    if (delegate != null) {
-                        return delegate.handleUnknownException(ex, r);
-                    }
-                    return null;
-                });
-        return custom != null ? custom : R.fail(ResponseCode.FORBIDDEN, "角色不足：" + e.getRole());
+        return customOrDefault(e, req, R.fail(ResponseCode.FORBIDDEN, "角色不足：" + e.getRole()));
     }
 
     /**
@@ -140,13 +122,23 @@ public class SaTokenExceptionHandler {
     public R<?> handleDisableService(DisableServiceException e, WebRequest req) {
         log.warn("[Sa-Token] 账号被禁用 | path={} | service={} | msg={}",
                 ServletUtils.getRequestUri(req), e.getService(), e.getMessage());
+        return customOrDefault(e, req, R.fail(ResponseCode.FORBIDDEN, "账号已被禁用：" + e.getMessage()));
+    }
+
+    /**
+     * 优先采用业务方委托的自定义响应，无委托或委托返回 {@code null} 时使用默认响应。
+     *
+     * @param e            异常
+     * @param req          请求上下文
+     * @param defaultResp  默认响应
+     * @return 最终响应
+     */
+    private R<?> customOrDefault(Exception e, WebRequest req, R<?> defaultResp) {
+        if (delegate == null) {
+            return defaultResp;
+        }
         R<?> custom = HandleUtils.handleWithDelegate(delegate, e, req, true,
-                (ex, r) -> {
-                    if (delegate != null) {
-                        return delegate.handleUnknownException(ex, r);
-                    }
-                    return null;
-                });
-        return custom != null ? custom : R.fail(ResponseCode.FORBIDDEN, "账号已被禁用：" + e.getMessage());
+                (ex, r) -> delegate.handleUnknownException(ex, r));
+        return custom != null ? custom : defaultResp;
     }
 }

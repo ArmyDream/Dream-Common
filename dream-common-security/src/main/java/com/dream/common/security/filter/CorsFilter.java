@@ -1,11 +1,17 @@
-package com.dream.common.security.config;
+package com.dream.common.security.filter;
 
 import com.dream.common.core.constant.Http;
+import com.dream.common.security.config.SecurityProperties;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.util.AntPathMatcher;
 import org.springframework.util.StringUtils;
 
-import javax.servlet.*;
+import javax.servlet.Filter;
+import javax.servlet.FilterChain;
+import javax.servlet.FilterConfig;
+import javax.servlet.ServletException;
+import javax.servlet.ServletRequest;
+import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -15,8 +21,14 @@ import java.util.List;
 
 /**
  * 独立 CORS 跨域过滤器。
- * <p>在 Sa-Token 过滤器之前执行，处理 OPTIONS 预检请求并注入 CORS 响应头。</p>
- * <p>支持通过配置的 {@code allowedOriginPatterns}（Ant 风格）或 {@code allowedOrigins} 精确匹配来决定是否允许请求源。</p>
+ * <p>
+ * 在 Sa-Token 过滤器之前执行（{@link com.dream.common.core.constant.OrderValue#CORS_FILTER}），
+ * 处理 OPTIONS 预检请求并注入 CORS 响应头。与鉴权职责严格分离。
+ * </p>
+ * <p>
+ * 支持通过配置的 {@code allowedOriginPatterns}（Ant 风格）或 {@code allowedOrigins}
+ * 精确匹配来决定是否允许请求源。
+ * </p>
  *
  * @author dream
  * @since 2026-09-02
@@ -36,12 +48,26 @@ public class CorsFilter implements Filter {
         this.cors = cors;
     }
 
+    /**
+     * 过滤器初始化，打印生效的 CORS 配置。
+     *
+     * @param filterConfig 过滤器配置
+     */
     @Override
     public void init(FilterConfig filterConfig) {
         log.info("[CorsFilter] 初始化完成 | allowedOrigins={} | allowedOriginPatterns={} | allowCredentials={}",
                 cors.getAllowedOrigins(), cors.getAllowedOriginPatterns(), cors.isAllowCredentials());
     }
 
+    /**
+     * 注入 CORS 响应头；OPTIONS 预检直接返回 200，其余放行。
+     *
+     * @param request  请求
+     * @param response 响应
+     * @param chain    过滤器链
+     * @throws IOException      IO 异常
+     * @throws ServletException Servlet 异常
+     */
     @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
@@ -188,6 +214,9 @@ public class CorsFilter implements Filter {
         return list == null ? "" : String.join(",", list);
     }
 
+    /**
+     * 过滤器销毁回调，无需额外清理。
+     */
     @Override
     public void destroy() {
         // 无需额外清理

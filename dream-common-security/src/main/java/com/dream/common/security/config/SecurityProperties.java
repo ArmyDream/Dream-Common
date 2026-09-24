@@ -4,6 +4,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -17,8 +18,8 @@ import java.util.List;
  * <ul>
  *   <li>{@code dream.security.enabled} —— 模块总开关（默认 true）</li>
  *   <li>{@code dream.security.filter.enabled} —— 是否注册 SaServletFilter</li>
- *   <li>{@code dream.security.interceptor.enabled} —— 是否在 setAuth 阶段执行登录校验</li>
- *   <li>{@code dream.security.interceptor.exclude-paths} —— 静态白名单（与缓存动态合并）</li>
+ *   <li>{@code dream.security.filter.check-login} —— 是否执行登录校验</li>
+ *   <li>{@code dream.security.filter.exclude-paths} —— 静态白名单（与缓存动态合并）</li>
  *   <li>{@code dream.security.cors.*} —— CORS 跨域配置</li>
  * </ul>
  *
@@ -38,17 +39,18 @@ public class SecurityProperties {
      */
     private boolean enabled = true;
 
-    /** SaServletFilter 过滤器配置 */
+    /** SaServletFilter 鉴权过滤器配置 */
     private Filter filter = new Filter();
-
-    /** 登录校验（SaServletFilter.setAuth 阶段）配置 */
-    private Interceptor interceptor = new Interceptor();
 
     /** CORS 跨域配置 */
     private Cors cors = new Cors();
 
     /**
-     * SaServletFilter 启用配置。
+     * SaServletFilter 鉴权过滤器配置。
+     * <p>
+     * 原 {@code dream.security.interceptor.*} 为旧版 SaInterceptor 方案遗留命名，
+     * 已废弃并合并至本节点（SaInterceptor 与 SaServletFilter 不应共存）。
+     * </p>
      */
     @Data
     public static class Filter {
@@ -57,36 +59,23 @@ public class SecurityProperties {
          * 关闭后需自行实现登录校验和异常响应，PermissionAspect 仍可生效。
          */
         private boolean enabled = true;
-    }
 
-    /**
-     * 登录校验相关配置。
-     */
-    @Data
-    public static class Interceptor {
         /**
-         * 是否在 SaServletFilter.setAuth 阶段执行登录校验。
+         * 是否在鉴权阶段执行登录校验。
          * <p>
          * 关闭后所有请求直接放行（白名单失效），仅适用于开放 API 或纯内网场景。
          * </p>
          */
-        private boolean enabled = true;
+        private boolean checkLogin = true;
 
         /**
          * 不拦截的静态白名单路径（Ant 风格），与缓存中的动态白名单逐请求合并。
          * <p>
-         * 默认放行系统登录/登出、验证码、监控端点等公开路径。
+         * 默认放行系统登录/登出、认证、验证码、监控端点等公开路径。
          * </p>
          */
-        private List<String> excludePaths = new ArrayList<>();
-
-        {
-            excludePaths.add("/sys/login");
-            excludePaths.add("/sys/logout");
-            excludePaths.add("/auth/**");
-            excludePaths.add("/captcha/**");
-            excludePaths.add("/actuator/**");
-        }
+        private List<String> excludePaths = new ArrayList<>(Arrays.asList(
+                "/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"));
     }
 
     /**
@@ -104,16 +93,17 @@ public class SecurityProperties {
          * 需指定具体源或改用 {@link #allowedOriginPatterns}。
          * </p>
          */
-        private List<String> allowedOrigins = new ArrayList<>();
+        private List<String> allowedOrigins = new ArrayList<>(Arrays.asList("*"));
 
         /** Ant 风格源模式（优先于 allowedOrigins），可与 allowCredentials=true 共存 */
         private List<String> allowedOriginPatterns = new ArrayList<>();
 
         /** 允许的 HTTP 方法 */
-        private List<String> allowedMethods = new ArrayList<>();
+        private List<String> allowedMethods = new ArrayList<>(Arrays.asList(
+                "GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
 
         /** 允许的请求头，{@code "*"} 表示全部 */
-        private List<String> allowedHeaders = new ArrayList<>();
+        private List<String> allowedHeaders = new ArrayList<>(Arrays.asList("*"));
 
         /** 暴露给前端 JavaScript 可读取的响应头 */
         private List<String> exposedHeaders = new ArrayList<>();
@@ -123,16 +113,5 @@ public class SecurityProperties {
 
         /** 预检请求缓存时间（秒） */
         private long maxAge = 3600L;
-
-        {
-            allowedOrigins.add("*");
-            allowedMethods.add("GET");
-            allowedMethods.add("POST");
-            allowedMethods.add("PUT");
-            allowedMethods.add("DELETE");
-            allowedMethods.add("OPTIONS");
-            allowedMethods.add("PATCH");
-            allowedHeaders.add("*");
-        }
     }
 }

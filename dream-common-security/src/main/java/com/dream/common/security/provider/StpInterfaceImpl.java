@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,12 +27,15 @@ import java.util.List;
  * 避免每次鉴权触发数据库查询；缓存由 {@link com.dream.common.security.utils.SecurityUtils#login}
  * 在登录时写入。
  * </p>
+ * <p>
+ * 由 {@link com.dream.common.security.config.SecurityAutoConfiguration} 通过 {@code @Import}
+ * 注册，不标注 {@code @Component}，避免与组件扫描形成双重注册。
+ * </p>
  *
  * @author dream
  * @since 2026-09-03
  */
 @Slf4j
-@Component
 @ConditionalOnClass(name = "cn.dev33.satoken.stp.StpInterface")
 @ConditionalOnMissingBean(StpInterface.class)
 @ConditionalOnProperty(prefix = "dream.security", name = "enabled", havingValue = "true", matchIfMissing = true)

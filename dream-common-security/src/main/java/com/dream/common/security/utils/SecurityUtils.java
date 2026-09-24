@@ -39,6 +39,9 @@ public final class SecurityUtils {
     /** 会话中存取用户名的 key */
     private static final String SESSION_KEY_USERNAME = "username";
 
+    /** 超级管理员角色编码 */
+    private static final String ADMIN_ROLE = "admin";
+
     private SecurityUtils() {
     }
 
@@ -372,12 +375,16 @@ public final class SecurityUtils {
     // ==================== 便捷方法 ====================
 
     /**
-     * 判断当前用户是否为超级管理员（角色包含 "admin" 或 userId 为 "1"）。
+     * 判断当前用户是否为超级管理员（拥有 {@code admin} 角色）。
+     * <p>
+     * 管理员判定只依赖角色数据（可由权限系统动态调整），
+     * 不设置任何基于 userId 的硬编码后门。
+     * </p>
      *
      * @return true 是管理员
      */
     public static boolean isAdmin() {
-        return StpUtil.isLogin() && (StpUtil.hasRole("admin") || "1".equals(StpUtil.getLoginIdAsString()));
+        return StpUtil.isLogin() && StpUtil.hasRole(ADMIN_ROLE);
     }
 
     // ==================== 内部方法 ====================
