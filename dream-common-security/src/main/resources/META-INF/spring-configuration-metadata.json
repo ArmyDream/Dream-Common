@@ -13,17 +13,6 @@
       "sourceType": "com.dream.common.security.config.SecurityProperties"
     },
     {
-      "name": "dream.security.interceptor",
-      "description": "已废弃：旧版 SaInterceptor 方案遗留命名，请改用 dream.security.filter.*",
-      "type": "com.dream.common.security.config.SecurityProperties$Filter",
-      "sourceType": "com.dream.common.security.config.SecurityProperties",
-      "deprecation": {
-        "level": "warning",
-        "reason": "SaInterceptor 方案已弃用（与 SaServletFilter 不应共存），配置已合并至 dream.security.filter.*",
-        "replacement": "dream.security.filter"
-      }
-    },
-    {
       "name": "dream.security.cors",
       "description": "CORS 跨域配置（用于独立 CorsFilter 注入响应头 + OPTIONS 预检处理）",
       "type": "com.dream.common.security.config.SecurityProperties$Cors",
@@ -54,28 +43,6 @@
       "type": "java.util.List<java.lang.String>",
       "description": "不拦截的静态白名单（Ant 风格，如 /sys/login、/captcha/**）。与 CachesUtils 缓存 key security:exclude-paths:（逗号分隔）逐请求动态合并，支持运行期热更新，无需重启。",
       "defaultValue": ["/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"]
-    },
-    {
-      "name": "dream.security.interceptor.enabled",
-      "type": "java.lang.Boolean",
-      "description": "已废弃：等价于 dream.security.filter.check-login。",
-      "defaultValue": true,
-      "deprecation": {
-        "level": "warning",
-        "reason": "interceptor.* 为旧版 SaInterceptor 方案遗留命名，已合并至 filter.*",
-        "replacement": "dream.security.filter.check-login"
-      }
-    },
-    {
-      "name": "dream.security.interceptor.exclude-paths",
-      "type": "java.util.List<java.lang.String>",
-      "description": "已废弃：等价于 dream.security.filter.exclude-paths。",
-      "defaultValue": ["/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"],
-      "deprecation": {
-        "level": "warning",
-        "reason": "interceptor.* 为旧版 SaInterceptor 方案遗留命名，已合并至 filter.*",
-        "replacement": "dream.security.filter.exclude-paths"
-      }
     },
     {
       "name": "dream.security.cors.enabled",

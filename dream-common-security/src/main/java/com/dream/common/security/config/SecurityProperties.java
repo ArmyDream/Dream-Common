@@ -23,6 +23,26 @@ import java.util.List;
  *   <li>{@code dream.security.cors.*} —— CORS 跨域配置</li>
  * </ul>
  *
+ * <h2>配置示例</h2>
+ * <pre>{@code
+ * dream:
+ *   security:
+ *     enabled: true                      # 模块总开关
+ *     filter:
+ *       enabled: true                    # 是否注册 SaServletFilter
+ *       check-login: true                # 是否执行登录校验
+ *       exclude-paths:                   # 静态白名单（Ant 风格）
+ *         - /sys/login
+ *         - /sys/logout
+ *         - /captcha/**
+ *     cors:
+ *       enabled: true                    # 是否注册独立 CorsFilter
+ *       allowed-origin-patterns:         # Ant 风格源匹配（优先于 allowed-origins）
+ *         - https://*.example.com
+ *       allow-credentials: true          # 允许携带 Cookie（与通配源共存需用 patterns）
+ *       max-age: 1800                    # 预检缓存秒数
+ * }</pre>
+ *
  * @author dream
  * @since 2026-09-02
  */
@@ -48,9 +68,21 @@ public class SecurityProperties {
     /**
      * SaServletFilter 鉴权过滤器配置。
      * <p>
-     * 原 {@code dream.security.interceptor.*} 为旧版 SaInterceptor 方案遗留命名，
-     * 已废弃并合并至本节点（SaInterceptor 与 SaServletFilter 不应共存）。
+     * 本框架只采用 SaServletFilter 方案（过滤器链统一鉴权），
+     * 不引入 SaInterceptor，避免重复认证与性能开销。
      * </p>
+     *
+     * <h2>配置示例</h2>
+     * <pre>{@code
+     * dream:
+     *   security:
+     *     filter:
+     *       enabled: true          # 是否注册 SaServletFilter
+     *       check-login: true      # 是否执行登录校验
+     *       exclude-paths:         # 静态白名单，另可与缓存动态白名单合并（热更新）
+     *         - /sys/login
+     *         - /captcha/**
+     * }</pre>
      */
     @Data
     public static class Filter {
@@ -80,6 +112,23 @@ public class SecurityProperties {
 
     /**
      * CORS 跨域配置。
+     *
+     * <h2>配置示例</h2>
+     * <pre>{@code
+     * dream:
+     *   security:
+     *     cors:
+     *       enabled: true                  # 是否注册独立 CorsFilter
+     *       allowed-origins:               # 精确源列表（与 allow-credentials=true 不兼容 "*"）
+     *         - https://app.example.com
+     *       allowed-origin-patterns:       # Ant 风格源模式，优先于 allowed-origins
+     *         - https://*.example.com
+     *       allowed-methods: [GET, POST]   # 允许的 HTTP 方法
+     *       allowed-headers: "*"           # 允许的请求头
+     *       exposed-headers: [X-Request-Id]  # 暴露给前端 JS 的响应头
+     *       allow-credentials: true        # 允许携带 Cookie
+     *       max-age: 3600                  # 预检请求缓存秒数
+     * }</pre>
      */
     @Data
     public static class Cors {
