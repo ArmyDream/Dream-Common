@@ -12,12 +12,17 @@
     <artifactId>dream-common-framework</artifactId>
 
     <description>
-        最底层/核心层，被其他模块依赖。
-        提供框架配置、基础设施、公共能力。
-        不包含业务逻辑，只提供技术支撑。
+        框架基础设施层：缓存/Redis/过滤器/WebSocket/MVC 等技术支撑，不包含业务逻辑。
+        依赖方向：framework → tool → core，被 security 等上层模块依赖。
     </description>
 
     <dependencies>
+        <!-- 显式声明 core 依赖（存在直接 import，不能仅靠 tool 传递） -->
+        <dependency>
+            <groupId>com.dream</groupId>
+            <artifactId>dream-common-core</artifactId>
+        </dependency>
+
         <!-- 依赖 tool 模块 -->
         <dependency>
             <groupId>com.dream</groupId>

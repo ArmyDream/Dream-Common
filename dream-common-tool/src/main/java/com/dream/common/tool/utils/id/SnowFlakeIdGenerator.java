@@ -1,10 +1,11 @@
 package com.dream.common.tool.utils.id;
 
+import lombok.extern.slf4j.Slf4j;
+
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.util.Enumeration;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 
 /**
@@ -12,15 +13,20 @@ import java.util.regex.Pattern;
  * <p>
  * 64位结构：0 - 41位时间戳 - 5位数据中心ID - 5位工作机器ID - 12位序列号
  * <p>
- * 高并发支持：
+ * 并发与时钟语义：
  * <ul>
- *   <li>使用 {@link AtomicLong} 保证线程安全</li>
+ *   <li>{@link #nextId()} 整体同步，时间回拨检测/等待/拒绝均在临界区内完成，
+ *       回拨超过 {@value #MAX_BACKWARD_OFFSET}ms 直接抛出 {@link IllegalStateException}（fail-fast）</li>
  *   <li>单节点每毫秒可生成 4096 个 ID</li>
- *   <li>支持时钟回拨自动等待</li>
+ *   <li>容器/多实例部署<b>必须</b>显式指定机器号（配置项
+ *       {@code dream.snowflake.worker-id}/{@code dream.snowflake.datacenter-id}
+ *       或环境变量 {@code DREAM_SNOWFLAKE_WORKER_ID}/{@code DREAM_SNOWFLAKE_DATACENTER_ID}），
+ *       否则将退化为 MAC+PID 推导，存在撞号风险</li>
  * </ul>
  *
  * @author dream
  */
+@Slf4j
 public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
 
     // ==================== 位定义 ====================
@@ -57,30 +63,79 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
     private final long workerId;
 
     /**
-     * 使用 AtomicLong 保证高并发下的线程安全
+     * 序列号（与 lastTimestamp 同受 nextId() 的同步保护，无需原子类）
      */
-    private final AtomicLong sequence = new AtomicLong(0L);
+    private long sequence = 0L;
 
     /**
-     * 上次生成时间戳（使用 volatile 保证可见性）
+     * 上次生成时间戳
      */
-    private volatile long lastTimestamp = -1L;
+    private long lastTimestamp = -1L;
 
     // ==================== 单例 ====================
 
-    private static final SnowFlakeIdGenerator INSTANCE = new SnowFlakeIdGenerator();
+    private static final SnowFlakeIdGenerator INSTANCE = createDefaultInstance();
 
     public static SnowFlakeIdGenerator getInstance() {
         return INSTANCE;
     }
 
-    // ==================== 构造器 ====================
-
-    private SnowFlakeIdGenerator() {
-        this.datacenterId = getDatacenterId();
-        this.workerId = getWorkerId(this.datacenterId);
+    /**
+     * 创建默认实例：优先读取显式配置的机器号（系统属性 {@code dream.snowflake.*}
+     * 或环境变量 {@code DREAM_SNOWFLAKE_*}），未配置时回退 MAC+PID 推导并输出 WARN。
+     */
+    private static SnowFlakeIdGenerator createDefaultInstance() {
+        Long workerId = readLongSetting("dream.snowflake.worker-id", "DREAM_SNOWFLAKE_WORKER_ID");
+        Long datacenterId = readLongSetting("dream.snowflake.datacenter-id", "DREAM_SNOWFLAKE_DATACENTER_ID");
+        if (workerId != null) {
+            return new SnowFlakeIdGenerator(workerId, datacenterId == null ? 0L : datacenterId);
+        }
+        if (datacenterId != null) {
+            return new SnowFlakeIdGenerator(deriveWorkerId(deriveDatacenterId()), datacenterId);
+        }
+        return new SnowFlakeIdGenerator();
     }
 
+    /**
+     * 依次从系统属性、环境变量读取 long 型配置
+     */
+    private static Long readLongSetting(String property, String env) {
+        String raw = System.getProperty(property);
+        if (raw == null || raw.trim().isEmpty()) {
+            raw = System.getenv(env);
+        }
+        if (raw == null || raw.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(raw.trim());
+        } catch (NumberFormatException e) {
+            log.warn("雪花算法配置项 {}={} 非法，已忽略", property, raw);
+            return null;
+        }
+    }
+
+    // ==================== 构造器 ====================
+
+    /**
+     * 默认构造器：基于本机 MAC/进程信息推导机器号。
+     * <p>仅供单实例开发环境使用；多实例部署请改用双参构造或配置
+     * {@code dream.snowflake.worker-id}。</p>
+     */
+    private SnowFlakeIdGenerator() {
+        this.datacenterId = deriveDatacenterId();
+        this.workerId = deriveWorkerId(this.datacenterId);
+        log.warn("[SnowFlake] 未显式配置机器号，已回退 MAC/PID 推导（datacenterId={}, workerId={}）。"
+                + "多实例部署必须配置 dream.snowflake.worker-id，否则可能生成重复 ID。",
+                datacenterId, workerId);
+    }
+
+    /**
+     * 显式指定机器号的构造器
+     *
+     * @param workerId     工作机器ID（0 ~ 31）
+     * @param datacenterId 数据中心ID（0 ~ 31）
+     */
     public SnowFlakeIdGenerator(long workerId, long datacenterId) {
         if (workerId > MAX_WORKER_ID || workerId < 0) {
             throw new IllegalArgumentException("WorkerId 必须在 0 ~ " + MAX_WORKER_ID + " 之间");
@@ -92,54 +147,49 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
         this.datacenterId = datacenterId;
     }
 
-    // ==================== 核心方法（高并发优化） ====================
+    // ==================== 核心方法 ====================
 
+    /**
+     * 生成下一个 ID。
+     * <p>方法整体同步：时间戳读取、回拨处理、序列推进、lastTimestamp 更新均在临界区内完成，
+     * 任何路径下都不会发出重复 ID。</p>
+     *
+     * @return 全局唯一趋势递增 ID
+     * @throws IllegalStateException 时钟回拨超过容忍阈值或等待被中断
+     */
     @Override
-    public Long nextId() {
+    public synchronized Long nextId() {
         long currentTimestamp = timeGen();
 
-        // 处理时间回拨
-        long last = lastTimestamp;
-        if (currentTimestamp < last) {
-            long offset = last - currentTimestamp;
-            if (offset <= MAX_BACKWARD_OFFSET) {
-                try {
-                    Thread.sleep(offset << 1);
-                    currentTimestamp = timeGen();
-                    if (currentTimestamp < last) {
-                        throw new IllegalStateException("时间回拨过大，拒绝生成ID，偏移: " + offset + "ms");
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException("时间回拨处理被中断", e);
-                }
-            } else {
+        // 时钟回拨处理（小偏移等待追平，大偏移 fail-fast）
+        if (currentTimestamp < lastTimestamp) {
+            long offset = lastTimestamp - currentTimestamp;
+            if (offset > MAX_BACKWARD_OFFSET) {
+                throw new IllegalStateException("时间回拨过大，拒绝生成ID，偏移: " + offset + "ms");
+            }
+            try {
+                Thread.sleep(offset << 1);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException("时间回拨处理被中断", e);
+            }
+            currentTimestamp = timeGen();
+            if (currentTimestamp < lastTimestamp) {
                 throw new IllegalStateException("时间回拨过大，拒绝生成ID，偏移: " + offset + "ms");
             }
         }
 
-        // 同步更新 lastTimestamp 和 sequence
-        synchronized (this) {
-            if (currentTimestamp < lastTimestamp) {
-                currentTimestamp = lastTimestamp;
+        if (currentTimestamp == lastTimestamp) {
+            sequence = (sequence + 1) & SEQUENCE_MASK;
+            if (sequence == 0) {
+                // 当前毫秒序列号用尽，等待下一毫秒
+                currentTimestamp = tilNextMillis(lastTimestamp);
             }
-
-            if (currentTimestamp == lastTimestamp) {
-                long seq = sequence.incrementAndGet() & SEQUENCE_MASK;
-                if (seq == 0) {
-                    currentTimestamp = tilNextMillis(lastTimestamp);
-                }
-                if (currentTimestamp != lastTimestamp) {
-                    sequence.set(0);
-                }
-                lastTimestamp = currentTimestamp;
-                return buildId(currentTimestamp, seq);
-            } else {
-                sequence.set(0);
-                lastTimestamp = currentTimestamp;
-                return buildId(currentTimestamp, 0);
-            }
+        } else {
+            sequence = 0L;
         }
+        lastTimestamp = currentTimestamp;
+        return buildId(currentTimestamp, sequence);
     }
 
     /**
@@ -173,31 +223,36 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
     // ==================== 机器 ID 获取 ====================
 
     /**
-     * 获取数据中心ID（基于MAC地址计算）
+     * 获取数据中心ID（基于MAC地址计算）。
+     * <p>推导失败时回退 1 并输出 WARN——多实例环境请显式配置，勿依赖本推导。</p>
      */
-    private long getDatacenterId() {
+    private static long deriveDatacenterId() {
         try {
             InetAddress address = getLocalAddress();
             NetworkInterface network = NetworkInterface.getByInetAddress(address);
             if (network == null) {
+                log.warn("[SnowFlake] 无法定位本机网卡，datacenterId 回退为 1");
                 return 1L;
             }
             byte[] mac = network.getHardwareAddress();
             if (mac == null) {
+                log.warn("[SnowFlake] 网卡无 MAC 地址，datacenterId 回退为 1");
                 return 1L;
             }
             long id = ((0x000000FF & (long) mac[mac.length - 2])
                     | (0x0000FF00 & (((long) mac[mac.length - 1]) << 8))) >> 6;
             return id % (MAX_DATACENTER_ID + 1);
         } catch (Exception e) {
+            log.warn("[SnowFlake] datacenterId 推导失败，回退为 1", e);
             return 1L;
         }
     }
 
     /**
-     * 获取工作机器ID（基于MAC + PID计算）
+     * 获取工作机器ID（基于MAC + PID计算）。
+     * <p>推导失败时回退 1 并输出 WARN——多实例环境请显式配置，勿依赖本推导。</p>
      */
-    private long getWorkerId(long datacenterId) {
+    private static long deriveWorkerId(long datacenterId) {
         try {
             StringBuilder sb = new StringBuilder();
             sb.append(datacenterId);
@@ -207,6 +262,7 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
             }
             return (sb.toString().hashCode() & 0xffff) % (MAX_WORKER_ID + 1);
         } catch (Exception e) {
+            log.warn("[SnowFlake] workerId 推导失败，回退为 1", e);
             return 1L;
         }
     }
@@ -215,15 +271,16 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
 
     private static volatile InetAddress localAddress;
 
-    private InetAddress getLocalAddress() {
-        if (localAddress != null) {
-            return localAddress;
+    private static InetAddress getLocalAddress() {
+        InetAddress cached = localAddress;
+        if (cached != null) {
+            return cached;
         }
         localAddress = findLocalAddress();
         return localAddress;
     }
 
-    private InetAddress findLocalAddress() {
+    private static InetAddress findLocalAddress() {
         try {
             InetAddress addr = InetAddress.getLocalHost();
             if (isValidAddress(addr)) {
@@ -256,7 +313,7 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
         }
     }
 
-    private boolean isValidAddress(InetAddress address) {
+    private static boolean isValidAddress(InetAddress address) {
         if (address == null) {
             return false;
         }

@@ -7,7 +7,10 @@ import lombok.extern.slf4j.Slf4j;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.Locale;
 import java.util.Objects;
 
 /**
@@ -161,7 +164,7 @@ public final class HmacUtils {
             return false;
         }
         String actual = hmacSha256(data, key);
-        return expectedSign.equalsIgnoreCase(actual);
+        return secureEquals(expectedSign, actual);
     }
 
     public static boolean verifySha512(String data, String key, String expectedSign) {
@@ -169,7 +172,20 @@ public final class HmacUtils {
             return false;
         }
         String actual = hmacSha512(data, key);
-        return expectedSign.equalsIgnoreCase(actual);
+        return secureEquals(expectedSign, actual);
+    }
+
+    /**
+     * 十六进制签名的常量时间比较（忽略大小写），避免逐字节短路比较带来的时序侧信道。
+     *
+     * @param expected 期望签名
+     * @param actual   实际签名
+     * @return 一致返回 {@code true}
+     */
+    private static boolean secureEquals(String expected, String actual) {
+        return MessageDigest.isEqual(
+                expected.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8),
+                actual.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
     }
 
     // ==================== 通用 HMAC ====================

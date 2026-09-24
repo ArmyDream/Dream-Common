@@ -90,7 +90,8 @@ public final class CachesCaffeineUtils {
                 @Override
                 public long expireAfterRead(@NonNull String key, @NonNull CacheObject<?> value,
                                             long currentTime, @NonNegative long currentDuration) {
-                    return value.expire;
+                    // 读取不重置 TTL，保持剩余过期时间，避免热 key 永不过期
+                    return currentDuration;
                 }
             })
             .initialCapacity(INITIAL_CAPACITY)
@@ -123,11 +124,18 @@ public final class CachesCaffeineUtils {
 
         CacheObject(T data, long expire, TimeUnit timeUnit) {
             this.data = data;
-            if (expire == -1L) {
-                this.expire = CACHE_EXPIRE_MAX;
-            }
             this.timeUnit = (timeUnit == null) ? DEFAULT_TIME_UNIT : timeUnit;
-            this.expire = this.timeUnit.toNanos(expire);
+            if (expire == -1L) {
+                // 永不过期哨兵值
+                this.expire = CACHE_EXPIRE_MAX;
+            } else if (expire <= 0L) {
+                // 非法过期时间：视为立即失效（Caffeine Expiry 要求返回非负值）
+                this.expire = 0L;
+            } else {
+                long nanos = this.timeUnit.toNanos(expire);
+                // toNanos 溢出会得到负数，钳制为最大值等同"永不过期"
+                this.expire = nanos < 0 ? CACHE_EXPIRE_MAX : nanos;
+            }
         }
     }
 
@@ -203,14 +211,13 @@ public final class CachesCaffeineUtils {
             log.warn("设置缓存失败：key 为空");
             return false;
         }
-        if (contains(key)) {
-            if (log.isDebugEnabled()) {
-                log.debug("缓存已存在，跳过设置: key={}", key);
-            }
-            return false;
+        // asMap().putIfAbsent 为原子操作，避免 contains+set 两步竞态
+        CacheObject<?> previous = CAFFEINE.asMap().putIfAbsent(key, new CacheObject<>(value, expire, timeUnit));
+        boolean success = previous == null;
+        if (log.isDebugEnabled()) {
+            log.debug(success ? "缓存设置成功: key={}" : "缓存已存在，跳过设置: key={}", key);
         }
-        set(key, value, expire, timeUnit);
-        return true;
+        return success;
     }
 
     /**
@@ -335,18 +342,17 @@ public final class CachesCaffeineUtils {
             }
             return (T) existing.data;
         }
-        // supplier 生成值
-        log.debug("缓存未命中，执行 supplier 加载: key={}", key);
-        T value = supplier.get();
-        if (value != null) {
-            set(key, value, expire, timeUnit);
-            if (log.isDebugEnabled()) {
-                log.debug("缓存加载并设置成功: key={}", key);
-            }
-        } else {
+        // asMap().computeIfAbsent 保证同一 key 的加载互斥，避免缓存击穿导致 supplier 重复执行
+        CacheObject<T> created = (CacheObject<T>) CAFFEINE.asMap().computeIfAbsent(key, k -> {
+            log.debug("缓存未命中，执行 supplier 加载: key={}", k);
+            T value = supplier.get();
+            return value == null ? null : new CacheObject<>(value, expire, timeUnit);
+        });
+        if (created == null) {
             log.warn("缓存加载失败，supplier 返回 null: key={}", key);
+            return null;
         }
-        return value;
+        return created.data;
     }
 
     /**

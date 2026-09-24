@@ -20,16 +20,18 @@ import java.util.Base64;
  * <ul>
  *   <li>AES 采用 {@code AES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
  *   <li>DES 采用 {@code DES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
- *   <li><b>禁用 ECB 分组模式</b>：本类全部使用 CBC（引入随机 IV），ECB 模式下相同明文块产生相同密文，易被统计分析。</li>
+ *   <li><b>禁用 ECB 分组模式</b>：本类全部使用 CBC 模式，密文头部携带 IV 以便解密。</li>
  *   <li><b>DES 属于弱加密算法</b>（56 位有效密钥），仅用于兼容历史数据，新业务请使用 AES。</li>
  *   <li>SM4 当前为简化实现（实际复用 AES），生产环境应引入 BouncyCastle 或 Hutool 以使用真正的国密算法。</li>
  *   <li>MD5 计算时加入固定 salt 前缀，增强抗彩虹表攻击能力；但 MD5 仅适用于指纹/校验场景，<b>密码存储请使用 BCrypt/Argon2</b>。</li>
  * </ul>
  * </p>
  * <p>
- * <b>密钥配置要求</b>：AES / DES 密钥在生产环境中<b>必须</b>通过配置注入，禁止使用默认密钥。
- * 当未配置密钥时，加密/解密操作将抛出 {@link IllegalArgumentException} 以避免误用。
- * 默认值仅用于开发快速验证，会在启动时输出 WARN 日志。
+ * <b>密钥配置要求（fail-closed）</b>：本类不提供任何内置默认密钥/IV。
+ * AES / DES 密钥必须先通过 {@code dream.encrypt.*} 配置注入（由 EncryptAutoConfiguration 调用
+ * {@link #configure}），或在调用处显式传入；否则加密/解密操作抛出 {@link IllegalStateException}。
+ * 注意：CBC 加密使用配置的固定 IV（密文头部携带该 IV 以便解密），如需更强的语义安全
+ * 请优先使用 dream-common-tool 中的 {@code AesUtils#encryptGcm}（每次随机 IV）。
  * 配置方式：
  * <pre>{@code
  * dream:
@@ -64,51 +66,23 @@ public class EncryptUtil {
     private static final int DES_IV_SIZE = 8;
 
     /**
-     * 默认 AES 密钥
-     * <p>仅作为未配置密钥时的开发兜底（会输出 WARN），生产环境应通过配置注入。</p>
-     */
-    private static final String DEFAULT_AES_KEY = "DEFAULT_AES_KEY_16";
-
-    /**
-     * 默认 AES IV（16 字节）
-     * <p>生产环境应通过配置注入，请勿直接使用默认值。</p>
-     */
-    private static final String DEFAULT_AES_IV = "DEFAULT_AES_IV_16";
-
-    /**
-     * 默认 DES 密钥（8 位）
-     * <p>生产环境应通过配置注入，请勿直接使用默认值。</p>
-     */
-    private static final String DEFAULT_DES_KEY = "DES_KEY8";
-
-    /**
-     * 默认 DES IV（8 字节）
-     * <p>生产环境应通过配置注入，请勿直接使用默认值。</p>
-     */
-    private static final String DEFAULT_DES_IV = "DES_IV_8";
-
-    /**
-     * MD5 加盐前缀，用于增强 MD5 摘要的安全性
-     * <p>生产环境应通过配置注入。</p>
+     * MD5 加盐前缀默认值，用于增强 MD5 摘要的抗彩虹表能力
+     * <p>生产环境应通过 {@code dream.encrypt.md5-salt} 配置注入。</p>
      */
     private static final String DEFAULT_MD5_SALT = "DREAM_COMMON_SALT_";
 
-    // ==================== 运行时密钥（由 dream.encrypt.* 配置注入，默认兼容历史常量） ====================
+    // ==================== 运行时密钥（必须由 dream.encrypt.* 配置注入，无内置默认值） ====================
 
-    /** 当前生效的 AES 密钥 */
-    private static volatile String AES_KEY = DEFAULT_AES_KEY;
-    /** 当前生效的 AES IV */
-    private static volatile String AES_IV = DEFAULT_AES_IV;
-    /** 当前生效的 DES 密钥 */
-    private static volatile String DES_KEY = DEFAULT_DES_KEY;
-    /** 当前生效的 DES IV */
-    private static volatile String DES_IV = DEFAULT_DES_IV;
-    /** 当前生效的 MD5 盐 */
+    /** 当前生效的 AES 密钥（未配置时为 null，使用即抛异常，fail-closed） */
+    private static volatile String AES_KEY = null;
+    /** 当前生效的 AES IV（未配置时为 null，使用即抛异常，fail-closed） */
+    private static volatile String AES_IV = null;
+    /** 当前生效的 DES 密钥（未配置时为 null，使用即抛异常，fail-closed） */
+    private static volatile String DES_KEY = null;
+    /** 当前生效的 DES IV（未配置时为 null，使用即抛异常，fail-closed） */
+    private static volatile String DES_IV = null;
+    /** 当前生效的 MD5 盐（摘要场景，允许保留默认前缀） */
     private static volatile String MD5_SALT = DEFAULT_MD5_SALT;
-    /** 是否已通过显式配置注入密钥 */
-    private static volatile boolean keysConfigured = false;
-    /** 未配置密钥时的 WARN 只输出一次 */
-    private static volatile boolean legacyKeyWarned = false;
 
     /**
      * 通过 Spring 配置注入密钥。
@@ -137,18 +111,22 @@ public class EncryptUtil {
         if (md5Salt != null && !md5Salt.isEmpty()) {
             MD5_SALT = md5Salt;
         }
-        keysConfigured = true;
         log.info("[EncryptUtil] 密钥已通过配置注入（dream.encrypt.*）");
     }
 
     /**
-     * 若未配置密钥，输出一次性 WARN，提示生产环境应显式配置
+     * 校验密钥/IV 已就绪（fail-closed）。
+     * <p>既未显式传参也未通过 {@code dream.encrypt.*} 配置时直接抛出异常，
+     * 不再回退到内置默认密钥——已知常量的"默认密钥"等同于不加密。</p>
+     *
+     * @param key         生效的密钥或 IV
+     * @param configName  对应的配置项名，用于错误提示
+     * @throws IllegalStateException 密钥未配置时抛出
      */
-    private static void warnIfLegacyKey() {
-        if (!keysConfigured && !legacyKeyWarned) {
-            legacyKeyWarned = true;
-            log.warn("[EncryptUtil] 未通过 dream.encrypt.* 配置密钥，正在使用内置默认密钥。"
-                    + "生产环境务必配置，否则加密形同虚设。");
+    private static void requireKey(String key, String configName) {
+        if (key == null || key.isEmpty()) {
+            throw new IllegalStateException("加密密钥未配置：请通过 dream.encrypt." + configName
+                    + " 注入，或在调用处显式传入密钥。EncryptUtil 不提供内置默认密钥。");
         }
     }
 
@@ -262,8 +240,9 @@ public class EncryptUtil {
      * @throws Exception 加密失败时抛出
      */
     private static String aesEncrypt(String content, String key) throws Exception {
-        warnIfLegacyKey();
         String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
+        requireKey(secretKey, "aes-key");
+        requireKey(AES_IV, "aes-iv");
         byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
         byte[] ivBytes = normalizeKey(AES_IV, AES_IV_SIZE);
 
@@ -293,8 +272,8 @@ public class EncryptUtil {
      * @throws Exception 解密失败时抛出
      */
     private static String aesDecrypt(String content, String key) throws Exception {
-        warnIfLegacyKey();
         String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
+        requireKey(secretKey, "aes-key");
         byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
@@ -326,8 +305,9 @@ public class EncryptUtil {
      * @throws Exception 加密失败时抛出
      */
     private static String desEncrypt(String content, String key) throws Exception {
-        warnIfLegacyKey();
         String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
+        requireKey(secretKey, "des-key");
+        requireKey(DES_IV, "des-iv");
         byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
         byte[] ivBytes = normalizeKey(DES_IV, DES_IV_SIZE);
 
@@ -357,8 +337,8 @@ public class EncryptUtil {
      * @throws Exception 解密失败时抛出
      */
     private static String desDecrypt(String content, String key) throws Exception {
-        warnIfLegacyKey();
         String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
+        requireKey(secretKey, "des-key");
         byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
@@ -457,7 +437,6 @@ public class EncryptUtil {
      * @throws Exception 摘要计算失败时抛出
      */
     private static String md5Encrypt(String content) throws Exception {
-        warnIfLegacyKey();
         MessageDigest md = MessageDigest.getInstance(MD5_ALGORITHM);
         // 加入固定 salt 前缀，增强安全性
         byte[] digest = md.digest((MD5_SALT + content).getBytes(StandardCharsets.UTF_8));

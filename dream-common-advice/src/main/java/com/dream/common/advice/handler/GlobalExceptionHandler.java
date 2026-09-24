@@ -34,8 +34,10 @@ import javax.validation.ConstraintViolation;
 import javax.validation.ConstraintViolationException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.sql.SQLIntegrityConstraintViolationException;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
+import java.util.Locale;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -305,7 +307,7 @@ public class GlobalExceptionHandler {
             return result;
         }
 
-        return R.fail(ResponseCode.BAD_REQUEST, "非法参数: " + ex.getMessage());
+        return R.fail(ResponseCode.BAD_REQUEST, truncateClientMessage(ex.getMessage(), "非法参数，请检查提交内容"));
     }
 
     // ==================== 新增：空指针异常 ====================
@@ -351,7 +353,8 @@ public class GlobalExceptionHandler {
             return result;
         }
 
-        return R.fail(ResponseCode.NOT_FOUND, "文件不存在: " + ex.getMessage());
+        // 不回传 ex.getMessage()：其中可能包含服务器文件路径等敏感信息，仅记日志
+        return R.fail(ResponseCode.NOT_FOUND, "请求的文件不存在");
     }
 
     // ==================== 新增：数据库相关异常 ====================
@@ -391,10 +394,8 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public R<?> handleException(Exception ex, WebRequest request) {
-        // 判断是否为数据库唯一键冲突
-        Throwable cause = ex.getCause();
-        if (cause != null && cause.getMessage() != null
-                && (cause.getMessage().contains("Duplicate entry") || cause.getMessage().contains("UNIQUE constraint"))) {
+        // 判断是否为数据库唯一键冲突：优先按异常类型识别，字符串匹配仅作多方言兜底
+        if (isDuplicateKeyConflict(ex)) {
             log.warn("数据唯一键冲突: uri={}", getRequestUri(request));
 
            handleWithDelegate(delegate, ex, request,false,
@@ -416,6 +417,45 @@ public class GlobalExceptionHandler {
     }
 
     // ==================== 内部方法 ====================
+
+    /**
+     * 截断面向客户端的异常消息，避免超长堆栈式消息透出。
+     *
+     * @param message      原始异常消息（可空）
+     * @param fallbackText 消息为空时使用的兜底文案
+     * @return 最长 200 字符的安全消息
+     */
+    private String truncateClientMessage(@Nullable String message, String fallbackText) {
+        if (message == null || message.trim().isEmpty()) {
+            return fallbackText;
+        }
+        String trimmed = message.trim();
+        return trimmed.length() > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+    }
+
+    /**
+     * 沿异常因果链判断是否为数据库唯一键冲突。
+     * <p>优先按 JDBC 标准异常类型识别；部分驱动/ORM 会包装为普通异常，
+     * 保留消息关键字匹配作为多方言兜底。</p>
+     *
+     * @param ex 顶层异常
+     * @return 属于唯一键冲突返回 {@code true}
+     */
+    private boolean isDuplicateKeyConflict(Throwable ex) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SQLIntegrityConstraintViolationException) {
+                return true;
+            }
+            String msg = cause.getMessage();
+            if (msg != null && (msg.contains("Duplicate entry") || msg.contains("UNIQUE constraint"))) {
+                return true;
+            }
+            if (cause.getCause() == cause) {
+                break;
+            }
+        }
+        return false;
+    }
 
     /**
      * 构造 5xx 失败响应，按开关决定是否携带异常堆栈。
@@ -446,12 +486,41 @@ public class GlobalExceptionHandler {
             if (httpReq != null) {
                 String uri = httpReq.getRequestURI();
                 String qs = httpReq.getQueryString();
-                return qs != null ? uri + "?" + qs : uri;
+                return qs != null ? uri + "?" + maskSensitiveQuery(qs) : uri;
             }
         }
         if (request != null) {
             return request.getDescription(false);
         }
         return "unknown";
+    }
+
+    /**
+     * 日志输出前对查询串中的敏感参数值脱敏（password/token/code 等）。
+     *
+     * @param queryString 原始查询串
+     * @return 脱敏后的查询串
+     */
+    private String maskSensitiveQuery(String queryString) {
+        String[] pairs = queryString.split("&");
+        StringBuilder sb = new StringBuilder(queryString.length());
+        for (int i = 0; i < pairs.length; i++) {
+            if (i > 0) {
+                sb.append('&');
+            }
+            String pair = pairs[i];
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                String name = pair.substring(0, eq).toLowerCase(Locale.ROOT);
+                if (name.contains("password") || name.contains("passwd") || name.contains("pwd")
+                        || name.contains("token") || name.contains("secret") || name.contains("code")
+                        || name.contains("captcha") || name.contains("authorization")) {
+                    sb.append(name).append("=***");
+                    continue;
+                }
+            }
+            sb.append(pair);
+        }
+        return sb.toString();
     }
 }

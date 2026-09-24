@@ -1,5 +1,6 @@
 package com.dream.common.framework.config;
 
+import com.dream.common.core.constant.OrderValue;
 import com.dream.common.framework.api.AccessLogHandler;
 import com.dream.common.framework.filter.AccessLogFilter;
 import com.dream.common.framework.filter.SecurityHeaderFilter;
@@ -12,16 +13,16 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.Ordered;
 
 /**
  * 过滤器自动装配配置。
  * <p>
- * 注册框架级过滤器，通过 {@link FilterRegistrationBean} 控制 URL 匹配和执行顺序：
+ * 注册框架级过滤器，顺序统一引用 {@link OrderValue} 常量表，禁止魔法数字：
  * <ul>
- *   <li>{@link SecurityHeaderFilter} 安全响应头（较高优先级，尽早注入）</li>
- *   <li>{@link TraceIdFilter} 链路追踪（最高优先级，确保 traceId 全程可用）</li>
- *   <li>{@link AccessLogFilter} 访问日志（位于 TraceIdFilter 之后，以获取 traceId）</li>
+ *   <li>{@link TraceIdFilter}（{@link OrderValue#TRACE_FILTER}）链路追踪，保证 traceId 全程可用</li>
+ *   <li>{@link SecurityHeaderFilter}（{@link OrderValue#SECURITY_HEADER_FILTER}）安全响应头</li>
+ *   <li>{@link AccessLogFilter}（{@link OrderValue#ACCESS_LOG_FILTER}）访问日志，
+ *       位于鉴权过滤器（{@link OrderValue#SA_TOKEN_FILTER}）之后，避免预检/未鉴权请求刷日志</li>
  * </ul>
  * </p>
  *
@@ -47,7 +48,7 @@ public class FilterAutoConfig {
         registration.setFilter(new TraceIdFilter());
         registration.addUrlPatterns("/*");
         registration.setName("traceIdFilter");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE);
+        registration.setOrder(OrderValue.TRACE_FILTER);
         log.info("TraceIdFilter 已注册");
         return registration;
     }
@@ -65,7 +66,7 @@ public class FilterAutoConfig {
         registration.setFilter(new SecurityHeaderFilter(properties));
         registration.addUrlPatterns("/*");
         registration.setName("securityHeaderFilter");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 5);
+        registration.setOrder(OrderValue.SECURITY_HEADER_FILTER);
         log.info("SecurityHeaderFilter 已注册");
         return registration;
     }
@@ -85,7 +86,7 @@ public class FilterAutoConfig {
         registration.setFilter(new AccessLogFilter(accessLogHandlerProvider.getIfAvailable()));
         registration.addUrlPatterns("/*");
         registration.setName("accessLogFilter");
-        registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
+        registration.setOrder(OrderValue.ACCESS_LOG_FILTER);
         log.info("AccessLogFilter 已注册");
         return registration;
     }

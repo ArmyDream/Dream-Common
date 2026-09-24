@@ -47,8 +47,8 @@ public class TraceIdFilter extends OncePerRequestFilter {
             }
         } finally {
             MDC.remove(SysKey.TRACE_ID);
-            // 优化点：必须清理，防止内存泄漏和数据串用
-            ThreadLocalUtils.clear();
+            // 只清理本过滤器写入的 traceId，避免误伤业务方写入的其他 ThreadLocal 上下文
+            ThreadLocalUtils.remove(SysKey.TRACE_ID);
         }
     }
 }

@@ -1,11 +1,13 @@
 package com.dream.common.security.config;
 
 import com.dream.common.core.api.ExceptionHandlerDelegate;
+import com.dream.common.framework.aspect.PreventDuplicateAspect;
 import com.dream.common.security.aspect.PermissionAspect;
 import com.dream.common.security.handler.SaTokenExceptionHandler;
 import com.dream.common.security.handler.SaTokenFilterErrorHandler;
 import com.dream.common.security.provider.StpInterfaceImpl;
 import com.dream.common.security.support.SecurityExcludePathProvider;
+import com.dream.common.security.utils.SecurityUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -76,5 +78,20 @@ public class SecurityAutoConfiguration {
     public PermissionAspect permissionAspect() {
         log.info("[Security] 初始化 PermissionAspect 权限校验切面");
         return new PermissionAspect();
+    }
+
+    /**
+     * 注册防重复提交切面的用户 ID 提供者（security → framework SPI 接线）。
+     * <p>
+     * 使 {@code @PreventDuplicate(includeUserId = true)} 的 Key 按登录用户隔离；
+     * 未登录场景由切面捕获异常后自动降级为无用户段。
+     * </p>
+     *
+     * @return DuplicateUserIdProvider 实例
+     */
+    @Bean
+    @ConditionalOnMissingBean(PreventDuplicateAspect.DuplicateUserIdProvider.class)
+    public PreventDuplicateAspect.DuplicateUserIdProvider preventDuplicateUserIdProvider() {
+        return SecurityUtils::getUserId;
     }
 }

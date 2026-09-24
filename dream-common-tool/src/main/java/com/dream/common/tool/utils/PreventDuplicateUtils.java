@@ -96,7 +96,8 @@ public final class PreventDuplicateUtils {
     }
 
     /**
-     * 构建防重复 Key（不依赖 SpEL）
+     * 构建防重复 Key（通用策略段；SpEL 优先级由框架层切面
+     * {@code PreventDuplicateAspect} 处理，本方法不参与表达式求值）
      * <p>
      * 按以下策略拼接各段（以冒号分隔）：
      * <ol>

@@ -14,6 +14,7 @@ import javax.crypto.spec.SecretKeySpec;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Objects;
 
@@ -53,6 +54,9 @@ public final class AesUtils {
 
     /** GCM IV 长度（96 位） */
     private static final int GCM_IV_LENGTH = 12;
+
+    /** 带盐加密格式的盐值长度（字节），密文头部固定按此长度解析 */
+    private static final int SALT_LENGTH = 16;
 
     /** 默认密钥长度 */
     private static final int DEFAULT_KEY_SIZE = 256;
@@ -331,12 +335,16 @@ public final class AesUtils {
      * 使用密码+盐值加密（AES-GCM）
      * <p>
      * 从密码和盐值派生 AES 密钥，然后使用 GCM 模式加密。
-     * 输出格式：Base64(盐值 + IV + 密文)
+     * 输出格式：Base64(盐值[16字节] + IV + 密文)
+     * </p>
+     * <p>
+     * 传入的盐值不要求固定长度：非空盐统一经 SHA-256 摘要后截取前 16 字节使用，
+     * 与 {@link #decryptWithSalt(String, String)} 的定长解析格式保持一致。
      * </p>
      *
      * @param data     明文数据，不能为 null
      * @param password 密码，不能为 null
-     * @param salt     盐值，可为 null（自动生成）
+     * @param salt     盐值，可为 null（自动生成随机盐）
      * @return Base64 编码的密文（含盐值和 IV）
      */
     public static String encryptWithSalt(String data, String password, String salt) {
@@ -344,12 +352,15 @@ public final class AesUtils {
         Objects.requireNonNull(password, "password must not be null");
 
         try {
-            // 生成或使用提供的盐值
+            // 生成或使用提供的盐值（规范化为固定 16 字节，保证解密端可按长度定位）
             byte[] saltBytes;
             if (salt != null && !salt.isEmpty()) {
-                saltBytes = salt.getBytes(CharsetEnum.UTF_8.getCharset());
+                saltBytes = Arrays.copyOf(
+                        MessageDigest.getInstance("SHA-256")
+                                .digest(salt.getBytes(CharsetEnum.UTF_8.getCharset())),
+                        SALT_LENGTH);
             } else {
-                saltBytes = new byte[16];
+                saltBytes = new byte[SALT_LENGTH];
                 SECURE_RANDOM.nextBytes(saltBytes);
             }
 
@@ -395,8 +406,8 @@ public final class AesUtils {
         try {
             byte[] decoded = Base64.getDecoder().decode(encryptedData);
 
-            // 提取盐值（前16字节）
-            int saltLength = 16;
+            // 提取盐值（前 16 字节，与 encryptWithSalt 的规范化格式对应）
+            int saltLength = SALT_LENGTH;
             if (decoded.length < saltLength + GCM_IV_LENGTH) {
                 throw new BusinessException("Invalid encrypted data format");
             }
@@ -487,8 +498,16 @@ public final class AesUtils {
 
     /**
      * 从字符串密钥解析为 SecretKeySpec
+     * <p>
+     * 依次尝试：UTF-8 原始字节（长度恰为 16/24/32）→ Base64 解码（长度为 16/24/32）
+     * → SHA-256 摘要派生 256 位密钥。口令类密钥请优先使用
+     * {@link #encryptWithSalt(String, String, String)}（PBKDF2 派生），而非本方法。
+     * </p>
      */
     private static SecretKeySpec parseKey(String key) {
+        if (key.trim().isEmpty()) {
+            throw new BusinessException("AES key must not be blank");
+        }
         byte[] keyBytes;
         byte[] rawBytes = key.getBytes(CharsetEnum.UTF_8.getCharset());
 
@@ -512,23 +531,18 @@ public final class AesUtils {
     }
 
     /**
-     * 从字符串派生密钥
+     * 从字符串派生密钥（SHA-256 摘要截取）。
+     * <p>派生失败时直接抛出 {@link BusinessException}，不做逐字节填充兜底——
+     * 兜底路径会在空/异常输入时产生弱且不可复现的密钥。</p>
      */
     private static byte[] deriveKeyFromString(String key, int targetLength) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             byte[] hash = md.digest(key.getBytes(CharsetEnum.UTF_8.getCharset()));
-            byte[] result = new byte[targetLength];
-            System.arraycopy(hash, 0, result, 0, Math.min(hash.length, targetLength));
-            return result;
+            return Arrays.copyOf(hash, Math.min(hash.length, targetLength));
         } catch (Exception e) {
-            // 降级方案：截取或填充
-            byte[] bytes = key.getBytes(CharsetEnum.UTF_8.getCharset());
-            byte[] result = new byte[targetLength];
-            for (int i = 0; i < targetLength; i++) {
-                result[i] = bytes[i % bytes.length];
-            }
-            return result;
+            log.error("Key derivation from string failed", e);
+            throw new BusinessException("Failed to derive AES key", e);
         }
     }
 

@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.MethodParameter;
+import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -17,14 +18,18 @@ import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.http.server.ServletServerHttpResponse;
 import org.springframework.lang.Nullable;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+import org.springframework.core.io.Resource;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import java.util.Objects;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * 全局统一响应包装处理器。
@@ -50,8 +55,16 @@ import java.util.Objects;
 @Slf4j
 @RestControllerAdvice
 @ConditionalOnProperty(prefix = "dream.advice.response", name = "enabled", havingValue = "true", matchIfMissing = true)
-@Order   // 改为最低优先级，确保最后执行。值越大，执行越靠后。
+@Order(Ordered.LOWEST_PRECEDENCE) // 显式声明最低优先级，确保包装逻辑最后执行
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
+
+    /**
+     * 内置不包装路径（文档端点与健康检查），Ant 风格通配
+     */
+    private static final List<String> DEFAULT_IGNORE_PATHS = Arrays.asList(
+            "/v3/api-docs**", "/swagger-ui**", "/swagger-resources**", "/doc.html**", "/webjars**", "/actuator**");
+
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
     private final ObjectMapper objectMapper;
 
@@ -62,9 +75,9 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
     private boolean includeMetadata;
 
     /**
-     * 忽略响应路径，多个路径用英文逗号分隔
+     * 忽略响应包装的路径，Ant 风格（如 /export/**），多个路径用英文逗号分隔，默认为空
      */
-    @Value("${dream.advice.response.ignore-response-path}")
+    @Value("${dream.advice.response.ignore-response-path:}")
     private String ignoreResponsePath;
 
 
@@ -90,22 +103,13 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
                                   @Nullable ServerHttpResponse response) {
 
         try {
-            // 路径忽略
-            HttpServletRequest req = ((ServletRequestAttributes) Objects.requireNonNull(RequestContextHolder.getRequestAttributes())).getRequest();
-            String uri = req.getRequestURI();
-            if (ignoreResponsePath != null && !ignoreResponsePath.trim().isEmpty()
-                    && uri != null && !uri.trim().isEmpty()) {
-                String[] paths = ignoreResponsePath.split(",");
-                for (String path : paths) {
-                    if (path != null && !path.trim().isEmpty()) {
-                        if (uri.contains(path.trim())) {
-                            return body;
-                        }
-                    }
-                }
+            // 路径忽略：内置文档/健康检查端点 + 配置项，Ant 风格精确匹配，避免 contains 误放行
+            String uri = resolveRequestUri(request);
+            if (uri != null && isIgnoredPath(uri)) {
+                return body;
             }
         } catch (Exception e) {
-            log.error("ignoreResponsePath error", e);
+            log.error("ignoreResponsePath match error", e);
         }
 
         // 已是 R 类型 → 不再包装，仅补充元数据
@@ -113,21 +117,17 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
             return enrichMetadata((R<?>) body, request);
         }
 
-        // byte[] 类型 → 二进制响应（如文件下载），直接跳过，不受状态码影响
-        if (body instanceof byte[]) {
+        // 二进制/流式/资源类响应（文件下载等）不包装，且不受状态码分支影响
+        if (body instanceof byte[] || body instanceof Resource || body instanceof StreamingResponseBody) {
             return body;
         }
 
-        // 非 2xx 状态码不包装（如异常处理器已自行构造响应）
+        // 非 2xx 状态码不包装（如异常处理器已自行构造响应），保留原始响应体避免丢失错误详情
         if (response instanceof ServletServerHttpResponse) {
             HttpServletResponse servletResponse = ((ServletServerHttpResponse) response).getServletResponse();
             int status = servletResponse.getStatus();
             if (status < HttpStatus.OK.value() || status >= HttpStatus.MULTIPLE_CHOICES.value()) {
-                HttpStatus httpStatus = HttpStatus.resolve(status);
-                if (httpStatus != null) {
-                    return enrichMetadata(R.error(status, httpStatus.getReasonPhrase()), request);
-                }
-                return enrichMetadata(R.fail(ResponseCode.UNKNOWN_ERROR), request);
+                return body != null ? body : resolveFallbackError(status);
             }
         }
 
@@ -157,6 +157,66 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
         // 普通对象 → 包装为 R
         return enrichMetadata(R.ok(body), request);
+    }
+
+    /**
+     * 解析当前请求路径。优先使用 {@link ServerHttpRequest}，为空时回退到 {@code RequestContextHolder}。
+     *
+     * @param request 当前请求（可能为空）
+     * @return 请求 URI 路径，无法解析时返回 {@code null}
+     */
+    @Nullable
+    private String resolveRequestUri(@Nullable ServerHttpRequest request) {
+        if (request != null && request.getURI() != null) {
+            return request.getURI().getPath();
+        }
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes) {
+            HttpServletRequest servletRequest = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
+            return servletRequest.getRequestURI();
+        }
+        return null;
+    }
+
+    /**
+     * 判断路径是否命中忽略包装名单（内置端点 + 配置项）。
+     * <p>配置项支持 Ant 风格通配；不含通配符的路径按前缀匹配其子路径。</p>
+     *
+     * @param uri 请求路径
+     * @return 命中返回 {@code true}
+     */
+    private boolean isIgnoredPath(String uri) {
+        for (String pattern : DEFAULT_IGNORE_PATHS) {
+            if (PATH_MATCHER.match(pattern, uri)) {
+                return true;
+            }
+        }
+        if (ignoreResponsePath != null && !ignoreResponsePath.trim().isEmpty()) {
+            for (String pattern : ignoreResponsePath.split(",")) {
+                String trimmed = pattern.trim();
+                if (trimmed.isEmpty()) {
+                    continue;
+                }
+                if (PATH_MATCHER.match(trimmed, uri)) {
+                    return true;
+                }
+                // 不含通配符时同时放行其子路径，如 /export 命中 /export/file
+                if (trimmed.indexOf('*') < 0 && PATH_MATCHER.match(trimmed + "/**", uri)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 非 2xx 且响应体为空时的兜底错误结果。
+     *
+     * @param status HTTP 状态码
+     * @return 兜底 {@link R} 对象
+     */
+    private R<?> resolveFallbackError(int status) {
+        HttpStatus httpStatus = HttpStatus.resolve(status);
+        return httpStatus != null ? R.error(status, httpStatus.getReasonPhrase()) : R.fail(ResponseCode.UNKNOWN_ERROR);
     }
 
     /**

@@ -3,13 +3,13 @@
     {
       "name": "dream.filter.trace",
       "description": "链路追踪过滤器配置",
-      "type": "com.dream.common.framework.filter.TraceIdFilter",
+      "type": "com.dream.common.framework.config.FilterAutoConfig",
       "sourceType": "com.dream.common.framework.config.FilterAutoConfig"
     },
     {
       "name": "dream.filter.access-log",
       "description": "请求访问日志过滤器配置",
-      "type": "com.dream.common.framework.filter.AccessLogFilter",
+      "type": "com.dream.common.framework.config.FilterAutoConfig",
       "sourceType": "com.dream.common.framework.config.FilterAutoConfig"
     },
     {
@@ -20,7 +20,7 @@
     },
     {
       "name": "logging.custom",
-      "description": "自定义日志配置（logback-spring.xml 扩展）"
+      "description": "自定义日志配置（dream-common-logback.xml 片段读取，需应用显式 include）"
     },
     {
       "name": "dream.cache",
@@ -38,12 +38,6 @@
       "name": "dream.cache.double-delete",
       "description": "延时双删注解切面配置",
       "type": "com.dream.common.framework.cache.config.CacheProperties$DoubleDelete",
-      "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
-    },
-    {
-      "name": "dream.cache.login-cache",
-      "description": "登录信息缓存子配置",
-      "type": "com.dream.common.framework.cache.config.CacheProperties$LoginCache",
       "sourceType": "com.dream.common.framework.cache.config.CacheProperties"
     }
   ],
@@ -239,12 +233,6 @@
       "type": "java.lang.Boolean",
       "description": "是否启用 Controller 查询缓存切面。",
       "defaultValue": true
-    },
-    {
-      "name": "dream.cache.login-cache.expire-seconds",
-      "type": "java.lang.Long",
-      "description": "登录信息缓存过期时间（秒），建议与 Sa-Token token 超时一致。",
-      "defaultValue": 86400
     }
   ],
   "hints": [

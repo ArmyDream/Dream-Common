@@ -1,5 +1,6 @@
 package com.dream.common.framework.cache.config;
 
+import com.dream.common.framework.aspect.PreventDuplicateAspect;
 import com.dream.common.framework.cache.CachesUtils;
 import com.dream.common.framework.cache.aspect.CacheDoubleDeleteAspect;
 import com.dream.common.framework.cache.aspect.QueryCacheAspect;
@@ -23,6 +24,7 @@ import org.springframework.context.annotation.Import;
  *       在 Redis 依赖在场时按 {@code @ConditionalOnClass} 注册，并以 {@code @Primary} 优先</li>
  *   <li>{@link com.dream.common.framework.cache.CachesUtils} —— 对外统一入口，运行期熔断 + 降级</li>
  *   <li>{@link com.dream.common.framework.cache.aspect.CacheDoubleDeleteAspect} —— 延时双删切面</li>
+ *   <li>{@link PreventDuplicateAspect} —— 防重复提交切面（基于 {@code CacheOperations.setIfAbsent}）</li>
  * </ul>
  * </p>
  * <p>
@@ -41,7 +43,8 @@ import org.springframework.context.annotation.Import;
 @Slf4j
 @Configuration
 @EnableConfigurationProperties(CacheProperties.class)
-@Import({CachesUtils.class, CaffeineCacheOperations.class, QueryCacheAspect.class, CacheDoubleDeleteAspect.class})
+@Import({CachesUtils.class, CaffeineCacheOperations.class, QueryCacheAspect.class,
+        CacheDoubleDeleteAspect.class, PreventDuplicateAspect.class})
 public class CacheAutoConfiguration {
 
     /**

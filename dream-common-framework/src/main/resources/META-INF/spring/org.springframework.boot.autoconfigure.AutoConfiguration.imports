@@ -2,3 +2,6 @@ com.dream.common.framework.cache.config.CacheAutoConfiguration
 com.dream.common.framework.cache.config.RedisCacheAutoConfiguration
 com.dream.common.framework.cache.config.RedissonAutoConfiguration
 com.dream.common.framework.config.FilterAutoConfig
+com.dream.common.framework.config.WebMvcConfig
+com.dream.common.framework.config.BannerAutoConfiguration
+com.dream.common.framework.websocket.config.WebSocketAutoConfig

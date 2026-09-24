@@ -8,10 +8,12 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Locale;
 import java.util.Objects;
-import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * 摘要/哈希工具类
@@ -47,6 +49,9 @@ public final class DigestUtils {
 
     /** 文件读取缓冲区大小 */
     private static final int BUFFER_SIZE = 8192;
+
+    /** 安全随机数生成器（用于盐值生成，禁止使用 java.util.Random） */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     /**
      * ThreadLocal 缓存 MessageDigest 实例
@@ -224,7 +229,7 @@ public final class DigestUtils {
             byteLength = DEFAULT_SALT_LENGTH;
         }
         byte[] saltBytes = new byte[byteLength];
-        ThreadLocalRandom.current().nextBytes(saltBytes);
+        SECURE_RANDOM.nextBytes(saltBytes);
         return toHex(saltBytes);
     }
 
@@ -234,9 +239,8 @@ public final class DigestUtils {
         }
         String chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
         StringBuilder sb = new StringBuilder(length);
-        ThreadLocalRandom random = ThreadLocalRandom.current();
         for (int i = 0; i < length; i++) {
-            sb.append(chars.charAt(random.nextInt(chars.length())));
+            sb.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
         }
         return sb.toString();
     }
@@ -247,21 +251,34 @@ public final class DigestUtils {
         if (data == null || expected == null) {
             return false;
         }
-        return expected.equalsIgnoreCase(md5(data));
+        return secureEquals(expected, md5(data));
     }
 
     public static boolean verifyMd5Salt(String data, String salt, String expected) {
         if (data == null || expected == null) {
             return false;
         }
-        return expected.equalsIgnoreCase(md5Salt(data, salt));
+        return secureEquals(expected, md5Salt(data, salt));
     }
 
     public static boolean verifySha256Salt(String data, String salt, String expected) {
         if (data == null || expected == null) {
             return false;
         }
-        return expected.equalsIgnoreCase(sha256Salt(data, salt));
+        return secureEquals(expected, sha256Salt(data, salt));
+    }
+
+    /**
+     * 十六进制摘要的常量时间比较（忽略大小写），避免逐字节短路比较带来的时序侧信道。
+     *
+     * @param expected 期望摘要
+     * @param actual   实际摘要
+     * @return 一致返回 {@code true}
+     */
+    private static boolean secureEquals(String expected, String actual) {
+        return MessageDigest.isEqual(
+                expected.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8),
+                actual.toLowerCase(Locale.ROOT).getBytes(StandardCharsets.UTF_8));
     }
 
     // ==================== 通用摘要 ====================

@@ -5,9 +5,7 @@ import com.dream.common.core.utils.SystemUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.env.Environment;
-import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -41,12 +39,6 @@ import java.time.format.DateTimeFormatter;
  * @author dream
  */
 @Slf4j
-@Component
-@ConditionalOnProperty(
-        name = "spring.banner.custom.enabled",
-        havingValue = "true",
-        matchIfMissing = true
-)
 public class CustomBannerRunner implements ApplicationRunner {
 
     private static final DateTimeFormatter DATE_FORMATTER =

@@ -30,6 +30,7 @@ import java.time.format.DateTimeFormatter;
  *   <li>JSR-310 日期时间格式化（LocalDateTime / LocalDate / LocalTime）</li>
  *   <li>未知属性反序列化容错（前后端字段不一致时不报错）</li>
  *   <li>空 Bean / 空对象序列化容错</li>
+ *   <li>统一响应契约（{@link JacksonContractModule}）：R 按内部 Map 输出、BaseEnum ⇄ value</li>
  * </ul>
  * </p>
  *
@@ -90,6 +91,8 @@ public class JacksonObjectMapper extends ObjectMapper {
         // ==================== 注册模块 ====================
         this.registerModule(javaTimeModule());
         this.registerModule(precisionSafeModule());
+        // 统一响应契约：R 按内部 Map 输出（put() 字段不丢失）、BaseEnum ⇄ value
+        this.registerModule(new JacksonContractModule());
     }
 
     /**
