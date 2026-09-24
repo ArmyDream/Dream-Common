@@ -14,11 +14,27 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 权限校验切面，拦截标注 {@link Permission} 注解的方法，基于 Sa-Token 进行权限校验。
- * <p>支持通过 {@link ControllerConfig#getPermissionPrefix()} 动态拼接权限前缀。</p>
+ * <p>
+ * 支持通过目标 Controller 的 {@code getControllerConfig()} 方法动态拼接权限前缀
+ * （见 {@link ControllerConfig#getPermissionPrefix()}），实现 {@code 模块:实体:操作}
+ * 三段式权限标识的自动补全：当 {@code @Permission} 的 value 不含冒号时，自动追加前缀。
+ * </p>
+ * <p>
+ * 校验失败时统一抛出 {@link BusinessException}（{@link ResponseCode#FORBIDDEN}），
+ * 由全局异常处理器返回 403，确保权限拦截语义与 HTTP 状态码一致。
+ * </p>
+ *
+ * <h2>权限解析规则</h2>
+ * <ul>
+ *   <li>value 含 {@code ":"} —— 视为完整权限标识，原样使用</li>
+ *   <li>value 不含 {@code ":"} 且 Controller 提供 permissionPrefix —— 拼接为 {@code prefix:value}</li>
+ *   <li>value 不含 {@code ":"} 且无前缀 —— 原样使用（业务方需保证权限表已存在该值）</li>
+ * </ul>
  *
  * @author dream
  * @since 2026-08-24
@@ -27,7 +43,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @Aspect
 public class PermissionAspect {
 
-    private static final Map<Class<?>, Method> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
+    /**
+     * Class → {@code getControllerConfig} 方法 缓存。
+     * <p>
+     * 使用 {@link Optional} 包装，避免 {@link ConcurrentHashMap#computeIfAbsent}
+     * 不允许 null 返回值（未声明该方法的类缓存为 {@link Optional#empty()}）。
+     * </p>
+     */
+    private static final Map<Class<?>, Optional<Method>> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
 
     /**
      * 环绕通知：校验权限后执行目标方法。
@@ -87,7 +110,7 @@ public class PermissionAspect {
      * 通过反射获取目标对象的权限前缀。
      *
      * @param target 目标对象
-     * @return 权限前缀，若获取失败返回 {@code null}
+     * @return 权限前缀，若获取失败或无前缀返回 {@code null}
      * @throws BusinessException 当方法调用异常或返回类型不匹配时抛出
      */
     private String getPermissionPrefix(Object target) {
@@ -119,26 +142,37 @@ public class PermissionAspect {
     }
 
     /**
-     * 沿继承链查找指定方法（支持 protected/private）。
+     * 沿继承链查找指定方法（支持 protected/private），结果缓存。
      *
      * @param clazz      类
      * @param methodName 方法名
      * @return 方法对象，未找到返回 {@code null}
      */
     private Method findMethod(Class<?> clazz, String methodName) {
-        return CONFIG_METHOD_CACHE.computeIfAbsent(clazz, c -> {
-            Class<?> current = c;
-            while (current != null && current != Object.class) {
-                try {
-                    Method method = current.getDeclaredMethod(methodName);
-                    method.setAccessible(true);
-                    return method;
-                } catch (NoSuchMethodException ignored) {
-                }
-                current = current.getSuperclass();
+        return CONFIG_METHOD_CACHE.computeIfAbsent(clazz, c -> Optional.ofNullable(lookupMethod(c, methodName)))
+                .orElse(null);
+    }
+
+    /**
+     * 实际沿继承链查找方法。
+     *
+     * @param clazz      类
+     * @param methodName 方法名
+     * @return 方法对象，未找到返回 {@code null}
+     */
+    private Method lookupMethod(Class<?> clazz, String methodName) {
+        Class<?> current = clazz;
+        while (current != null && current != Object.class) {
+            try {
+                Method method = current.getDeclaredMethod(methodName);
+                method.setAccessible(true);
+                return method;
+            } catch (NoSuchMethodException ignored) {
+                // 当前类未声明该方法，继续向上查找
             }
-            return null;
-        });
+            current = current.getSuperclass();
+        }
+        return null;
     }
 
     /**

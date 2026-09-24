@@ -13,14 +13,21 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 /**
- * 安全模块自动配置类。
- * <p>当 classpath 中存在 Sa-Token 且 {@code dream.security.enabled=true} 时，自动注册以下组件：</p>
+ * 安全模块自动配置入口。
+ * <p>
+ * 当 classpath 中存在 Sa-Token 且 {@code dream.security.enabled=true}（默认）时，
+ * 通过 {@link Import} 注册以下组件：
+ * </p>
  * <ul>
- *   <li>{@link PermissionAspect} 权限校验切面</li>
- *   <li>{@link SaTokenWebConfig} 过滤器配置（CorsFilter + SaServletFilter）</li>
- *   <li>{@link SaTokenExceptionHandler} 异常处理器</li>
- *   <li>{@link StpInterfaceImpl} 权限数据提供者</li>
+ *   <li>{@link SaTokenWebConfig} —— CorsFilter + SaServletFilter 注册</li>
+ *   <li>{@link SaTokenExceptionHandler} —— DispatcherServlet 阶段的 Sa-Token 异常处理</li>
+ *   <li>{@link StpInterfaceImpl} —— Sa-Token 权限/角色数据提供者</li>
+ *   <li>{@link PermissionAspect} —— {@code @Permission} 注解 AOP 切面（见下方 @Bean）</li>
  * </ul>
+ * <p>
+ * 本类是模块在 {@code AutoConfiguration.imports} 中的唯一入口，子组件统一由 {@link Import}
+ * 引入，避免在 imports 文件中重复登记造成的二次注册。
+ * </p>
  *
  * @author dream
  * @since 2026-08-24

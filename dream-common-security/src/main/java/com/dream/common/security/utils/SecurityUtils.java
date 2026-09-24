@@ -1,6 +1,7 @@
 package com.dream.common.security.utils;
 
 import cn.dev33.satoken.stp.StpUtil;
+import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import com.dream.common.core.constant.Security;
 import com.dream.common.core.vo.sys.UserProfileVo;
 import com.dream.common.framework.cache.CachesUtils;
@@ -11,7 +12,20 @@ import java.util.function.Supplier;
 
 /**
  * 安全工具类，基于 Sa-Token 封装常用的登录、权限、角色、会话操作。
- * <p>登录用户信息缓存于 {@link CachesUtils}，Key 为 {@code "user:" + userId}。</p>
+ * <p>
+ * 登录用户档案 {@link UserProfileVo} 缓存于 {@link CachesUtils}，
+ * key = {@link Security#CACHE_PREFIX_USER} + userId（Redis 优先，不可用降级 Caffeine）。
+ * Sa-Token 会话（token → loginId 映射）由 StpUtil 自行维护。
+ * </p>
+ *
+ * <h2>职责划分</h2>
+ * <ul>
+ *   <li>会话生命周期：{@link #login} / {@link #logout} / {@link #logout(String)}</li>
+ *   <li>当前用户读取：{@link #getUserId} / {@link #getUsername} / {@link #getLoginUser()} / {@link #getLoginUser(Supplier)}</li>
+ *   <li>角色 / 权限查询：{@link #hasRole} / {@link #hasPermission} 等</li>
+ *   <li>编程式校验（抛异常）：{@link #requireLogin} / {@link #requirePermission} / {@link #requireRole}</li>
+ *   <li>Token 与会话属性：{@link #getTokenValue} / {@link #setSessionAttribute} 等</li>
+ * </ul>
  *
  * @author dream
  * @since 2026-08-24
@@ -19,7 +33,10 @@ import java.util.function.Supplier;
 @Slf4j
 public final class SecurityUtils {
 
+    /** 登录用户档案缓存默认有效期（秒），与 Sa-Token token 超时保持一致 */
     private static final long LOGIN_USER_CACHE_EXPIRE_SECONDS = 1800L;
+
+    /** 会话中存取用户名的 key */
     private static final String SESSION_KEY_USERNAME = "username";
 
     private SecurityUtils() {
@@ -28,7 +45,7 @@ public final class SecurityUtils {
     // ==================== 登录 / 登出 ====================
 
     /**
-     * 登录用户（默认30分钟有效期）。
+     * 登录用户（默认 30 分钟有效期）。
      *
      * @param loginUser 登录用户信息，必须包含 userId
      * @throws IllegalArgumentException 当 loginUser 或 userId 为 null 时抛出
@@ -48,15 +65,12 @@ public final class SecurityUtils {
         if (loginUser == null || loginUser.getUserId() == null) {
             throw new IllegalArgumentException("登录用户信息或 userId 不能为空");
         }
-//        loginUser.setLoginTime(System.currentTimeMillis());
-//        loginUser.setExpireTime(System.currentTimeMillis() + timeout * 1000L);
 
-        StpUtil.login(loginUser.getUserId(), new cn.dev33.satoken.stp.parameter.SaLoginParameter()
-                .setTimeout(timeout));
-
+        StpUtil.login(loginUser.getUserId(), new SaLoginParameter().setTimeout(timeout));
         StpUtil.getSession().set(SESSION_KEY_USERNAME, loginUser.getUsername());
         cacheLoginUser(loginUser, timeout);
-        log.info("用户登录成功 | userId={} | username={} | timeout={}s", loginUser.getUserId(), loginUser.getUsername(), timeout);
+        log.info("用户登录成功 | userId={} | username={} | timeout={}s",
+                loginUser.getUserId(), loginUser.getUsername(), timeout);
     }
 
     /**
@@ -122,7 +136,7 @@ public final class SecurityUtils {
     }
 
     /**
-     * 从缓存获取当前登录用户完整信息。
+     * 从缓存获取当前登录用户完整档案。
      *
      * @return UserProfileVo，未登录或缓存不存在返回 {@code null}
      */
@@ -136,6 +150,9 @@ public final class SecurityUtils {
 
     /**
      * 获取当前登录用户信息，缓存未命中时通过加载器从数据库加载并回填缓存。
+     * <p>
+     * 加载器返回 {@code null} 时视为用户不存在，不回填缓存以避免缓存穿透。
+     * </p>
      *
      * @param loader 数据加载器，返回 UserProfileVo（可为 null）
      * @return 用户信息，未登录或加载失败返回 {@code null}
@@ -152,10 +169,6 @@ public final class SecurityUtils {
         }
         UserProfileVo user = loader.get();
         if (user != null) {
-            user.setUserId(userId);
-            /*if (user.getLoginTime() == null) {
-                user.setLoginTime(System.currentTimeMillis());
-            }*/
             cacheLoginUser(user);
             log.debug("懒加载登录用户并回填缓存 | userId={}", userId);
         } else {
@@ -165,7 +178,7 @@ public final class SecurityUtils {
     }
 
     /**
-     * 手动刷新当前用户的缓存信息。
+     * 手动刷新当前用户的缓存档案。
      *
      * @param loginUser 最新的用户信息
      */
@@ -369,19 +382,41 @@ public final class SecurityUtils {
 
     // ==================== 内部方法 ====================
 
+    /**
+     * 构造登录用户档案缓存 key。
+     *
+     * @param userId 用户ID
+     * @return 缓存 key
+     */
     private static String buildUserCacheKey(String userId) {
         return Security.CACHE_PREFIX_USER + userId;
     }
 
+    /**
+     * 以默认有效期缓存登录用户档案。
+     *
+     * @param loginUser 登录用户信息
+     */
     private static void cacheLoginUser(UserProfileVo loginUser) {
         cacheLoginUser(loginUser, LOGIN_USER_CACHE_EXPIRE_SECONDS);
     }
 
+    /**
+     * 以指定有效期缓存登录用户档案。
+     *
+     * @param loginUser 登录用户信息
+     * @param expire    有效期（秒）
+     */
     private static void cacheLoginUser(UserProfileVo loginUser, long expire) {
         String cacheKey = buildUserCacheKey(loginUser.getUserId());
         CachesUtils.set(cacheKey, loginUser, expire, TimeUnit.SECONDS);
     }
 
+    /**
+     * 从缓存移除登录用户档案。
+     *
+     * @param userId 用户ID
+     */
     private static void removeLoginUserFromCache(String userId) {
         if (userId != null) {
             CachesUtils.delete(buildUserCacheKey(userId));
