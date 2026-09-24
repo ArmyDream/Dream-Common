@@ -1,7 +1,6 @@
 package com.dream.common.advice.handler;
 
 import com.dream.common.core.api.ExceptionHandlerDelegate;
-import com.dream.common.core.constant.OrderValue;
 import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.exception.BusinessException;
 import com.dream.common.core.utils.HandleUtils;
@@ -9,7 +8,6 @@ import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -29,7 +27,6 @@ import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
-import org.yaml.snakeyaml.constructor.DuplicateKeyException;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -37,8 +34,6 @@ import javax.validation.ConstraintViolation;
 import javax.validation.ConstraintViolationException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
 import java.util.function.BiFunction;
