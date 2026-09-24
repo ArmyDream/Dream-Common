@@ -41,7 +41,7 @@
     {
       "name": "dream.security.filter.exclude-paths",
       "type": "java.util.List<java.lang.String>",
-      "description": "不拦截的静态白名单（Ant 风格，如 /sys/login、/captcha/**）。与 CachesUtils 缓存 key security:exclude-paths:（逗号分隔）逐请求动态合并，支持运行期热更新，无需重启。",
+      "description": "不拦截的静态白名单（Ant 风格，如 /sys/login、/captcha/**）。与 CachesUtils 缓存 key dream:security:exclude-paths:（逗号分隔）逐请求动态合并，支持运行期热更新，无需重启。",
       "defaultValue": ["/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"]
     },
     {

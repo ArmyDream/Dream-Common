@@ -1,5 +1,6 @@
 package com.dream.common.security.utils;
 
+import cn.dev33.satoken.SaManager;
 import cn.dev33.satoken.stp.StpUtil;
 import cn.dev33.satoken.stp.parameter.SaLoginParameter;
 import com.dream.common.core.constant.Security;
@@ -17,6 +18,11 @@ import java.util.function.Supplier;
  * key = {@link Security#CACHE_PREFIX_USER} + userId（Redis 优先，不可用降级 Caffeine）。
  * Sa-Token 会话（token → loginId 映射）由 StpUtil 自行维护。
  * </p>
+ * <p>
+ * 有效期以 sa-token 为准：登录时缓存 TTL 与 token TTL 一致（全局配置
+ * {@code sa-token.timeout} 或 {@link #login(UserProfileVo, long)} 显式值），
+ * 懒加载/刷新回填时取当前 token 剩余时间，登出/踢人时同步删除缓存。
+ * </p>
  *
  * <h2>职责划分</h2>
  * <ul>
@@ -33,14 +39,8 @@ import java.util.function.Supplier;
 @Slf4j
 public final class SecurityUtils {
 
-    /** 登录用户档案缓存默认有效期（秒），与 Sa-Token token 超时保持一致 */
-    private static final long LOGIN_USER_CACHE_EXPIRE_SECONDS = 1800L;
-
     /** 会话中存取用户名的 key */
     private static final String SESSION_KEY_USERNAME = "username";
-
-    /** 超级管理员角色编码 */
-    private static final String ADMIN_ROLE = "admin";
 
     private SecurityUtils() {
     }
@@ -48,25 +48,37 @@ public final class SecurityUtils {
     // ==================== 登录 / 登出 ====================
 
     /**
-     * 登录用户（默认 30 分钟有效期）。
+     * 登录用户，token 与用户档案缓存有效期均取 sa-token 全局配置（{@code sa-token.timeout}，单位秒）。
      *
      * @param loginUser 登录用户信息，必须包含 userId
      * @throws IllegalArgumentException 当 loginUser 或 userId 为 null 时抛出
      */
     public static void login(UserProfileVo loginUser) {
-        login(loginUser, LOGIN_USER_CACHE_EXPIRE_SECONDS);
+        if (loginUser == null || loginUser.getUserId() == null) {
+            throw new IllegalArgumentException("登录用户信息或 userId 不能为空");
+        }
+
+        // 不传 SaLoginParameter，token 有效期直接采用 sa-token 全局配置
+        StpUtil.login(loginUser.getUserId());
+        StpUtil.getSession().set(SESSION_KEY_USERNAME, loginUser.getUsername());
+        cacheLoginUser(loginUser, SaManager.getConfig().getTimeout());
+        log.info("用户登录成功 | userId={} | username={} | timeout={}s(全局配置)",
+                loginUser.getUserId(), loginUser.getUsername(), SaManager.getConfig().getTimeout());
     }
 
     /**
-     * 登录用户并指定有效期。
+     * 登录用户并显式指定有效期，token 与用户档案缓存同 TTL（缓存随 token 过期自动失效）。
      *
-     * @param loginUser 登录用户信息
-     * @param timeout   令牌有效期（秒）
-     * @throws IllegalArgumentException 当 loginUser 或 userId 为 null 时抛出
+     * @param loginUser 登录用户信息，必须包含 userId
+     * @param timeout   令牌有效期（秒），须为正数
+     * @throws IllegalArgumentException 当 loginUser / userId 为 null 或 timeout 非正数时抛出
      */
     public static void login(UserProfileVo loginUser, long timeout) {
         if (loginUser == null || loginUser.getUserId() == null) {
             throw new IllegalArgumentException("登录用户信息或 userId 不能为空");
+        }
+        if (timeout <= 0) {
+            throw new IllegalArgumentException("令牌有效期必须为正数（秒），实际=" + timeout);
         }
 
         StpUtil.login(loginUser.getUserId(), new SaLoginParameter().setTimeout(timeout));
@@ -375,7 +387,7 @@ public final class SecurityUtils {
     // ==================== 便捷方法 ====================
 
     /**
-     * 判断当前用户是否为超级管理员（拥有 {@code admin} 角色）。
+     * 判断当前用户是否为超级管理员（拥有 {@link Security#ROLE_ADMIN} 角色）。
      * <p>
      * 管理员判定只依赖角色数据（可由权限系统动态调整），
      * 不设置任何基于 userId 的硬编码后门。
@@ -384,7 +396,7 @@ public final class SecurityUtils {
      * @return true 是管理员
      */
     public static boolean isAdmin() {
-        return StpUtil.isLogin() && StpUtil.hasRole(ADMIN_ROLE);
+        return StpUtil.isLogin() && StpUtil.hasRole(Security.ROLE_ADMIN);
     }
 
     // ==================== 内部方法 ====================
@@ -400,12 +412,30 @@ public final class SecurityUtils {
     }
 
     /**
-     * 以默认有效期缓存登录用户档案。
+     * 以当前 token 剩余有效期缓存登录用户档案（缓存与 token 同步过期）。
      *
      * @param loginUser 登录用户信息
      */
     private static void cacheLoginUser(UserProfileVo loginUser) {
-        cacheLoginUser(loginUser, LOGIN_USER_CACHE_EXPIRE_SECONDS);
+        cacheLoginUser(loginUser, currentTokenTimeout());
+    }
+
+    /**
+     * 获取当前 token 剩余有效期（秒）。
+     * <p>
+     * 有效期以 sa-token 为准：token 剩余时间取 {@code StpUtil.getTokenTimeout()}
+     * （-1 永不过期 / -2 未获取到）时，回退 sa-token 全局配置 {@code sa-token.timeout}；
+     * 两者均非正数（永不过期场景）时返回 {@link Integer#MAX_VALUE} 秒作为近似永久 TTL。
+     * </p>
+     *
+     * @return 缓存有效期（秒），恒为正数
+     */
+    private static long currentTokenTimeout() {
+        long timeout = StpUtil.getTokenTimeout();
+        if (timeout <= 0) {
+            timeout = SaManager.getConfig().getTimeout();
+        }
+        return timeout > 0 ? timeout : Integer.MAX_VALUE;
     }
 
     /**

@@ -19,6 +19,16 @@ public final class Security {
     public static final String AUTH_BASIC = "Basic";
     public static final String AUTH_DIGEST = "Digest";
 
+    // ==================== 角色 ====================
+    /**
+     * 超级管理员角色编码。
+     * <p>
+     * 拥有此角色的用户视为超级管理员（如 {@code SecurityUtils.isAdmin()}），
+     * 管理员判定不设任何基于 userId 的硬编码后门。
+     * </p>
+     */
+    public static final String ROLE_ADMIN = "admin";
+
     // ==================== 缓存 Key 前缀 ====================
     public static final String CACHE_PREFIX_TOKEN = "dream:security:token:";
     public static final String CACHE_PREFIX_SESSION = "dream:security:session:";
@@ -39,12 +49,12 @@ public final class Security {
     /**
      * 路由白名单路径缓存 key。
      * <p>
-     * 业务系统可通过 {@code CachesUtils.set(EXCLUDE_PATHS_CACHE_KEY, "/api/**,/login")}
+     * 业务系统可通过 {@code CachesUtils.set(CACHE_PREFIX_EXCLUDE_PATHS, "/api/**,/login")}
      * 动态注入白名单路径，缓存中多个路径以逗号隔开。
-     * 启动时与 {@code dream.security.interceptor.exclude-paths} 配置项合并。
+     * 每次请求与 {@code dream.security.filter.exclude-paths} 配置项实时合并（支持热更新）。
      * </p>
      */
-    public static final String CACHE_PREFIX_EXCLUDE_PATHS = "security:exclude-paths:";
+    public static final String CACHE_PREFIX_EXCLUDE_PATHS = "dream:security:exclude-paths:";
 
     /**
      * 令牌秘钥
