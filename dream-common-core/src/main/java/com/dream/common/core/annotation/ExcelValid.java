@@ -86,7 +86,7 @@ public @interface ExcelValid {
     // ==================== 长度/范围约束 ====================
 
     /**
-     * 最大长度（字符串）或最大值（数值，配合 {@link #max()} 使用）
+     * 字符串最大长度（数值范围请使用 {@link #max()}）
      * <p>
      * 0 表示不限制
      */
@@ -157,11 +157,15 @@ public @interface ExcelValid {
 
     /**
      * 是否唯一（该列的值不允许重复）
+     * <p>
+     * 说明：单值校验无法感知整列数据，因此 {@code ExcelValidUtils.validate} 不处理该项，
+     * 需由导入监听器在整表维度自行收集判重。
+     * </p>
      */
     boolean unique() default false;
 
     /**
-     * 唯一性校验失败提示
+     * 唯一性校验失败提示（留空使用默认提示）
      */
     String uniqueMessage() default "";
 }

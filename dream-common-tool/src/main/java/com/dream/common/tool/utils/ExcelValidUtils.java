@@ -161,6 +161,20 @@ public final class ExcelValidUtils {
     }
 
     /**
+     * 渲染提示信息：将 {@code {fieldName}} 占位符替换为字段的显示名称。
+     *
+     * @param message   注解中声明的提示信息，可为空白
+     * @param fieldName 字段显示名称
+     * @return 替换后的提示信息；message 为空白时原样返回
+     */
+    private static String renderMessage(String message, String fieldName) {
+        if (StringUtils.isBlank(message)) {
+            return message;
+        }
+        return message.replace("{fieldName}", fieldName);
+    }
+
+    /**
      * 对单个值执行 {@link ExcelValid} 校验
      * <p>
      * 校验顺序：required → minLength/maxLength → pattern → min/max → dateFormat
@@ -181,7 +195,7 @@ public final class ExcelValidUtils {
             return errors;
         }
         String fieldName = StringUtils.isNotBlank(annotation.fieldName()) ? annotation.fieldName() : "字段";
-        String msg = annotation.message();
+        String msg = renderMessage(annotation.message(), fieldName);
         String strValue = (value != null) ? value.toString() : null;
 
         // 1. 必填校验
@@ -207,7 +221,7 @@ public final class ExcelValidUtils {
         if (StringUtils.isNotBlank(pattern)) {
             try {
                 if (!Pattern.matches(pattern, strValue)) {
-                    String patternMsg = annotation.patternMessage();
+                    String patternMsg = renderMessage(annotation.patternMessage(), fieldName);
                     if (StringUtils.isNotBlank(patternMsg)) {
                         errors.add(AnnotationUtils.formatMsg(patternMsg, fieldName + "格式不正确"));
                     } else {

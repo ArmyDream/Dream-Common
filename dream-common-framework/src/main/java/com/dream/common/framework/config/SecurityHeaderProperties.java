@@ -30,10 +30,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *       permissions-policy: "geolocation=(self),camera=(),microphone=()"
  *       clear-site-data: ""           # 默认空（不输出）；登出场景可配 "*"
  *       cache-control: no-cache       # 默认空（不输出）
- *       cookie-secure: true           # Cookie 安全属性增强
- *       cookie-http-only: true
- *       cookie-same-site: Lax         # Lax / Strict / None
  * }</pre>
+ *
+ * <p>
+ * Cookie 的 Secure / HttpOnly / SameSite 属性由 Servlet 容器与框架自身管理，
+ * 请使用 Spring Boot 标准配置项 {@code server.servlet.session.cookie.*}
+ * 以及所用鉴权框架（如 sa-token）的 token 配置，本类不提供重复开关。
+ * </p>
  *
  * @author dream
  */
@@ -167,26 +170,4 @@ public class SecurityHeaderProperties {
      * 默认空（不输出，由 Spring MVC 默认行为决定）。
      */
     private String cacheControl = "";
-
-    // ---------- Cookie 安全增强 ----------
-
-    /**
-     * 是否为响应中的 Cookie 追加 Secure 标识（仅 HTTPS 传输）
-     */
-    private boolean cookieSecure = false;
-
-    /**
-     * 是否为响应中的 Cookie 追加 HttpOnly 标识（禁止 JS 读取）
-     */
-    private boolean cookieHttpOnly = true;
-
-    /**
-     * Cookie SameSite 策略。
-     * <p>
-     * 可选值：Lax / Strict / None。
-     * 设为 None 时必须同时开启 cookieSecure。
-     * </p>
-     * 默认空（不追加 SameSite 属性）。
-     */
-    private String cookieSameSite = "";
 }

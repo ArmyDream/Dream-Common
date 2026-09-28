@@ -8,8 +8,10 @@ import org.springframework.context.annotation.Configuration;
 /**
  * 加密密钥注入自动装配。
  * <p>
- * 读取 {@code dream.encrypt.*} 配置并注入 {@link EncryptUtil}，
- * 避免默认密钥硬编码风险。未配置时 {@link EncryptUtil} 回退到内置默认值并输出 WARN。
+ * 读取 {@code dream.encrypt.*} 配置并注入 {@link EncryptUtil}。
+ * {@link EncryptUtil} 不提供任何内置默认密钥/默认盐：未配置对应项时，
+ * 首次使用该算法会抛出 {@link IllegalStateException}（fail-closed），
+ * 而不是静默使用一个人人皆知的常量。
  * </p>
  *
  * @author dream
@@ -30,9 +32,7 @@ public class EncryptAutoConfiguration {
         }
         EncryptUtil.configure(
                 properties.getAesKey(),
-                properties.getAesIv(),
                 properties.getDesKey(),
-                properties.getDesIv(),
                 properties.getMd5Salt());
         log.debug("EncryptAutoConfiguration initialized (dream.encrypt.*)");
     }

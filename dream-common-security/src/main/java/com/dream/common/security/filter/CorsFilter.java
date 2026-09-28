@@ -15,8 +15,6 @@ import javax.servlet.ServletResponse;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.List;
 
 /**
@@ -27,7 +25,8 @@ import java.util.List;
  * </p>
  * <p>
  * 支持通过配置的 {@code allowedOriginPatterns}（Ant 风格）或 {@code allowedOrigins}
- * 精确匹配来决定是否允许请求源。
+ * 精确匹配来决定是否允许请求源。<b>两者都不配置时不放行任何跨域源</b>，
+ * 同源请求（无 Origin 头）不受影响。
  * </p>
  *
  * @author dream
@@ -38,6 +37,9 @@ public class CorsFilter implements Filter {
 
     private final SecurityProperties.Cors cors;
     private final AntPathMatcher pathMatcher = new AntPathMatcher();
+
+    /** 通配源 + 凭证冲突告警是否已输出（避免逐请求刷屏） */
+    private volatile boolean wildcardWarned;
 
     /**
      * 构造器注入 CORS 配置。
@@ -132,44 +134,27 @@ public class CorsFilter implements Filter {
 
     /**
      * 解析请求中的 Origin。
-     * <p>优先使用 {@code Origin} 头，若不存在则回退到 {@code Referer} 头提取协议+主机+端口。</p>
+     * <p>
+     * 仅读取 {@code Origin} 头：跨域判定必须由浏览器发送的 Origin 决定。
+     * 早期实现回退用 {@code Referer} 推导源，但 Referer 完全由客户端控制，
+     * 攻击者可伪造它让服务端为其"源"颁发 {@code Access-Control-Allow-Origin}
+     * （尤其在 {@code allowCredentials=true} 时等价于放开带凭证跨域），故移除该回退。
+     * </p>
      *
      * @param req HTTP 请求
-     * @return 源字符串（如 {@code https://example.com}），若无法解析则返回 {@code null}
+     * @return 源字符串（如 {@code https://example.com}），若不存在则返回 {@code null}
      */
     private static String resolveOrigin(HttpServletRequest req) {
-        String origin = req.getHeader(Http.HEADER_ORIGIN);
-        if (StringUtils.hasText(origin)) {
-            return origin;
-        }
-
-        String referer = req.getHeader(Http.HEADER_REFERER);
-        if (StringUtils.hasText(referer)) {
-            try {
-                URI uri = new URI(referer);
-                String scheme = uri.getScheme();
-                String host = uri.getHost();
-                if (scheme != null && host != null) {
-                    int port = uri.getPort();
-                    if (port == -1) {
-                        return scheme + "://" + host;
-                    }
-                    // 省略标准端口显示
-                    if ((port == 80 && "http".equalsIgnoreCase(scheme)) ||
-                            (port == 443 && "https".equalsIgnoreCase(scheme))) {
-                        return scheme + "://" + host;
-                    }
-                    return scheme + "://" + host + ":" + port;
-                }
-            } catch (URISyntaxException ignored) {
-                // 无效 Referer，忽略
-            }
-        }
-        return null;
+        return req.getHeader(Http.HEADER_ORIGIN);
     }
 
     /**
      * 判断给定 Origin 是否被允许，并返回应写入响应头的值。
+     * <p>
+     * 匹配优先级：{@code allowedOriginPatterns}（Ant 模式）&gt; {@code allowedOrigins}（精确）。
+     * 两者都为空时<b>一律拒绝</b>（与 {@link SecurityProperties.Cors} 的默认空列表配套，
+     * 保证"未显式配置即不放开跨域"）。
+     * </p>
      *
      * @param origin 请求的 Origin
      * @return 允许时返回 origin 本身或 "*"；不允许返回 {@code null}
@@ -194,14 +179,31 @@ public class CorsFilter implements Filter {
 
         for (String allowed : origins) {
             if ("*".equals(allowed)) {
-                // allowCredentials=true 时不能使用 "*"，必须回显 Origin
-                return cors.isAllowCredentials() ? origin : "*";
+                if (cors.isAllowCredentials()) {
+                    // 通配 + 凭证会被浏览器拒绝，且回显任意 Origin 等于全源放开，直接忽略
+                    warnWildcardWithCredentials();
+                    continue;
+                }
+                return "*";
             }
             if (allowed.equalsIgnoreCase(origin)) {
                 return origin;
             }
         }
         return null;
+    }
+
+    /**
+     * 通配源与凭证同时开启时告警（每种配置组合只提示一次，避免逐请求刷屏）。
+     */
+    private void warnWildcardWithCredentials() {
+        if (wildcardWarned) {
+            return;
+        }
+        wildcardWarned = true;
+        log.warn("[CorsFilter] allowed-origins 含 \"*\" 且 allow-credentials=true，"
+                + "该组合会被浏览器拒绝且等价于全源放开，已忽略 \"*\"。"
+                + "请配置具体源或 dream.security.cors.allowed-origin-patterns。");
     }
 
     /**

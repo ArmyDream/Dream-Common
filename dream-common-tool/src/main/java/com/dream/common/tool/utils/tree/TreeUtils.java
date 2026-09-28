@@ -321,6 +321,7 @@ public final class TreeUtils {
         String labelField = tree.label();
         String childrenField = tree.children();
         String levelField = tree.level();
+        String disabledField = tree.disabled();
         String expandField = tree.expand();
         String checkedField = tree.checked();
 
@@ -329,6 +330,7 @@ public final class TreeUtils {
         root.put(labelField, "全部");
         root.put(childrenField, roots);
         root.put(levelField, 0);
+        root.put(disabledField, false);
         root.put(expandField, false);
         root.put(checkedField, false);
 

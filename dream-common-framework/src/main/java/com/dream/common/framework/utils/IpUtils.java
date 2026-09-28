@@ -111,6 +111,23 @@ public final class IpUtils {
      * <p>
      * 请求头优先级：X-Forwarded-For → Proxy-Client-IP → WL-Proxy-Client-IP →
      * HTTP_CLIENT_IP → X-Real-IP → RemoteAddr
+     * </p>
+     *
+     * <h2>格式校验</h2>
+     * <p>
+     * 代理头完全由客户端控制，值可能是任意字符串。解析结果必须是合法 IPv4/IPv6，
+     * 否则回退 {@code RemoteAddr}——避免把伪造字符串写进访问日志，
+     * 或作为缓存 / 防重复提交的 Key 组成部分（脏值会分裂或放大 Key 空间）。
+     * </p>
+     *
+     * <h2>可伪造性提醒（使用方须知）</h2>
+     * <p>
+     * 只要客户端与本机之间没有可信反向代理统一改写 {@code X-Forwarded-For}，
+     * 该头就可以被任意伪造（本方法无法在不了解拓扑的前提下判断真伪）。
+     * 因此<b>不要把返回值当作可信来源做鉴权、风控或限流判定</b>；
+     * 防重复提交建议优先使用 {@code includeUserId}，{@code includeIp} 仅在
+     * 网关统一覆盖 XFF 的部署下使用。
+     * </p>
      *
      * @param request HTTP 请求对象
      * @return 客户端 IP 地址；无法获取返回 "unknown"
@@ -129,7 +146,8 @@ public final class IpUtils {
             ip = null;
         }
 
-        if (ip == null) {
+        // 代理头缺失，或值不是合法 IP（客户端伪造/乱填）时，回退到连接真实来源
+        if (ip == null || !isValidIp(firstReverseProxyIp(ip))) {
             ip = request.getRemoteAddr();
         }
 
@@ -143,6 +161,17 @@ public final class IpUtils {
             log.debug("客户端 IP 解析结果: {}", result);
         }
         return result;
+    }
+
+    /**
+     * 取多级代理链中的第一段（最接近客户端的地址），用于格式合法性预判。
+     *
+     * @param ip 原始请求头值，可能是逗号分隔的代理链
+     * @return 第一段地址
+     */
+    private static String firstReverseProxyIp(String ip) {
+        int index = ip.indexOf(',');
+        return index > -1 ? ip.substring(0, index).trim() : ip.trim();
     }
 
     // ==================== IP 格式校验 ====================

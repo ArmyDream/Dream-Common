@@ -103,11 +103,23 @@ public class SecurityProperties {
         /**
          * 不拦截的静态白名单路径（Ant 风格），与缓存中的动态白名单逐请求合并。
          * <p>
-         * 默认放行系统登录/登出、认证、验证码、监控端点等公开路径。
+         * 默认仅放行系统登录/登出、认证、验证码路径。
          * </p>
+         * <p>
+         * <b>注意：不再默认放行 {@code /actuator/**}</b>。Actuator 的 {@code /env}、
+         * {@code /heapdump} 等端点会暴露配置与内存中的凭据，需要监控时由业务侧显式加入白名单
+         * 并配合网络层限制，例如：
+         * </p>
+         * <pre>{@code
+         * dream:
+         *   security:
+         *     sa-token:
+         *       exclude-paths:
+         *         - /actuator/health    # 只放行健康检查
+         * }</pre>
          */
         private List<String> excludePaths = new ArrayList<>(Arrays.asList(
-                "/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"));
+                "/sys/login", "/sys/logout", "/auth/**", "/captcha/**"));
     }
 
     /**
@@ -138,11 +150,15 @@ public class SecurityProperties {
         /**
          * 允许的源列表，{@code "*"} 表示全部。
          * <p>
-         * 当 {@code allowCredentials=true} 时不能使用 {@code "*"}，
-         * 需指定具体源或改用 {@link #allowedOriginPatterns}。
+         * 当 {@code allowCredentials=true} 时不能使用 {@code "*"}（浏览器会拒绝该组合），
+         * 需指定具体源或改用 {@link #allowedOriginPatterns}；此时 {@code "*"} 会被忽略并告警。
+         * </p>
+         * <p>
+         * <b>默认为空</b>：不放开任何跨域源（同源请求不受影响）。需要跨域时由业务侧显式配置，
+         * 避免"框架默认全开"导致带凭证请求被任意站点调用。
          * </p>
          */
-        private List<String> allowedOrigins = new ArrayList<>(Arrays.asList("*"));
+        private List<String> allowedOrigins = new ArrayList<>();
 
         /** Ant 风格源模式（优先于 allowedOrigins），可与 allowCredentials=true 共存 */
         private List<String> allowedOriginPatterns = new ArrayList<>();

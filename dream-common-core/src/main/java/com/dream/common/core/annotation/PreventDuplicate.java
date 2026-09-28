@@ -68,7 +68,7 @@ public @interface PreventDuplicate {
     /**
      * 自定义 Key 前缀
      * <p>
-     * 留空时使用方法全限定名（类名.方法名）
+     * 留空时默认使用 "目标类全限定名:方法名"
      * <p>
      * 建议格式："业务模块:操作"，如 "order:submit"、"user:register"
      */

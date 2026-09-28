@@ -8,12 +8,13 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Base64;
 
 /**
  * 加密解密工具类
  * <p>
- * 提供 AES、DES、SM4（简化实现）、Base64、MD5 等常用加密解密能力。
+ * 提供 AES、DES、SM4（占位实现）、Base64、MD5 等常用加密解密能力。
  * </p>
  * <p>
  * 安全说明：
@@ -21,26 +22,28 @@ import java.util.Base64;
  *   <li>AES 采用 {@code AES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
  *   <li>DES 采用 {@code DES/CBC/PKCS5Padding} 模式，加密结果格式为 {@code Base64(IV + 密文)}。</li>
  *   <li><b>禁用 ECB 分组模式</b>：本类全部使用 CBC 模式，密文头部携带 IV 以便解密。</li>
+ *   <li><b>IV 每次加密随机生成</b>（{@link SecureRandom}）：固定 IV 会让同一明文产生同一密文，
+ *       等值关系直接泄露（可判断两条记录的手机号相同）。历史密文的 IV 一直存放在密文头部，
+ *       因此本变更不影响旧数据的解密。</li>
  *   <li><b>DES 属于弱加密算法</b>（56 位有效密钥），仅用于兼容历史数据，新业务请使用 AES。</li>
- *   <li>SM4 当前为简化实现（实际复用 AES），生产环境应引入 BouncyCastle 或 Hutool 以使用真正的国密算法。</li>
- *   <li>MD5 计算时加入固定 salt 前缀，增强抗彩虹表攻击能力；但 MD5 仅适用于指纹/校验场景，<b>密码存储请使用 BCrypt/Argon2</b>。</li>
+ *   <li><b>SM4 为占位实现（实际复用 AES），并非国密算法</b>：首次使用会输出 WARN。
+ *       需要国密合规时请引入 BouncyCastle 后替换实现；若库中已存有 {@code SM4} 标记的 AES 密文，
+ *       替换前必须先做数据迁移，否则旧密文无法解密。</li>
+ *   <li>MD5 计算时加入 salt 前缀，增强抗彩虹表攻击能力；但 MD5 仅适用于指纹/校验场景，
+ *       <b>密码存储请使用 BCrypt/Argon2</b>。</li>
  * </ul>
  * </p>
  * <p>
- * <b>密钥配置要求（fail-closed）</b>：本类不提供任何内置默认密钥/IV。
- * AES / DES 密钥必须先通过 {@code dream.encrypt.*} 配置注入（由 EncryptAutoConfiguration 调用
- * {@link #configure}），或在调用处显式传入；否则加密/解密操作抛出 {@link IllegalStateException}。
- * 注意：CBC 加密使用配置的固定 IV（密文头部携带该 IV 以便解密），如需更强的语义安全
- * 请优先使用 dream-common-tool 中的 {@code AesUtils#encryptGcm}（每次随机 IV）。
+ * <b>密钥配置要求（fail-closed）</b>：本类不提供任何内置默认密钥或默认盐。
+ * AES / DES 密钥与 MD5 盐必须先通过 {@code dream.encrypt.*} 配置注入（由 EncryptAutoConfiguration
+ * 调用 {@link #configure}），或在调用处显式传入；否则相应操作抛出 {@link IllegalStateException}。
  * 配置方式：
  * <pre>{@code
  * dream:
  *   encrypt:
  *     aes-key: xxxxxxxx  # AES 密钥（16 字节）
- *     aes-iv:  xxxxxxxx  # AES IV（16 字节）
  *     des-key: xxxxxx    # DES 密钥（8 字节）
- *     des-iv:  xxxxxx    # DES IV（8 字节）
- *     md5-salt: xxxxxx   # MD5 加盐前缀
+ *     md5-salt: xxxxxx   # MD5 加盐前缀（必填；兼容旧数据可显式配置为历史使用的盐）
  * }</pre>
  * </p>
  *
@@ -54,7 +57,6 @@ public class EncryptUtil {
     private static final String DES_ALGORITHM = "DES";
     private static final String DES_CIPHER_ALGORITHM = "DES/CBC/PKCS5Padding";
     private static final String MD5_ALGORITHM = "MD5";
-    private static final String SM4_ALGORITHM = "SM4";
 
     /** AES 密钥字节数（AES-128） */
     private static final int AES_KEY_SIZE = 16;
@@ -65,48 +67,35 @@ public class EncryptUtil {
     /** DES IV 字节数 */
     private static final int DES_IV_SIZE = 8;
 
-    /**
-     * MD5 加盐前缀默认值，用于增强 MD5 摘要的抗彩虹表能力
-     * <p>生产环境应通过 {@code dream.encrypt.md5-salt} 配置注入。</p>
-     */
-    private static final String DEFAULT_MD5_SALT = "DREAM_COMMON_SALT_";
+    /** 随机 IV 生成器（线程安全，全类共用） */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     // ==================== 运行时密钥（必须由 dream.encrypt.* 配置注入，无内置默认值） ====================
 
     /** 当前生效的 AES 密钥（未配置时为 null，使用即抛异常，fail-closed） */
     private static volatile String AES_KEY = null;
-    /** 当前生效的 AES IV（未配置时为 null，使用即抛异常，fail-closed） */
-    private static volatile String AES_IV = null;
     /** 当前生效的 DES 密钥（未配置时为 null，使用即抛异常，fail-closed） */
     private static volatile String DES_KEY = null;
-    /** 当前生效的 DES IV（未配置时为 null，使用即抛异常，fail-closed） */
-    private static volatile String DES_IV = null;
-    /** 当前生效的 MD5 盐（摘要场景，允许保留默认前缀） */
-    private static volatile String MD5_SALT = DEFAULT_MD5_SALT;
+    /** 当前生效的 MD5 盐（未配置时为 null，使用即抛异常，fail-closed） */
+    private static volatile String MD5_SALT = null;
+
+    /** SM4 占位实现的告警是否已输出 */
+    private static volatile boolean sm4Warned;
 
     /**
-     * 通过 Spring 配置注入密钥。
+     * 通过 Spring 配置注入密钥与盐。
      * <p>由框架自动装配（{@code EncryptAutoConfiguration}）读取 {@code dream.encrypt.*} 后调用。</p>
      *
-     * @param aesKey   AES 密钥（建议 16 字节）
-     * @param aesIv    AES IV（建议 16 字节）
-     * @param desKey   DES 密钥（8 字节）
-     * @param desIv    DES IV（8 字节）
-     * @param md5Salt  MD5 加盐前缀
+     * @param aesKey  AES 密钥（建议 16 字节）
+     * @param desKey  DES 密钥（建议 8 字节）
+     * @param md5Salt MD5 加盐前缀
      */
-    public static synchronized void configure(String aesKey, String aesIv,
-                                              String desKey, String desIv, String md5Salt) {
+    public static synchronized void configure(String aesKey, String desKey, String md5Salt) {
         if (aesKey != null && !aesKey.isEmpty()) {
             AES_KEY = aesKey;
         }
-        if (aesIv != null && !aesIv.isEmpty()) {
-            AES_IV = aesIv;
-        }
         if (desKey != null && !desKey.isEmpty()) {
             DES_KEY = desKey;
-        }
-        if (desIv != null && !desIv.isEmpty()) {
-            DES_IV = desIv;
         }
         if (md5Salt != null && !md5Salt.isEmpty()) {
             MD5_SALT = md5Salt;
@@ -115,18 +104,18 @@ public class EncryptUtil {
     }
 
     /**
-     * 校验密钥/IV 已就绪（fail-closed）。
+     * 校验密钥/盐已就绪（fail-closed）。
      * <p>既未显式传参也未通过 {@code dream.encrypt.*} 配置时直接抛出异常，
-     * 不再回退到内置默认密钥——已知常量的"默认密钥"等同于不加密。</p>
+     * 不再回退到内置默认值——已知常量的"默认密钥/默认盐"等同于不加密、不加盐。</p>
      *
-     * @param key         生效的密钥或 IV
-     * @param configName  对应的配置项名，用于错误提示
-     * @throws IllegalStateException 密钥未配置时抛出
+     * @param key        生效的密钥或盐
+     * @param configName 对应的配置项名，用于错误提示
+     * @throws IllegalStateException 未配置时抛出
      */
     private static void requireKey(String key, String configName) {
         if (key == null || key.isEmpty()) {
-            throw new IllegalStateException("加密密钥未配置：请通过 dream.encrypt." + configName
-                    + " 注入，或在调用处显式传入密钥。EncryptUtil 不提供内置默认密钥。");
+            throw new IllegalStateException("加密参数未配置：请通过 dream.encrypt." + configName
+                    + " 注入，或在调用处显式传入。EncryptUtil 不提供内置默认密钥/默认盐。");
         }
     }
 
@@ -230,21 +219,22 @@ public class EncryptUtil {
     /**
      * AES 加密
      * <p>
-     * 采用 {@code AES/CBC/PKCS5Padding} 模式，使用 16 字节 IV 向量。
-     * 加密结果格式：{@code Base64(IV + 密文)}，解密时从中分离 IV 与密文。
+     * 采用 {@code AES/CBC/PKCS5Padding} 模式，<b>每次随机生成 16 字节 IV</b>。
+     * 加密结果格式：{@code Base64(IV + 密文)}，解密时从中分离 IV 与密文，
+     * 因此随机 IV 不影响历史密文解密。
      * </p>
      *
      * @param content 待加密内容
-     * @param key     加密密钥，为空时使用默认密钥；不足 16 位自动填充，超过 16 位截断
+     * @param key     加密密钥，为空时使用配置密钥；不足 16 位自动填充，超过 16 位截断
      * @return Base64 编码的加密结果（含 IV 前缀）
      * @throws Exception 加密失败时抛出
      */
     private static String aesEncrypt(String content, String key) throws Exception {
         String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
         requireKey(secretKey, "aes-key");
-        requireKey(AES_IV, "aes-iv");
         byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
-        byte[] ivBytes = normalizeKey(AES_IV, AES_IV_SIZE);
+        // 每次加密随机生成 IV，避免固定 IV 导致同明文同密文（等值关系泄露）
+        byte[] ivBytes = randomBytes(AES_IV_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
         IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
@@ -295,21 +285,20 @@ public class EncryptUtil {
     /**
      * DES 加密
      * <p>
-     * 采用 {@code DES/CBC/PKCS5Padding} 模式，使用 8 字节 IV 向量。
+     * 采用 {@code DES/CBC/PKCS5Padding} 模式，<b>每次随机生成 8 字节 IV</b>。
      * 加密结果格式：{@code Base64(IV + 密文)}，解密时从中分离 IV 与密文。
      * </p>
      *
      * @param content 待加密内容
-     * @param key     加密密钥，为空时使用默认密钥；不足 8 位自动填充，超过 8 位截断
+     * @param key     加密密钥，为空时使用配置密钥；不足 8 位自动填充，超过 8 位截断
      * @return Base64 编码的加密结果（含 IV 前缀）
      * @throws Exception 加密失败时抛出
      */
     private static String desEncrypt(String content, String key) throws Exception {
         String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
         requireKey(secretKey, "des-key");
-        requireKey(DES_IV, "des-iv");
         byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
-        byte[] ivBytes = normalizeKey(DES_IV, DES_IV_SIZE);
+        byte[] ivBytes = randomBytes(DES_IV_SIZE);
 
         SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
         IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
@@ -358,33 +347,39 @@ public class EncryptUtil {
     }
 
     /**
-     * SM4 加密（简化实现）
+     * SM4 加密（<b>占位实现，并非国密</b>）
      * <p>
-     * 当前简化复用 {@code AES/CBC/PKCS5Padding} 实现，<b>并非真正的国密 SM4 算法</b>。
+     * 当前复用 {@code AES/CBC/PKCS5Padding}，产物<b>不是</b>国密 SM4 密文。
+     * 首次调用会输出 WARN。需要真正的国密合规时：
      * </p>
-     * <p>
-     * 生产环境应引入 BouncyCastle 或 Hutool 以使用真正的国密 SM4 算法，例如：
-     * <pre>
-     *   // 引入依赖：cn.hutool:hutool-crypto 或 org.bouncycastle:bcprov-jdk18on
-     *   SymmetricCrypto sm4 = new SymmetricCrypto("SM4");
-     *   String encrypted = sm4.encryptHex(content);
-     *   String decrypted = sm4.decryptStr(encrypted, CharsetUtil.CHARSET_UTF_8);
-     * </pre>
-     * 或使用 BouncyCastle：
-     * <pre>
-     *   BouncyCastleProvider provider = new BouncyCastleProvider();
-     *   Cipher cipher = Cipher.getInstance("SM4/CBC/PKCS5Padding", provider);
-     * </pre>
-     * </p>
+     * <ol>
+     *   <li>引入 BouncyCastle（{@code org.bouncycastle:bcprov-jdk18on}）或 Hutool crypto；</li>
+     *   <li>替换本方法为真实 SM4 实现；</li>
+     *   <li><b>注意数据迁移</b>：库中已存有以 {@code SM4} 标记但实为 AES 的历史密文，
+     *       直接切换算法会导致旧密文无法解密，迁移前须先转密。</li>
+     * </ol>
      *
      * @param content 待加密内容
      * @param key     加密密钥
-     * @return Base64 编码的加密结果
+     * @return Base64 编码的加密结果（实为 AES 密文）
      * @throws Exception 加密失败时抛出
      */
     private static String sm4Encrypt(String content, String key) throws Exception {
-        // 简化处理：复用 AES 实现。实际应使用 BouncyCastle 或 Hutool 提供的国密 SM4 实现。
+        warnSm4Placeholder();
+        // 占位实现：复用 AES。并非真正的国密 SM4，详见方法 javadoc。
         return aesEncrypt(content, key);
+    }
+
+    /**
+     * 输出一次性告警，提示 SM4 当前为占位实现（并非国密），避免逐次刷屏。
+     */
+    private static void warnSm4Placeholder() {
+        if (sm4Warned) {
+            return;
+        }
+        sm4Warned = true;
+        log.warn("[EncryptUtil] EncryptType.SM4 当前复用 AES/CBC 实现，并非国密 SM4 算法。"
+                + "需国密合规请引入 BouncyCastle 替换实现，并注意历史 SM4 标记数据需先做转密迁移。");
     }
 
     /**
@@ -437,14 +432,28 @@ public class EncryptUtil {
      * @throws Exception 摘要计算失败时抛出
      */
     private static String md5Encrypt(String content) throws Exception {
+        // MD5 盐必须由配置注入，未配置则 fail-closed——空盐等于不加盐
+        requireKey(MD5_SALT, "md5-salt");
         MessageDigest md = MessageDigest.getInstance(MD5_ALGORITHM);
-        // 加入固定 salt 前缀，增强安全性
+        // 加入 salt 前缀，增强安全性
         byte[] digest = md.digest((MD5_SALT + content).getBytes(StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder();
         for (byte b : digest) {
             sb.append(String.format("%02x", b & 0xff));
         }
         return sb.toString();
+    }
+
+    /**
+     * 生成指定长度的 cryptographically-secure 随机字节，用于 CBC 的 IV。
+     *
+     * @param size 字节数
+     * @return 随机字节数组
+     */
+    private static byte[] randomBytes(int size) {
+        byte[] bytes = new byte[size];
+        SECURE_RANDOM.nextBytes(bytes);
+        return bytes;
     }
 
     /**

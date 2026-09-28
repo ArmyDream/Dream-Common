@@ -43,6 +43,24 @@
   ],
   "properties": [
     {
+      "name": "dream.websocket.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 WebSocket 自动装配（端点 /ws/{group}/{userId}）。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.websocket.auth-enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否强制 WebSocket 握手鉴权。容器中没有 WebSocketHandshakeAuthenticator 实现时：true 拒绝所有握手（失败关闭，默认），false 放行未鉴权连接（仅限内网/压测）。",
+      "defaultValue": true
+    },
+    {
+      "name": "dream.websocket.allowed-origins",
+      "type": "java.util.List<java.lang.String>",
+      "description": "允许跨源握手的 Origin 白名单，逗号分隔；留空表示仅允许同源连接（默认，不再使用 \"*\"）。",
+      "defaultValue": []
+    },
+    {
       "name": "dream.filter.trace.enabled",
       "type": "java.lang.Boolean",
       "description": "是否启用链路追踪过滤器（在 MDC 中注入 traceId）。",
@@ -70,7 +88,7 @@
       "name": "dream.filter.security-header.frame-options",
       "type": "java.lang.String",
       "description": "X-Frame-Options 头值，空字符串则不输出。",
-      "defaultValue": "DENY"
+      "defaultValue": "SAMEORIGIN"
     },
     {
       "name": "dream.filter.security-header.xss-protection",
@@ -145,24 +163,6 @@
       "defaultValue": ""
     },
     {
-      "name": "dream.filter.security-header.cookie-secure",
-      "type": "java.lang.Boolean",
-      "description": "是否为 Cookie 追加 Secure 标识（仅 HTTPS 传输）。",
-      "defaultValue": false
-    },
-    {
-      "name": "dream.filter.security-header.cookie-http-only",
-      "type": "java.lang.Boolean",
-      "description": "是否为 Cookie 追加 HttpOnly 标识（禁止 JS 读取）。",
-      "defaultValue": true
-    },
-    {
-      "name": "dream.filter.security-header.cookie-same-site",
-      "type": "java.lang.String",
-      "description": "Cookie SameSite 策略。可选：Lax / Strict / None。设为 None 时须同时开启 cookie-secure。默认空（不追加）。",
-      "defaultValue": ""
-    },
-    {
       "name": "logging.custom.package",
       "type": "java.lang.String",
       "description": "业务包名，用于 logback-spring.xml 中业务 logger 的包路径匹配。",
@@ -203,12 +203,6 @@
       "type": "java.lang.Long",
       "description": "Redis 熔断后再次探活的冷却时间（秒）。",
       "defaultValue": 30
-    },
-    {
-      "name": "dream.cache.redis.ping-timeout-ms",
-      "type": "java.lang.Long",
-      "description": "Redis 探活 PING 超时时间（毫秒）。",
-      "defaultValue": 1000
     },
     {
       "name": "dream.cache.double-delete.enabled",

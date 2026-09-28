@@ -13,11 +13,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * dream:
  *   encrypt:
  *     aes-key: XXXX  # AES 密钥（建议 16 字节）
- *     aes-iv:  XXXX  # AES IV（建议 16 字节）
  *     des-key: XXXX  # DES 密钥（8 字节）
- *     des-iv:  XXXX  # DES IV（8 字节）
  *     md5-salt: XXXX # MD5 加盐前缀
  * }</pre>
+ *
+ * <h2>关于 IV 配置项</h2>
+ * <p>
+ * 早期版本提供 {@code dream.encrypt.aes-iv} / {@code dream.encrypt.des-iv}，
+ * 固定 IV 使同一明文恒产生同一密文，泄露等值关系，已被移除。
+ * CBC 的 IV 现在每次加密随机生成并写入密文头部（{@code Base64(IV + 密文)}），
+ * 历史密文仍可正常解密；残留的 {@code *-iv} 配置项会被 Spring 绑定忽略。
+ * </p>
  *
  * @author dream
  */
@@ -27,14 +33,8 @@ public class EncryptProperties {
     /** AES 密钥 */
     private String aesKey;
 
-    /** AES IV */
-    private String aesIv;
-
     /** DES 密钥 */
     private String desKey;
-
-    /** DES IV */
-    private String desIv;
 
     /** MD5 加盐前缀 */
     private String md5Salt;
@@ -47,28 +47,12 @@ public class EncryptProperties {
         this.aesKey = aesKey;
     }
 
-    public String getAesIv() {
-        return aesIv;
-    }
-
-    public void setAesIv(String aesIv) {
-        this.aesIv = aesIv;
-    }
-
     public String getDesKey() {
         return desKey;
     }
 
     public void setDesKey(String desKey) {
         this.desKey = desKey;
-    }
-
-    public String getDesIv() {
-        return desIv;
-    }
-
-    public void setDesIv(String desIv) {
-        this.desIv = desIv;
     }
 
     public String getMd5Salt() {

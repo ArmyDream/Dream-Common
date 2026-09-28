@@ -12,7 +12,9 @@ import java.util.Set;
  * <p>基于文件魔数（Magic Number）识别文件真实类型，防止文件类型伪造攻击。</p>
  *
  * <p>支持的文件类型包括：图片、文档、压缩包、音视频、可执行文件等常见格式。
- * 对于纯文本类文件（如 txt、json、xml、html）无固定魔数，仅通过扩展名识别。</p>
+ * 对于纯文本类文件（如 txt、json、css、js、svg）无固定魔数，仅通过扩展名识别；
+ * {@link #XML} 与 {@link #HTML} 记录的是常见起始声明（{@code <?xml}、{@code <!DOCTYPE}），
+ * 并非所有文件都必然包含。</p>
  *
  * <h2>使用示例</h2>
  * <pre>{@code
@@ -55,8 +57,8 @@ public enum FileType implements BaseEnum<String> {
     /** WEBP 图片 */
     WEBP("webp", "52494646", "WEBP图片", "image/webp", FileCat.IMAGE),
 
-    /** SVG 矢量图 */
-    SVG("svg", "3C3F786D6C", "SVG矢量图", "image/svg+xml", FileCat.IMAGE),
+    /** SVG 矢量图（文本格式，无固定字节签名，仅按扩展名识别） */
+    SVG("svg", null, "SVG矢量图", "image/svg+xml", FileCat.IMAGE),
 
     /** ICO 图标 */
     ICO("ico", "00000100", "ICO图标", "image/x-icon", FileCat.IMAGE),

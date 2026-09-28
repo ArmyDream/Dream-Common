@@ -52,6 +52,10 @@ public @interface Sensitive {
 
     /**
      * 更新时是否忽略该字段(防止将脱敏数据更新到数据库)
+     * <p>
+     * 说明：当前脱敏仅在查询返回阶段执行，更新链路由业务侧决定字段是否写回，
+     * 本属性为写回过滤预留，暂不参与处理。
+     * </p>
      */
     boolean ignoreOnUpdate() default true;
 }

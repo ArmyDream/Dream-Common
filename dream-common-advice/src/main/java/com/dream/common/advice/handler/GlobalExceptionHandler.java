@@ -65,7 +65,9 @@ import java.util.stream.Collectors;
  * </p>
  * <p>
  * 对于 5xx 服务端异常，可通过 {@code dream.advice.exception.show-stack-trace} 控制是否
- * 在响应体中输出异常堆栈（默认关闭，仅建议在非生产环境开启）。
+ * 在响应体中输出异常堆栈（默认关闭）。即使开启，仍要求当前激活的 profile 命中
+ * {@code dream.advice.exception.show-stack-trace-profiles} 白名单（默认 {@code dev,test,local}），
+ * 避免该开关随配置被带进生产环境；完整堆栈始终通过 {@code log.error} 落在服务端日志中。
  * </p>
  *
  * @author dream
@@ -84,6 +86,23 @@ public class GlobalExceptionHandler {
      */
     @Value("${dream.advice.exception.show-stack-trace:false}")
     private boolean showStackTrace;
+
+    /**
+     * 允许输出堆栈的环境白名单，逗号分隔，支持尾部 {@code *} 通配
+     */
+    @Value("${dream.advice.exception.show-stack-trace-profiles:dev,test,local}")
+    private String showStackTraceProfiles;
+
+    /**
+     * 当前激活的 profile，未显式设置时为空（按非白名单处理）
+     */
+    @Value("${spring.profiles.active:}")
+    private String activeProfiles;
+
+    /**
+     * 抑制提示只打印一次，避免异常风暴时刷屏
+     */
+    private volatile boolean stackTraceSuppressedWarned;
 
     public GlobalExceptionHandler(@Nullable ExceptionHandlerDelegate delegate) {
         this.delegate = delegate;
@@ -458,17 +477,79 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 构造 5xx 失败响应，按开关决定是否携带异常堆栈。
+     * 构造 5xx 失败响应，按开关与环境白名单决定是否携带异常堆栈。
      *
      * @param code 响应码
      * @param ex   原始异常
      * @return 统一失败响应
      */
     private R<?> failWithTrace(ResponseCode code, Throwable ex) {
-        if (showStackTrace && ex != null) {
-            return R.fail(code, code.getLabel(), HandleUtils.stackTraceToString(ex));
+        if (ex == null || !showStackTrace) {
+            return R.fail(code);
         }
-        return R.fail(code);
+        if (!profileAllowsStackTrace()) {
+            warnStackTraceSuppressed();
+            return R.fail(code);
+        }
+        return R.fail(code, code.getLabel(), HandleUtils.stackTraceToString(ex));
+    }
+
+    /**
+     * 判断当前激活环境是否命中堆栈输出白名单
+     *
+     * @return true 表示允许向客户端输出堆栈
+     */
+    private boolean profileAllowsStackTrace() {
+        if (isActiveProfilesEmpty()) {
+            return false;
+        }
+        String[] allowedProfiles = splitProfiles(showStackTraceProfiles);
+        for (String active : activeProfiles.split(",")) {
+            String profile = active.trim().toLowerCase();
+            if (profile.isEmpty()) {
+                continue;
+            }
+            for (String allowed : allowedProfiles) {
+                String token = allowed.trim();
+                if (token.isEmpty()) {
+                    continue;
+                }
+                boolean wildcard = token.endsWith("*");
+                if (wildcard ? profile.startsWith(token.substring(0, token.length() - 1)) : token.equals(profile)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 是否未显式激活任何 profile
+     *
+     * @return true 表示 {@code spring.profiles.active} 为空
+     */
+    private boolean isActiveProfilesEmpty() {
+        return activeProfiles == null || activeProfiles.trim().isEmpty();
+    }
+
+    /**
+     * 拆分逗号分隔的 profile 配置并统一小写
+     *
+     * @param profiles 原始配置值
+     * @return 小写拆分结果，入参为空时返回空数组
+     */
+    private String[] splitProfiles(String profiles) {
+        return profiles == null ? new String[0] : profiles.toLowerCase().split(",");
+    }
+
+    private void warnStackTraceSuppressed() {
+        if (stackTraceSuppressedWarned) {
+            return;
+        }
+        stackTraceSuppressedWarned = true;
+        log.warn("dream.advice.exception.show-stack-trace=true，但当前 profile [{}] 不在白名单 [{}] 内，"
+                        + "响应体不输出异常堆栈（完整堆栈已在服务端日志记录）。",
+                activeProfiles, showStackTraceProfiles);
     }
 
     private String extractValidationMessage(List<FieldError> fieldErrors) {

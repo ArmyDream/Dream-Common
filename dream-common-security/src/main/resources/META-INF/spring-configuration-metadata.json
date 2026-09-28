@@ -41,8 +41,8 @@
     {
       "name": "dream.security.filter.exclude-paths",
       "type": "java.util.List<java.lang.String>",
-      "description": "不拦截的静态白名单（Ant 风格，如 /sys/login、/captcha/**）。与 CachesUtils 缓存 key dream:security:exclude-paths:（逗号分隔）逐请求动态合并，支持运行期热更新，无需重启。",
-      "defaultValue": ["/sys/login", "/sys/logout", "/auth/**", "/captcha/**", "/actuator/**"]
+      "description": "不拦截的静态白名单（Ant 风格，如 /sys/login、/captcha/**）。与 CachesUtils 缓存 key dream:security:exclude-paths:（逗号分隔）逐请求动态合并，支持运行期热更新，无需重启。默认不含 /actuator/**，监控端点需业务侧显式放行。",
+      "defaultValue": ["/sys/login", "/sys/logout", "/auth/**", "/captcha/**"]
     },
     {
       "name": "dream.security.cors.enabled",
@@ -53,8 +53,8 @@
     {
       "name": "dream.security.cors.allowed-origins",
       "type": "java.util.List<java.lang.String>",
-      "description": "允许的源列表，\"*\" 表示全部。当 allow-credentials 为 true 时不能使用 \"*\"，需指定具体源或改用 allowed-origin-patterns。",
-      "defaultValue": ["*"]
+      "description": "允许的源列表，\"*\" 表示全部；allow-credentials 为 true 时 \"*\" 被忽略，需指定具体源或改用 allowed-origin-patterns。默认为空即不放开任何跨域源（同源请求不受影响）。",
+      "defaultValue": []
     },
     {
       "name": "dream.security.cors.allowed-origin-patterns",

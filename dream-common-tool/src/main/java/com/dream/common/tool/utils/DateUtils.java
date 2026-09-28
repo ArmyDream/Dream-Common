@@ -55,6 +55,29 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
 
     private static final ZoneId SYSTEM_ZONE = ZoneId.systemDefault();
 
+    /**
+     * 获取指定模式对应的格式化器。
+     * <p>
+     * {@code yyyy-MM-dd HH:mm:ss}、{@code yyyy-MM-dd}、{@code HH:mm:ss} 三种默认模式
+     * 复用上方线程安全的静态实例，避免每次调用重复构建；其余模式按需创建。
+     * </p>
+     *
+     * @param pattern 日期/时间模式，调用方保证非空白
+     * @return 格式化器
+     */
+    private static DateTimeFormatter formatterOf(String pattern) {
+        if (DATE_TIME_PATTERN.equals(pattern)) {
+            return DATE_TIME_FORMATTER;
+        }
+        if (DATE_PATTERN.equals(pattern)) {
+            return DATE_FORMATTER;
+        }
+        if (TIME_PATTERN.equals(pattern)) {
+            return TIME_FORMATTER;
+        }
+        return DateTimeFormatter.ofPattern(pattern);
+    }
+
     // ==================== 私有构造器 ====================
 
     private DateUtils() {
@@ -128,7 +151,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = DATE_TIME_PATTERN;
         }
         try {
-            String result = LocalDateTime.now().format(DateTimeFormatter.ofPattern(pattern));
+            String result = LocalDateTime.now().format(formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("nowDateTimeStr: {}", result);
             }
@@ -159,7 +182,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = DATE_PATTERN;
         }
         try {
-            String result = LocalDate.now().format(DateTimeFormatter.ofPattern(pattern));
+            String result = LocalDate.now().format(formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("nowLocalDateStr: {}", result);
             }
@@ -189,7 +212,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = TIME_PATTERN;
         }
         try {
-            String result = LocalTime.now().format(DateTimeFormatter.ofPattern(pattern));
+            String result = LocalTime.now().format(formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("nowTimeStr: {}", result);
             }
@@ -227,7 +250,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = DATE_TIME_PATTERN;
         }
         try {
-            LocalDateTime result = LocalDateTime.parse(dateStr.trim(), DateTimeFormatter.ofPattern(pattern));
+            LocalDateTime result = LocalDateTime.parse(dateStr.trim(), formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("parseDateTime: [{}] pattern=[{}] → {}", dateStr, pattern, result);
             }
@@ -263,7 +286,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = DATE_PATTERN;
         }
         try {
-            LocalDate result = LocalDate.parse(dateStr.trim(), DateTimeFormatter.ofPattern(pattern));
+            LocalDate result = LocalDate.parse(dateStr.trim(), formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("parseLocalDate: [{}] pattern=[{}] → {}", dateStr, pattern, result);
             }
@@ -299,7 +322,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             pattern = TIME_PATTERN;
         }
         try {
-            LocalTime result = LocalTime.parse(dateStr.trim(), DateTimeFormatter.ofPattern(pattern));
+            LocalTime result = LocalTime.parse(dateStr.trim(), formatterOf(pattern));
             if (log.isDebugEnabled()) {
                 log.debug("parseTime: [{}] pattern=[{}] → {}", dateStr, pattern, result);
             }
@@ -406,7 +429,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             if (StringUtils.isBlank(pattern)) {
                 pattern = DATE_TIME_PATTERN;
             }
-            return dateTime.format(DateTimeFormatter.ofPattern(pattern));
+            return dateTime.format(formatterOf(pattern));
         } catch (Exception e) {
             log.error("format failed: dateTime={}, pattern={}", dateTime, pattern, e);
             return null;
@@ -438,7 +461,7 @@ public final class DateUtils extends org.apache.commons.lang3.time.DateUtils {
             if (StringUtils.isBlank(pattern)) {
                 pattern = DATE_PATTERN;
             }
-            return date.format(DateTimeFormatter.ofPattern(pattern));
+            return date.format(formatterOf(pattern));
         } catch (Exception e) {
             log.error("format failed: date={}, pattern={}", date, pattern, e);
             return null;

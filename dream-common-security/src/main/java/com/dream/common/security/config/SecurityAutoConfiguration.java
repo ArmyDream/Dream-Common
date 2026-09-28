@@ -2,10 +2,12 @@ package com.dream.common.security.config;
 
 import com.dream.common.core.api.ExceptionHandlerDelegate;
 import com.dream.common.framework.aspect.PreventDuplicateAspect;
+import com.dream.common.framework.websocket.api.WebSocketHandshakeAuthenticator;
 import com.dream.common.security.aspect.PermissionAspect;
 import com.dream.common.security.handler.SaTokenExceptionHandler;
 import com.dream.common.security.handler.SaTokenFilterErrorHandler;
 import com.dream.common.security.provider.StpInterfaceImpl;
+import com.dream.common.security.support.SaTokenWebSocketHandshakeAuthenticator;
 import com.dream.common.security.support.SecurityExcludePathProvider;
 import com.dream.common.security.utils.SecurityUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -93,5 +95,23 @@ public class SecurityAutoConfiguration {
     @ConditionalOnMissingBean(PreventDuplicateAspect.DuplicateUserIdProvider.class)
     public PreventDuplicateAspect.DuplicateUserIdProvider preventDuplicateUserIdProvider() {
         return SecurityUtils::getUserId;
+    }
+
+    /**
+     * 注册 WebSocket 握手鉴权实现（security → framework SPI 接线）。
+     * <p>
+     * 校验"已登录且 URL 中的 userId 等于当前登录 ID"，
+     * 阻断任何人连 {@code /ws/{group}/{任意userId}} 冒充他人接收消息。
+     * 业务侧注册自己的 {@link WebSocketHandshakeAuthenticator} 即可覆盖。
+     * </p>
+     *
+     * @return WebSocketHandshakeAuthenticator 实例
+     */
+    @Bean
+    @ConditionalOnMissingBean(WebSocketHandshakeAuthenticator.class)
+    @ConditionalOnClass(WebSocketHandshakeAuthenticator.class)
+    public WebSocketHandshakeAuthenticator webSocketHandshakeAuthenticator() {
+        log.info("[Security] 初始化 WebSocket 握手鉴权（sa-token 身份一致性校验）");
+        return new SaTokenWebSocketHandshakeAuthenticator();
     }
 }

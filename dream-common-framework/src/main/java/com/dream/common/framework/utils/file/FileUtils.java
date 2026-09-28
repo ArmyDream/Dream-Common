@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -112,6 +113,31 @@ public final class FileUtils {
      * 随机文件名字符
      */
     private static final String RANDOM_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
+
+    /**
+     * 魔数检测所需的头部字节数（当前最长魔数为 6 字节，留足余量）
+     */
+    private static final int MAGIC_HEADER_SIZE = 32;
+
+    /**
+     * 客户端文件名为空或清洗后为空时的占位名
+     */
+    private static final String UNKNOWN_FILE_NAME = "unknown";
+
+    /**
+     * 客户端文件名保留的最大长度，防止超长名称进入日志与数据库
+     */
+    private static final int MAX_FILE_NAME_LENGTH = 200;
+
+    /**
+     * 控制字符（含 CR/LF/TAB/NUL），用于日志与文件名清洗
+     */
+    private static final Pattern CONTROL_CHARS = Pattern.compile("\\p{Cntrl}");
+
+    /**
+     * 可安全用于落盘文件名的扩展名形式
+     */
+    private static final Pattern SAFE_EXTENSION = Pattern.compile("[a-z0-9]{1,16}");
 
     private FileUtils() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated");
@@ -233,32 +259,100 @@ public final class FileUtils {
         }
 
         // 1. 魔数检测
+        byte[] header = new byte[MAGIC_HEADER_SIZE];
+        int read = 0;
         try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] header = new byte[32];
-            int read = fis.read(header);
-            if (read > 0) {
-                String magicHex = bytesToHex(header, read);
-                // 从长到短尝试匹配
-                for (int len = Math.min(read * 2, 16); len >= 4; len -= 2) {
-                    if (len <= magicHex.length()) {
-                        FileType type = FileType.fromMagic(magicHex.substring(0, len));
-                        if (type != null) {
-                            log.debug("Detected file type by magic: {} -> {}", file.getName(), type);
-                            return type;
-                        }
-                    }
-                }
-            }
+            read = fis.read(header);
         } catch (IOException e) {
             log.warn("detectFileType magic detection failed: {}", file.getName(), e);
         }
+        FileType type = matchMagic(header, read);
+        if (type != null) {
+            log.debug("Detected file type by magic: {} -> {}", file.getName(), type);
+            return type;
+        }
 
         // 2. 回退到扩展名检测
-        FileType type = FileType.fromExtension(getExtension(file));
+        type = FileType.fromExtension(getExtension(file));
         if (type != null) {
             log.debug("Detected file type by extension: {} -> {}", file.getName(), type);
         }
         return type;
+    }
+
+    /**
+     * 基于内存字节检测真实文件类型（仅魔数匹配，不回退扩展名）
+     * <p>
+     * 用于上传场景：文件还在内存里、尚未落盘，只需比对头部字节。
+     * </p>
+     *
+     * @param data 文件内容（仅前 32 字节参与匹配）
+     * @return 检测到的文件类型，无法识别返回 null
+     */
+    public static FileType detectFileType(byte[] data) {
+        if (data == null || data.length == 0) {
+            return null;
+        }
+        return matchMagic(data, Math.min(data.length, MAGIC_HEADER_SIZE));
+    }
+
+    /**
+     * 按魔数匹配文件类型，从长到短截取头部字节尝试
+     *
+     * @param header 头部字节
+     * @param length 参与匹配的有效字节数
+     * @return 匹配到的类型，未匹配返回 null
+     */
+    private static FileType matchMagic(byte[] header, int length) {
+        if (header == null || length <= 0) {
+            return null;
+        }
+        String magicHex = bytesToHex(header, length);
+        for (int len = Math.min(length * 2, 16); len >= 4; len -= 2) {
+            if (len > magicHex.length()) {
+                continue;
+            }
+            FileType type = FileType.fromMagic(magicHex.substring(0, len));
+            if (type != null) {
+                return type;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 判断头部字节是否以指定魔数开头
+     *
+     * @param header   头部字节
+     * @param magicHex 十六进制魔数
+     * @return true 表示内容以该魔数开头
+     */
+    private static boolean startsWithMagic(byte[] header, String magicHex) {
+        if (header == null || StringUtils.isObjectBlank(magicHex) || magicHex.length() % 2 != 0) {
+            return false;
+        }
+        int magicBytes = magicHex.length() / 2;
+        if (header.length < magicBytes) {
+            return false;
+        }
+        return magicHex.equalsIgnoreCase(bytesToHex(header, magicBytes));
+    }
+
+    /**
+     * 读取 MultipartFile 头部字节用于内容校验
+     *
+     * @param file 上传文件
+     * @return 头部字节，读取失败返回 null
+     */
+    private static byte[] readHeader(MultipartFile file) {
+        byte[] header = new byte[MAGIC_HEADER_SIZE];
+        try (InputStream in = file.getInputStream()) {
+            int read = in.read(header);
+            return read <= 0 ? new byte[0] : Arrays.copyOf(header, read);
+        } catch (IOException e) {
+            log.warn("readHeader failed: {}", file.getOriginalFilename(), e);
+            return null;
+        }
     }
 
     /**
@@ -953,7 +1047,13 @@ public final class FileUtils {
     /**
      * 上传 MultipartFile 到磁盘
      * <p>
-     * 自动生成唯一文件名，防止覆盖。返回 {@link FileData} 包含文件元数据。
+     * 自动生成唯一文件名，防止覆盖；文件名会经 {@link #sanitizeFileName(String)} 清洗。
+     * 返回 {@link FileData} 包含文件元数据。
+     * </p>
+     * <p>
+     * <b>安全提示</b>：本重载不做类型白名单校验，仅适用于可信来源。
+     * 面向终端用户的上传请使用 {@link #upload(MultipartFile, String, FileType...)}
+     * 或 {@link #upload(MultipartFile, String, FileCat...)}，它们会同时校验扩展名与文件内容魔数。
      * </p>
      *
      * <pre>{@code
@@ -974,11 +1074,8 @@ public final class FileUtils {
             return null;
         }
 
+        String originalName = sanitizeFileName(file.getOriginalFilename());
         try {
-            String originalName = file.getOriginalFilename();
-            if (originalName == null) {
-                originalName = "unknown";
-            }
             String extension = getExtension(originalName);
             String storedName = generateStoredName(originalName);
 
@@ -996,7 +1093,7 @@ public final class FileUtils {
                     .originalName(originalName)
                     .storedName(storedName)
                     .extension(extension)
-                    .mimeType(file.getContentType())
+                    .mimeType(resolveMimeType(extension, file.getContentType()))
                     .size(file.getSize())
                     .storagePath(savePath)
                     .fullStoragePath(fullPath)
@@ -1004,23 +1101,48 @@ public final class FileUtils {
                     .persisted(true)
                     .build();
 
-            // 尝试设置文件类型
-            FileType type = FileType.fromExtension(extension);
-            if (type != null) {
-                // FileData 没有直接设置 FileType 的方法，但可以通过其他方式
-                // 这里预留扩展点
-            }
-
             log.info("upload: {} -> {}, size: {}", originalName, storedName, file.getSize());
             return fileData;
         } catch (IOException e) {
-            log.error("upload failed: {}", file.getOriginalFilename(), e);
+            log.error("upload failed: {}", originalName, e);
             return null;
         }
     }
 
     /**
+     * 确定写入元数据的 MIME 类型
+     * <p>
+     * {@code MultipartFile#getContentType()} 完全由客户端控制，若原样落库并在下载时回显，
+     * 攻击者可让浏览器把上传内容当作 HTML/脚本执行。因此当扩展名能匹配到已知
+     * {@link FileType} 时以注册表中的 MIME 为准，仅在无法识别时回退到客户端值。
+     * </p>
+     *
+     * @param extension         扩展名（不含点号）
+     * @param clientContentType 客户端提交的 Content-Type
+     * @return 可信 MIME 类型；无法识别时回退客户端值，回退值仍为空则返回 {@code application/octet-stream}
+     */
+    private static String resolveMimeType(String extension, String clientContentType) {
+        FileType type = FileType.fromExtension(extension);
+        if (type != null && StringUtils.isObjectNotBlank(type.getMimeType())) {
+            if (StringUtils.isObjectNotBlank(clientContentType)
+                    && !type.getMimeType().equalsIgnoreCase(clientContentType.trim())) {
+                log.warn("upload: client Content-Type [{}] overridden by [{}] for extension [{}]",
+                        clientContentType, type.getMimeType(), extension);
+            }
+            return type.getMimeType();
+        }
+        if (StringUtils.isObjectNotBlank(clientContentType)) {
+            return clientContentType.trim();
+        }
+        return "application/octet-stream";
+    }
+
+    /**
      * 上传字节数组到磁盘
+     * <p>
+     * 文件名会经 {@link #sanitizeFileName(String)} 清洗。本重载不做类型白名单校验，
+     * 面向终端用户的上传请使用 {@link #upload(byte[], String, String, FileType...)}。
+     * </p>
      *
      * @param data     文件内容
      * @param fileName 原始文件名
@@ -1038,8 +1160,9 @@ public final class FileUtils {
         }
 
         try {
-            String extension = getExtension(fileName);
-            String storedName = generateStoredName(fileName);
+            String safeName = sanitizeFileName(fileName);
+            String extension = getExtension(safeName);
+            String storedName = generateStoredName(safeName);
 
             if (!mkdirs(savePath)) {
                 log.error("upload: failed to create directory: {}", savePath);
@@ -1050,9 +1173,10 @@ public final class FileUtils {
             Files.write(Paths.get(fullPath), data);
 
             FileData fileData = FileData.builder()
-                    .originalName(fileName)
+                    .originalName(safeName)
                     .storedName(storedName)
                     .extension(extension)
+                    .mimeType(resolveMimeType(extension, null))
                     .size((long) data.length)
                     .storagePath(savePath)
                     .fullStoragePath(fullPath)
@@ -1060,12 +1184,51 @@ public final class FileUtils {
                     .persisted(true)
                     .build();
 
-            log.info("upload (bytes): {} -> {}, size: {}", fileName, storedName, data.length);
+            log.info("upload (bytes): {} -> {}, size: {}", safeName, storedName, data.length);
             return fileData;
         } catch (IOException e) {
-            log.error("upload (bytes) failed: {}", fileName, e);
+            log.error("upload (bytes) failed: {}", sanitizeFileName(fileName), e);
             return null;
         }
+    }
+
+    /**
+     * 清洗客户端提供的文件名
+     * <p>
+     * 客户端可完全控制 {@code MultipartFile#getOriginalFilename()}，其中可能包含
+     * 目录分隔符（{@code ../../} 或绝对路径）、CR/LF 等控制字符以及超长内容。
+     * 本方法只保留最后一段名称、剔除控制字符并截断超长部分，用于：
+     * <ul>
+     *   <li>避免文件名参与路径拼接时发生目录穿越；</li>
+     *   <li>避免文件名写入日志时伪造日志行（log forging）；</li>
+     *   <li>避免元数据表存储超长或含控制字符的名称。</li>
+     * </ul>
+     * 注意：本方法不改变落盘名，落盘名始终由 {@link #generateStoredName(String)} 生成。
+     * </p>
+     *
+     * <pre>{@code
+     * FileUtils.sanitizeFileName("..\\..\\WEB-INF\\shell.jsp");  // => "shell.jsp"
+     * FileUtils.sanitizeFileName("a\r\nb.txt");                   // => "ab.txt"
+     * FileUtils.sanitizeFileName(null);                           // => "unknown"
+     * }</pre>
+     *
+     * @param fileName 客户端文件名，可为 null
+     * @return 清洗后的文件名，入参为空或清洗后为空时返回 {@code "unknown"}
+     */
+    public static String sanitizeFileName(String fileName) {
+        if (StringUtils.isObjectBlank(fileName)) {
+            return UNKNOWN_FILE_NAME;
+        }
+        String name = fileName.replace('\\', '/');
+        int slashIndex = name.lastIndexOf('/');
+        if (slashIndex >= 0) {
+            name = name.substring(slashIndex + 1);
+        }
+        name = CONTROL_CHARS.matcher(name).replaceAll("").trim();
+        if (name.isEmpty()) {
+            return UNKNOWN_FILE_NAME;
+        }
+        return name.length() > MAX_FILE_NAME_LENGTH ? name.substring(0, MAX_FILE_NAME_LENGTH) : name;
     }
 
     // ==================== 文件名生成 ====================
@@ -1074,6 +1237,11 @@ public final class FileUtils {
      * 生成存储文件名
      * <p>
      * 格式：yyyyMMddHHmmssSSS_随机8位.扩展名
+     * </p>
+     * <p>
+     * 扩展名只保留 {@code [a-z0-9]} 且不超过 16 位的形式，其它字符（路径分隔符、
+     * 空白、shell 元字符等）一律丢弃，扩展名不合法时按无扩展名存储。
+     * </p>
      *
      * <pre>{@code
      * String name = FileUtils.generateStoredName("photo.jpg");
@@ -1086,7 +1254,7 @@ public final class FileUtils {
     public static String generateStoredName(String originalName) {
         String timestamp = LocalDateTime.now().format(FILE_NAME_DATE_FMT);
         String random = randomString(8);
-        String extension = getExtension(originalName);
+        String extension = safeStoredExtension(getExtension(originalName));
 
         if (StringUtils.isObjectBlank(extension)) {
             return timestamp + "_" + random;
@@ -1103,10 +1271,30 @@ public final class FileUtils {
     public static String generateStoredNameWithExt(String extension) {
         String timestamp = LocalDateTime.now().format(FILE_NAME_DATE_FMT);
         String random = randomString(8);
-        if (StringUtils.isObjectBlank(extension)) {
+        String normalized = StringUtils.isObjectBlank(extension)
+                ? StringPool.EMPTY.getValue()
+                : extension.trim().toLowerCase();
+        if (normalized.startsWith(StringPool.DOT.getValue())) {
+            normalized = normalized.substring(1);
+        }
+        String safeExt = safeStoredExtension(normalized);
+        if (StringUtils.isObjectBlank(safeExt)) {
             return timestamp + "_" + random;
         }
-        return timestamp + "_" + random + StringPool.DOT.getValue() + extension.toLowerCase();
+        return timestamp + "_" + random + StringPool.DOT.getValue() + safeExt;
+    }
+
+    /**
+     * 过滤出可安全写入磁盘的扩展名
+     *
+     * @param extension 小写扩展名（不含点号）
+     * @return 合法扩展名；不合法或为空时返回空字符串
+     */
+    private static String safeStoredExtension(String extension) {
+        if (StringUtils.isObjectBlank(extension) || !SAFE_EXTENSION.matcher(extension).matches()) {
+            return StringPool.EMPTY.getValue();
+        }
+        return extension;
     }
 
     // ==================== 文件上传（带类型限制） ====================
@@ -1114,7 +1302,7 @@ public final class FileUtils {
     /**
      * 上传文件到磁盘（带允许的文件类型限制）
      * <p>
-     * 校验文件扩展名是否在允许列表中，通过后执行上传。
+     * 先校验扩展名是否在允许列表中，再校验文件内容魔数，两者都通过后执行上传。
      * </p>
      *
      * <pre>{@code
@@ -1129,7 +1317,11 @@ public final class FileUtils {
      */
     public static FileData upload(MultipartFile file, String savePath, FileType... allowedTypes) {
         if (!validateFileType(file, allowedTypes)) {
-            log.warn("upload: file type not allowed: {}", file.getOriginalFilename());
+            log.warn("upload: file type not allowed: {}",
+                    file == null ? UNKNOWN_FILE_NAME : sanitizeFileName(file.getOriginalFilename()));
+            return null;
+        }
+        if (!validateFileContent(file, allowedTypes)) {
             return null;
         }
         return upload(file, savePath);
@@ -1138,7 +1330,7 @@ public final class FileUtils {
     /**
      * 上传文件到磁盘（带允许的文件分类限制）
      * <p>
-     * 校验文件扩展名是否属于允许的分类，通过后执行上传。
+     * 先校验扩展名是否属于允许的分类，再按该分类下所有类型的魔数校验内容，通过后执行上传。
      * </p>
      *
      * <pre>{@code
@@ -1153,7 +1345,11 @@ public final class FileUtils {
      */
     public static FileData upload(MultipartFile file, String savePath, FileCat... allowedCats) {
         if (!validateFileType(file, allowedCats)) {
-            log.warn("upload: file category not allowed: {}", file.getOriginalFilename());
+            log.warn("upload: file category not allowed: {}",
+                    file == null ? UNKNOWN_FILE_NAME : sanitizeFileName(file.getOriginalFilename()));
+            return null;
+        }
+        if (!validateFileContent(file, typesOf(allowedCats))) {
             return null;
         }
         return upload(file, savePath);
@@ -1170,7 +1366,10 @@ public final class FileUtils {
      */
     public static FileData upload(byte[] data, String fileName, String savePath, FileType... allowedTypes) {
         if (!validateFileType(fileName, allowedTypes)) {
-            log.warn("upload: file type not allowed: {}", fileName);
+            log.warn("upload: file type not allowed: {}", sanitizeFileName(fileName));
+            return null;
+        }
+        if (!validateFileContent(fileName, data, allowedTypes)) {
             return null;
         }
         return upload(data, fileName, savePath);
@@ -1187,7 +1386,10 @@ public final class FileUtils {
      */
     public static FileData upload(byte[] data, String fileName, String savePath, FileCat... allowedCats) {
         if (!validateFileType(fileName, allowedCats)) {
-            log.warn("upload: file category not allowed: {}", fileName);
+            log.warn("upload: file category not allowed: {}", sanitizeFileName(fileName));
+            return null;
+        }
+        if (!validateFileContent(fileName, data, typesOf(allowedCats))) {
             return null;
         }
         return upload(data, fileName, savePath);
@@ -1292,9 +1494,10 @@ public final class FileUtils {
     }
 
     /**
-     * 校验文件类型（基于 File 对象 + 魔数检测）
+     * 校验文件类型（基于 File 对象，扩展名白名单 + 内容魔数）
      * <p>
-     * 先通过魔数检测真实类型，再与允许类型对比，防止文件伪造。
+     * 先校验扩展名是否在允许列表中，再用文件头魔数复核内容，两步都通过才算合法，
+     * 防止把其它二进制格式改个扩展名后冒充允许类型。
      * </p>
      *
      * <pre>{@code
@@ -1303,7 +1506,7 @@ public final class FileUtils {
      *
      * @param file         文件对象
      * @param allowedTypes 允许的文件类型
-     * @return true 如果文件类型在允许列表中
+     * @return true 如果文件类型在允许列表中且内容与之一致
      */
     public static boolean validateFileType(File file, FileType... allowedTypes) {
         if (file == null || !file.exists() || !file.isFile()) {
@@ -1312,17 +1515,145 @@ public final class FileUtils {
         if (allowedTypes == null || allowedTypes.length == 0) {
             return false;
         }
-        // 先通过魔数检测
-        FileType detectedType = detectFileType(file);
-        if (detectedType != null) {
-            for (FileType type : allowedTypes) {
-                if (type == detectedType) {
-                    return true;
-                }
+        if (!validateFileType(file.getName(), allowedTypes)) {
+            return false;
+        }
+        byte[] header = readHeader(file);
+        if (header == null) {
+            return false;
+        }
+        return contentMatchesAllowed(file.getName(), header, allowedTypes);
+    }
+
+    // ==================== 文件内容（魔数）校验 ====================
+
+    /**
+     * 校验上传文件内容与允许类型是否一致（防扩展名伪造）
+     * <p>
+     * 与 {@link #validateFileType(MultipartFile, FileType...)} 配对使用：前者只看客户端
+     * 提供的文件名，后者读取文件头字节复核真实格式。规则：
+     * <ul>
+     *   <li>魔数可识别且命中允许类型（或允许类型与其共用同一魔数，如 doc/xls/ppt）→ 通过；</li>
+     *   <li>魔数可识别但不在允许类型内 → 拒绝，说明扩展名是伪造的；</li>
+     *   <li>魔数不可识别（txt/json/css/svg 等无固定魔数格式）→ 不阻断，由扩展名白名单负责；</li>
+     *   <li>读取文件头失败 → 拒绝（fail-closed）。</li>
+     * </ul>
+     * </p>
+     *
+     * <pre>{@code
+     * // 扩展名叫 photo.jpg，内容却是 ZIP（Word 文档包）→ false
+     * boolean ok = FileUtils.validateFileContent(file, FileType.JPEG, FileType.PNG);
+     * }</pre>
+     *
+     * @param file         上传文件
+     * @param allowedTypes 允许的文件类型
+     * @return true 表示内容与允许类型不冲突
+     */
+    public static boolean validateFileContent(MultipartFile file, FileType... allowedTypes) {
+        if (file == null || file.isEmpty() || allowedTypes == null || allowedTypes.length == 0) {
+            return false;
+        }
+        byte[] header = readHeader(file);
+        if (header == null) {
+            return false;
+        }
+        return contentMatchesAllowed(file.getOriginalFilename(), header, allowedTypes);
+    }
+
+    /**
+     * 校验字节内容与允许类型是否一致（防扩展名伪造）
+     *
+     * @param fileName     文件名，仅用于日志
+     * @param data         文件内容
+     * @param allowedTypes 允许的文件类型
+     * @return true 表示内容与允许类型不冲突
+     */
+    public static boolean validateFileContent(String fileName, byte[] data, FileType... allowedTypes) {
+        if (data == null || data.length == 0 || allowedTypes == null || allowedTypes.length == 0) {
+            return false;
+        }
+        return contentMatchesAllowed(fileName, data, allowedTypes);
+    }
+
+    /**
+     * 用魔数复核内容是否与允许类型一致
+     *
+     * @param fileName     文件名，仅用于日志
+     * @param header       文件头字节
+     * @param allowedTypes 允许的文件类型
+     * @return true 表示内容不冲突
+     */
+    private static boolean contentMatchesAllowed(String fileName, byte[] header, FileType... allowedTypes) {
+        FileType detected = detectFileType(header);
+        if (detected == null) {
+            return true;
+        }
+        if (magicAllowed(detected, allowedTypes)) {
+            return true;
+        }
+        log.warn("validateFileContent: content is [{}] but not allowed, file: {}",
+                detected, sanitizeFileName(fileName));
+        return false;
+    }
+
+    /**
+     * 判断检测出的类型是否被允许（同魔数的不同扩展名互相认可）
+     *
+     * @param detected     魔数检测出的类型
+     * @param allowedTypes 允许的文件类型
+     * @return true 表示允许
+     */
+    private static boolean magicAllowed(FileType detected, FileType... allowedTypes) {
+        String detectedMagic = detected.getMagicHex();
+        for (FileType type : allowedTypes) {
+            if (type == null) {
+                continue;
+            }
+            if (type == detected) {
+                return true;
+            }
+            String magic = type.getMagicHex();
+            if (StringUtils.isObjectNotBlank(magic) && magic.equalsIgnoreCase(detectedMagic)) {
+                return true;
             }
         }
-        // 魔数检测失败，回退到扩展名检测
-        return validateFileType(file.getName(), allowedTypes);
+        return false;
+    }
+
+    /**
+     * 展开文件分类下的所有文件类型
+     *
+     * @param cats 文件分类
+     * @return 类型数组，分类为空时返回空数组
+     */
+    private static FileType[] typesOf(FileCat... cats) {
+        if (cats == null || cats.length == 0) {
+            return new FileType[0];
+        }
+        List<FileType> types = new ArrayList<>();
+        for (FileCat cat : cats) {
+            if (cat != null) {
+                types.addAll(FileType.getTypesByCategory(cat));
+            }
+        }
+        return types.toArray(new FileType[0]);
+    }
+
+    /**
+     * 读取本地文件头部字节
+     *
+     * @param file 文件对象
+     * @return 头部字节，读取失败返回 null
+     */
+    private static byte[] readHeader(File file) {
+        byte[] header = new byte[MAGIC_HEADER_SIZE];
+        try (FileInputStream fis = new FileInputStream(file)) {
+            int read = fis.read(header);
+            return read <= 0 ? new byte[0] : Arrays.copyOf(header, read);
+        } catch (IOException e) {
+            log.warn("readHeader failed: {}", file.getName(), e);
+            return null;
+        }
     }
 
     // ==================== 获取允许类型描述 ====================

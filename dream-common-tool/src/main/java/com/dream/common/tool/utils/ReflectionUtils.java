@@ -38,10 +38,6 @@ public final class ReflectionUtils {
      * 字段缓存（Class → fieldName → Field），加速重复访问
      */
     private static final Map<String, Field> FIELD_CACHE = new ConcurrentHashMap<>();
-    /**
-     * 方法缓存（Class#methodName#paramCount → Method）
-     */
-    private static final Map<String, Method> METHOD_CACHE = new ConcurrentHashMap<>();
 
     private ReflectionUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
