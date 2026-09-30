@@ -9,22 +9,28 @@ import java.lang.annotation.*;
  * 操作日志注解
  * <p>
  * 标注在 Controller 方法上，用于声明该接口的操作日志元数据。
- * 框架通过 AOP 切面拦截标注本注解的方法，自动记录操作人、请求参数、
- * 响应结果、执行耗时、异常信息等，并持久化到操作日志表。
+ * 框架由 {@code OperationLogAspect}（framework 模块）拦截并采集模块标题、操作类型、
+ * 请求参数、响应结果、执行耗时与异常信息，封装为 {@code OperationLog}。
+ * </p>
+ * <p>
+ * 日志去向由 {@code OperationLogHandler}（framework 模块 SPI）决定：业务方注册实现即接管
+ * （补全操作人后落库、异步上报等）；未注册时框架只打印一条 INFO 日志。
+ * 框架<b>不内置操作日志表</b>，也不感知登录框架，故模型中无用户 ID/用户名。
+ * 开关：{@code dream.framework.operation-log.enabled=false} 整体关闭采集。
  * </p>
  *
  * <h2>日志内容</h2>
  * <ul>
- *   <li>操作人信息（用户 ID、用户名、登录 IP、登录地点）</li>
- *   <li>请求信息（请求 URL、HTTP 方法、请求参数、请求头）</li>
+ *   <li>请求信息（请求 URI、HTTP 方法、客户端 IP、请求参数）</li>
  *   <li>操作结果（成功/失败、耗时、响应数据、异常信息）</li>
+ *   <li>链路信息（traceId）</li>
  *   <li>操作类型与模块标题（由本注解声明）</li>
  * </ul>
  *
  * <h2>敏感数据脱敏</h2>
  * <p>
- * 通过 {@link #excludeParamNames()} 可排除敏感参数（如密码、身份证号），
- * 避免敏感信息明文写入日志表。
+ * 框架总是按内置关键字（password / token / secret / captcha 等）把命中的字段值替换为
+ * {@code ***}；额外可通过 {@link #excludeParamNames()} 让指定字段<b>整个不写入日志</b>。
  * </p>
  *
  * <h2>使用示例</h2>
@@ -98,6 +104,9 @@ public @interface Log {
      * 标识日志归类（操作日志、登录日志、异常日志、系统日志等），
      * 默认 {@link LogType#OPERATION}。
      * </p>
+     * <p>
+     * 特例：{@link LogType#EXCEPTION} 只在目标方法抛出异常时才产出日志，正常返回不记录。
+     * </p>
      *
      * @return 日志类型
      */
@@ -134,8 +143,10 @@ public @interface Log {
     /**
      * 排除的请求参数字段名
      * <p>
-     * 序列化请求参数时，排除这些字段，避免敏感信息（如密码、身份证号、银行卡号）写入日志。
-     * 支持嵌套属性，如 {@code "user.password"}。
+     * 序列化请求参数时，命中名称的字段<b>整个不写入日志</b>（内置敏感关键字只是把值替换为
+     * {@code ***}，本属性是把键一并去掉）。匹配规则：按<b>字段名</b>递归匹配参数对象的任意层级，
+     * 不区分大小写；写成 {@code "user.password"} 时只取末段 {@code password} 参与比较，
+     * 嵌套前缀仅为可读性。
      * </p>
      * <p>
      * 示例：{@code {"password", "oldPassword", "confirmPassword"}}

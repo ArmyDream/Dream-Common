@@ -4,20 +4,22 @@ import com.dream.common.core.enums.DesensitizeType;
 import com.dream.common.core.enums.Regex;
 
 /**
- * 数据脱敏工具类
+ * 数据脱敏工具类 —— 框架内掩码逻辑的唯一实现
  * <p>
- * 配合 {@link DesensitizeType} 使用，对敏感数据进行掩码处理
+ * 配合 {@link DesensitizeType} 使用，对敏感数据进行掩码处理。
+ * 各业务模块（如 data 模块的 {@code @Sensitive}）只保留"类型 → 保留位数"的映射，
+ * 掩码算法一律下沉到 {@link #desensitize(String, int, int, String)}，不再各自实现一份。
  * <p>
  * 使用示例：
  * <pre>{@code
  * // 手机号脱敏：138****8000
- * DesensitizeUtils.desensitize("13800138000", DesensitizeTypeEnum.PHONE);
+ * DesensitizeUtils.desensitize("13800138000", DesensitizeType.PHONE);
  *
  * // 身份证脱敏：110101********1234
- * DesensitizeUtils.desensitize("110101199001011234", DesensitizeTypeEnum.ID_CARD);
+ * DesensitizeUtils.desensitize("110101199001011234", DesensitizeType.ID_CARD);
  *
- * // 邮箱脱敏：ab***@example.com
- * DesensitizeUtils.desensitize("abcdef@example.com", DesensitizeTypeEnum.EMAIL);
+ * // 邮箱脱敏：a*****@example.com
+ * DesensitizeUtils.desensitizeEmail("abcdef@example.com");
  *
  * // 自定义脱敏：保留前2后2
  * DesensitizeUtils.desensitize("HelloWorld", 2, 2, '*');
@@ -46,7 +48,7 @@ public final class DesensitizeUtils {
     }
 
     /**
-     * 自定义脱敏：保留前 prefixLen 位和后 suffixLen 位，中间用掩码替换
+     * 自定义脱敏：保留前 prefixLen 位和后 suffixLen 位，中间用掩码字符替换
      *
      * @param text      原始文本
      * @param prefixLen 保留前缀长度
@@ -55,34 +57,56 @@ public final class DesensitizeUtils {
      * @return 脱敏后的文本
      */
     public static String desensitize(String text, int prefixLen, int suffixLen, char maskChar) {
+        return desensitize(text, prefixLen, suffixLen, String.valueOf(maskChar));
+    }
+
+    /**
+     * 自定义脱敏的唯一实现：保留前后缀，中间用掩码串重复替换
+     * <p>
+     * 掩码为字符串而非字符，便于调用方（如 data 模块 {@code @Sensitive} 的 {@code replaceChar}）
+     * 指定任意占位内容；框架内所有掩码逻辑都走本方法，不再各写一份。
+     * </p>
+     * <p>
+     * 规则：{@code prefixLen} 与 {@code suffixLen} 均为 0 时整体掩码；文本长度不足以同时保留
+     * 前后缀时原样返回（不泄漏部分掩码结果）；负数按 0 处理。
+     * </p>
+     *
+     * @param text      原始文本
+     * @param prefixLen 保留前缀长度
+     * @param suffixLen 保留后缀长度
+     * @param mask      掩码串，null 或空时按 {@code *} 处理
+     * @return 脱敏后的文本
+     */
+    public static String desensitize(String text, int prefixLen, int suffixLen, String mask) {
         if (text == null || text.isEmpty()) {
             return text;
         }
-
+        String maskStr = (mask == null || mask.isEmpty()) ? "*" : mask;
+        int prefix = Math.max(prefixLen, 0);
+        int suffix = Math.max(suffixLen, 0);
         int len = text.length();
 
         // 全部掩码（如密码）
-        if (prefixLen <= 0 && suffixLen <= 0) {
-            return repeat(maskChar, len);
+        if (prefix == 0 && suffix == 0) {
+            return repeat(maskStr, len);
         }
 
         // 文本长度不足以保留前后缀
-        if (len <= prefixLen + suffixLen) {
+        if (len <= prefix + suffix) {
             return text;
         }
 
-        StringBuilder sb = new StringBuilder(len);
+        StringBuilder sb = new StringBuilder(len + maskStr.length());
 
         // 前缀
-        sb.append(text, 0, prefixLen);
+        sb.append(text, 0, prefix);
 
         // 掩码
-        int maskLen = len - prefixLen - suffixLen;
-        sb.append(repeat(maskChar, maskLen));
+        sb.append(repeat(maskStr, len - prefix - suffix));
 
         // 后缀
-        if (suffixLen > 0) {
-            sb.append(text, len - suffixLen, len);
+        if (suffix > 0) {
+            sb.append(text, len - suffix, len);
         }
 
         return sb.toString();
@@ -109,7 +133,13 @@ public final class DesensitizeUtils {
     }
 
     /**
-     * 邮箱脱敏：ab***@example.com
+     * 邮箱脱敏：a*****@example.com
+     * <p>
+     * 框架内唯一的邮箱规则（data 模块 {@code @Sensitive(type = EMAIL)} 与之相同）：
+     * 保留本地部分首字符与完整的 {@code @} + 域名，本地部分其余字符逐位掩码；
+     * 本地部分只有 1 位时连该字符一起掩掉（否则等于不脱敏）；
+     * 不含 {@code @} 的入参按 {@link DesensitizeType#EMAIL} 的通用前后缀规则处理。
+     * </p>
      *
      * @param email 邮箱
      * @return 脱敏后的邮箱
@@ -119,15 +149,17 @@ public final class DesensitizeUtils {
             return email;
         }
         int atIndex = email.indexOf('@');
-        if (atIndex <= 0) {
+        if (atIndex < 1) {
+            // 不是邮箱形态：退回通用"保留前2后3"规则
             return desensitize(email, DesensitizeType.EMAIL);
         }
-        // 保留 @ 前2位 + @ 后完整域名
-        String localPart = email.substring(0, atIndex);
-        String domainPart = email.substring(atIndex);
-        int keepLen = Math.min(2, localPart.length());
-        int maskLen = Math.max(localPart.length() - keepLen, 1);
-        return localPart.substring(0, keepLen) + repeat('*', maskLen) + domainPart;
+        if (atIndex == 1) {
+            // 本地部分仅 1 位，保留它等于不脱敏：掩掉首字符，@ 与域名保留
+            return desensitize(email, 0, email.length() - 1, '*');
+        }
+        // 框架内唯一的邮箱规则（data 模块 @Sensitive 的 EMAIL 与之相同）：
+        // 保留本地部分首字符 + 完整 @ 与域名，本地部分其余字符逐位掩码
+        return desensitize(email, 1, email.length() - atIndex, '*');
     }
 
     /**
@@ -151,15 +183,77 @@ public final class DesensitizeUtils {
     }
 
     /**
-     * 重复字符
+     * 重复掩码串（JDK 8 无 {@link String#repeat(int)}，此处循环拼接）
      */
-    private static String repeat(char ch, int count) {
+    private static String repeat(String mask, int count) {
         if (count <= 0) {
             return "";
         }
-        char[] chars = new char[count];
-        java.util.Arrays.fill(chars, ch);
-        return new String(chars);
+        StringBuilder sb = new StringBuilder(mask.length() * count);
+        for (int i = 0; i < count; i++) {
+            sb.append(mask);
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 敏感参数名关键字（小写包含匹配）。
+     * <p>
+     * 访问日志、异常日志、操作日志共用本表判断"参数名是否承载凭据类信息"，
+     * 避免各处各写一份、清单互相不一致。
+     * </p>
+     */
+    private static final String[] SENSITIVE_PARAM_KEYWORDS = {
+            "password", "passwd", "pwd", "token", "secret", "authorization", "credential", "code", "captcha"
+    };
+
+    /**
+     * 判断参数名是否属于敏感参数（不区分大小写的包含匹配）
+     *
+     * @param paramName 参数名，可为 null
+     * @return true 表示命中敏感关键字
+     */
+    public static boolean isSensitiveParamName(String paramName) {
+        if (paramName == null || paramName.isEmpty()) {
+            return false;
+        }
+        String lower = paramName.toLowerCase(java.util.Locale.ROOT);
+        for (String keyword : SENSITIVE_PARAM_KEYWORDS) {
+            if (lower.contains(keyword)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * 对查询串中的敏感参数值脱敏（{@code password=123 → password=***}）
+     * <p>
+     * 参数名保持原样，仅替换值；无法解析为 {@code k=v} 的片段原样保留。
+     * </p>
+     *
+     * @param queryString 原始查询串，可为 null
+     * @return 脱敏后的查询串；入参为 null 时返回 null
+     */
+    public static String maskSensitiveQuery(String queryString) {
+        if (queryString == null || queryString.isEmpty()) {
+            return queryString;
+        }
+        String[] pairs = queryString.split("&");
+        StringBuilder sb = new StringBuilder(queryString.length());
+        for (int i = 0; i < pairs.length; i++) {
+            if (i > 0) {
+                sb.append('&');
+            }
+            String pair = pairs[i];
+            int eq = pair.indexOf('=');
+            if (eq > 0 && isSensitiveParamName(pair.substring(0, eq))) {
+                sb.append(pair, 0, eq).append("=***");
+                continue;
+            }
+            sb.append(pair);
+        }
+        return sb.toString();
     }
 
     /**
@@ -170,9 +264,6 @@ public final class DesensitizeUtils {
      * @return true 表示匹配；str 或 regex 为 null 时返回 false
      */
     public static boolean matches(String str, Regex regex) {
-        if (str == null || regex == null || regex.getRegex() == null || regex.getRegex().trim().isEmpty()) {
-            return false;
-        }
-        return str.matches(regex.getRegex());
+        return str != null && regex != null && regex.getPattern().matcher(str).matches();
     }
 }

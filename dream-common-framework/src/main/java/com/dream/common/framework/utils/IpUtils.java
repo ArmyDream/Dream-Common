@@ -860,22 +860,4 @@ public final class IpUtils {
                 || ua.contains("iphone") || ua.contains("ipad")
                 || ua.contains("windows phone");
     }
-
-    // ==================== 废弃方法（兼容） ====================
-
-    /**
-     * @deprecated 请使用 {@link #ipIsInWildcard(String, String)}
-     */
-    @Deprecated
-    public static boolean ipIsInWildCardNoCheck(String ipWildCard, String ip) {
-        return ipIsInWildcard(ipWildCard, ip);
-    }
-
-    /**
-     * @deprecated 请使用 {@link #ipIsInNet(String, String)}
-     */
-    @Deprecated
-    public static boolean ipIsInNetNoCheck(String iparea, String ip) {
-        return ipIsInNet(iparea, ip);
-    }
 }

@@ -33,20 +33,33 @@ import java.util.concurrent.TimeUnit;
  *   <li>均未配置时使用 类名:方法名:参数Hash 作为 Key</li>
  * </ul>
  *
+ * <h2>Key 命名空间约定</h2>
+ * <p>
+ * 缓存实现不加全局前缀，注解生成的 Key 落在同一个扁平空间；框架自带功能各自占用保留前缀：
+ * {@code prevent-duplicate:}（{@code @PreventDuplicate}）、{@code ws:msg:}（WebSocket 消息缓存）。
+ * 所以业务 Key 必须自带模块前缀（{@code dream:user:1001} 而非 {@code user:1001}），
+ * 既避免撞框架命名空间，也避免多业务模块共库时互相覆盖。
+ * </p>
+ * <p>
+ * 与 {@link CacheDoubleDelete} 配对时注意：删除端没有 {@link #prefix()} 概念、原样使用注解里写出的 Key，
+ * 两侧最终 Key 必须逐字一致（{@code @QueryCache(prefix="dream:user", spel="'1001'")}
+ * 对应 {@code @CacheDoubleDelete(spel="'dream:user:1001'")}），否则双删删不掉查询缓存。
+ * </p>
+ *
  * <h2>使用示例</h2>
  * <pre>{@code
  * // 1. 固定 Key（适合无参查询）
- * @QueryCache(key = "dict:all", expire = 3600)
+ * @QueryCache(key = "dream:dict:all", expire = 3600)
  * @GetMapping("/dict/all")
  * public R<List<Dict>> allDict() { ... }
  *
  * // 2. SpEL 动态 Key（推荐）
- * @QueryCache(spel = "'user:' + #id", expire = 600)
+ * @QueryCache(spel = "'dream:user:' + #id", expire = 600)
  * @GetMapping("/user/{id}")
  * public R<User> getUser(@PathVariable Long id) { ... }
  *
  * // 3. 按需条件缓存（ spel 为 true 时才走缓存）
- * @QueryCache(spel = "'list:' + #dto.page", expire = 300, condition = "#dto.page <= 10")
+ * @QueryCache(prefix = "dream:user", spel = "'list:' + #dto.page", expire = 300, condition = "#dto.page <= 10")
  * @PostMapping("/list")
  * public R<Page<User>> list(@RequestBody UserDTO dto) { ... }
  * }</pre>

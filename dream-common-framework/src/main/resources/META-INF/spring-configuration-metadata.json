@@ -181,6 +181,12 @@
       "defaultValue": true
     },
     {
+      "name": "dream.framework.operation-log.enabled",
+      "type": "java.lang.Boolean",
+      "description": "是否启用 @Log 操作日志切面。关闭后 @Log 注解不再产生任何日志（含默认 INFO 打印）。",
+      "defaultValue": true
+    },
+    {
       "name": "dream.cache.type",
       "type": "java.lang.String",
       "description": "缓存类型：AUTO（Redis 优先，不可用降级 Caffeine，默认）/ REDIS（强制 Redis）/ CAFFEINE（强制本地）。",
@@ -316,7 +322,7 @@
         },
         {
           "value": "REDIS",
-          "description": "强制 Redis；Redis 不可用不降级。"
+          "description": "强制 Redis：不降级、不熔断，调用失败仅记 WARN 并返回默认值（不向业务层抛异常）。"
         },
         {
           "value": "CAFFEINE",

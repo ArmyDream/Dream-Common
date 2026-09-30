@@ -32,7 +32,7 @@ import java.util.stream.Collectors;
  *   <li>{@link #convert(Object, Class)} —— 对象类型转换</li>
  *   <li>{@link #getFieldValue(Object, String)} —— 获取字段值</li>
  *   <li>{@link #setFieldValue(Object, String, Object)} —— 设置字段值</li>
- *   <li>{@link #getNullPropertyNames(Object)} —— 获取 null 属性名列表</li>
+ *   <li>{@link #getEmptyPropertyNames(Object)} —— 获取空值属性名列表</li>
  *   <li>{@link #getPropertyNames(Object)} —— 获取所有属性名</li>
  * </ul>
  * </p>
@@ -507,35 +507,6 @@ public final class BeanUtils {
         }
         // 其他类型只判断 null
         return false;
-    }
-
-    /**
-     * 获取对象中所有 null 属性名（不包含空字符串）
-     *
-     * @param object 对象，不能为 null
-     * @return null 属性名数组
-     * @deprecated 建议使用 {@link #getEmptyPropertyNames(Object)} 替代
-     */
-    @Deprecated
-    public static String[] getNullPropertyNames(Object object) {
-        Objects.requireNonNull(object, "object must not be null");
-
-        BeanWrapper beanWrapper = new BeanWrapperImpl(object);
-        PropertyDescriptor[] pds = beanWrapper.getPropertyDescriptors();
-        Set<String> nullNames = new HashSet<>();
-
-        for (PropertyDescriptor pd : pds) {
-            String propertyName = pd.getName();
-            if ("class".equals(propertyName)) {
-                continue;
-            }
-            Object value = beanWrapper.getPropertyValue(propertyName);
-            if (value == null) {
-                nullNames.add(propertyName);
-            }
-        }
-
-        return nullNames.toArray(new String[0]);
     }
 
     /**

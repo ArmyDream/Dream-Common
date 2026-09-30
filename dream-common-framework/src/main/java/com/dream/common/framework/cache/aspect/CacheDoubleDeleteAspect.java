@@ -3,6 +3,7 @@ package com.dream.common.framework.cache.aspect;
 import com.dream.common.framework.cache.CachesUtils;
 import com.dream.common.framework.cache.annotation.CacheDoubleDelete;
 import com.dream.common.framework.cache.config.CacheProperties;
+import com.dream.common.framework.support.SpelSupport;
 import com.dream.common.framework.utils.ThreadPoolUtils;
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -13,11 +14,6 @@ import org.aspectj.lang.annotation.Pointcut;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.expression.MethodBasedEvaluationContext;
-import org.springframework.core.DefaultParameterNameDiscoverer;
-import org.springframework.core.ParameterNameDiscoverer;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PreDestroy;
@@ -66,12 +62,6 @@ import java.util.stream.Collectors;
 @Component
 @ConditionalOnProperty(prefix = "dream.cache.double-delete", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class CacheDoubleDeleteAspect {
-
-    /** SpEL 表达式解析器（线程安全，可复用） */
-    private final ExpressionParser parser = new SpelExpressionParser();
-
-    /** 方法参数名发现器 */
-    private final ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
 
     /** 延时删除调度器（守护线程，不阻塞 JVM 退出） */
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -209,10 +199,8 @@ public class CacheDoubleDeleteAspect {
      */
     private Object evalSpel(String spel, Method method, Object[] args) {
         try {
-            MethodBasedEvaluationContext ctx = new MethodBasedEvaluationContext(
-                    null, method, args, parameterNameDiscoverer);
-            ctx.setVariable("args", args);
-            return parser.parseExpression(spel).getValue(ctx);
+            return SpelSupport.getParser().parseExpression(spel)
+                    .getValue(SpelSupport.newMethodContext(method, args));
         } catch (Exception e) {
             log.warn("[CacheDoubleDelete] SpEL 解析失败，跳过该注解 | spel={} | err={}", spel, e.getMessage());
             return null;

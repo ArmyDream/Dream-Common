@@ -5,3 +5,4 @@ com.dream.common.framework.config.FilterAutoConfig
 com.dream.common.framework.config.WebMvcConfig
 com.dream.common.framework.config.BannerAutoConfiguration
 com.dream.common.framework.websocket.config.WebSocketAutoConfig
+com.dream.common.framework.config.OperationLogAutoConfiguration

@@ -15,6 +15,11 @@ import java.lang.annotation.Target;
  * 配合 {@link com.dream.common.data.enums.SensitiveType} 枚举使用，
  * 支持自定义脱敏规则与替换字符。
  * </p>
+ * <p>
+ * 执行时机：查询返回阶段由 {@code CommonServiceImpl#desensitizeEntity} 扫描并就地替换字段值，
+ * 因此脱敏后的实体不可直接回写数据库（见 {@link #ignoreOnUpdate()}）。
+ * 掩码算法统一由 core 模块 {@code DesensitizeUtils} 实现。
+ * </p>
  *
  * <p>使用示例：</p>
  * <pre>{@code
@@ -22,8 +27,11 @@ import java.lang.annotation.Target;
  *     @Sensitive(type = SensitiveType.MOBILE)
  *     private String phone;
  *
- *     @Sensitive(type = SensitiveType.ID_CARD, rule = "3-4")
+ *     @Sensitive(type = SensitiveType.ID_CARD)
  *     private String idCard;
+ *
+ *     @Sensitive(type = SensitiveType.CUSTOM, rule = "2-4", replaceChar = "#")
+ *     private String licenseNo;
  * }
  * }</pre>
  *
@@ -41,7 +49,8 @@ public @interface Sensitive {
     SensitiveType type() default SensitiveType.CUSTOM;
 
     /**
-     * 脱敏规则，如：3-4 表示前3后4保留，中间用*代替
+     * 脱敏规则，如：3-4 表示前3后4保留，中间用替换字符填充
+     * <p>仅 {@code type = SensitiveType.CUSTOM} 时生效，其余类型按内置固定规则处理。</p>
      */
     String rule() default "";
 

@@ -45,11 +45,6 @@ public final class HmacUtils {
     private static final String HMAC_MD5 = "HmacMD5";
 
     /**
-     * Hex 字符表
-     */
-    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
-
-    /**
      * ThreadLocal 缓存 Mac 实例
      */
     private static final ThreadLocal<Mac> HMAC_SHA256_MAC =
@@ -286,13 +281,10 @@ public final class HmacUtils {
         }
     }
 
+    /**
+     * 字节数组转小写十六进制，统一委托 {@link CodecUtils#hexEncode(byte[])}。
+     */
     private static String toHex(byte[] bytes) {
-        char[] chars = new char[bytes.length * 2];
-        for (int i = 0; i < bytes.length; i++) {
-            int b = bytes[i] & 0xFF;
-            chars[i * 2] = HEX_DIGITS[b >>> 4];
-            chars[i * 2 + 1] = HEX_DIGITS[b & 0x0F];
-        }
-        return new String(chars);
+        return CodecUtils.hexEncode(bytes);
     }
 }

@@ -15,6 +15,8 @@ import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.*;
 
 /**
@@ -586,6 +588,33 @@ public final class ServletUtils {
     }
 
     // ==================== 响应输出 ====================
+
+    /**
+     * 写出附件下载响应头
+     * <p>
+     * 统一设置 {@code Content-Type}、{@code Content-Disposition}（RFC 5987 的
+     * {@code filename*=UTF-8''...} 形式，空格转 {@code %20}），
+     * 供 Excel/CSV/文件下载等场景复用，避免各处手写同名逻辑。
+     * </p>
+     *
+     * @param response    HttpServletResponse，为 null 时直接返回
+     * @param fileName    下载文件名（含扩展名）
+     * @param contentType MIME 类型，为 null 时使用 {@code application/octet-stream}
+     * @throws UnsupportedEncodingException JDK 不支持 UTF-8 编码（实际不会发生）
+     */
+    public static void writeDownloadHeaders(HttpServletResponse response, String fileName, String contentType)
+            throws UnsupportedEncodingException {
+        if (response == null) {
+            log.warn("writeDownloadHeaders 失败：HttpServletResponse 为 null");
+            return;
+        }
+        response.setContentType(StringUtils.isBlank(contentType) ? "application/octet-stream" : contentType);
+        response.setCharacterEncoding(CharsetEnum.UTF_8.getValue());
+        if (StringUtils.isNotBlank(fileName)) {
+            String encoded = URLEncoder.encode(fileName, CharsetEnum.UTF_8.getValue()).replaceAll("\\+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+        }
+    }
 
     /**
      * 向客户端输出 JSON 字符串

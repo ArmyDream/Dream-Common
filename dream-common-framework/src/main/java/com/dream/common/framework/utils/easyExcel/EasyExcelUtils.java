@@ -17,6 +17,7 @@ import com.alibaba.excel.write.metadata.style.WriteCellStyle;
 import com.alibaba.excel.write.metadata.style.WriteFont;
 import com.alibaba.excel.write.style.HorizontalCellStyleStrategy;
 import com.alibaba.excel.write.style.column.LongestMatchColumnWidthStyleStrategy;
+import com.dream.common.framework.utils.ServletUtils;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
@@ -26,7 +27,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URLEncoder;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Consumer;
@@ -59,8 +59,11 @@ public final class EasyExcelUtils {
     /** 默认 Sheet 名称 */
     private static final String DEFAULT_SHEET_NAME = "Sheet1";
 
-    /** 默认最大错误数（不限制） */
-    private static final int DEFAULT_MAX_ERROR_COUNT = 0;
+    /** Excel 下载文件名后缀 */
+    private static final String XLSX_SUFFIX = ".xlsx";
+
+    /** CSV 下载文件名后缀 */
+    private static final String CSV_SUFFIX = ".csv";
 
     private EasyExcelUtils() {
     }
@@ -895,10 +898,8 @@ public final class EasyExcelUtils {
      * @param fileName 文件名（不含扩展名）
      */
     public static void setExcelResponse(HttpServletResponse response, String fileName) throws IOException {
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        response.setCharacterEncoding("utf-8");
-        String encodedFileName = URLEncoder.encode(fileName, "UTF-8").replaceAll("\\+", "%20");
-        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFileName + ".xlsx");
+        ServletUtils.writeDownloadHeaders(response, fileName + XLSX_SUFFIX,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     }
 
     /**
@@ -908,10 +909,7 @@ public final class EasyExcelUtils {
      * @param fileName 文件名（不含扩展名）
      */
     public static void setCsvResponse(HttpServletResponse response, String fileName) throws IOException {
-        response.setContentType("text/csv");
-        response.setCharacterEncoding("utf-8");
-        String encodedFileName = URLEncoder.encode(fileName, "UTF-8").replaceAll("\\+", "%20");
-        response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encodedFileName + ".csv");
+        ServletUtils.writeDownloadHeaders(response, fileName + CSV_SUFFIX, "text/csv");
     }
 
     /**

@@ -237,7 +237,7 @@ public final class ValidateUtils {
         if (input == null || input.isEmpty() || regexEnum == null) {
             return false;
         }
-        return input.matches(regexEnum.getRegex());
+        return regexEnum.getPattern().matcher(input).matches();
     }
 
     /**

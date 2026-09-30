@@ -1,6 +1,7 @@
 package com.dream.common.framework.utils.file;
 
 import com.dream.common.core.enums.FileType;
+import com.dream.common.tool.utils.crypto.DigestUtils;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -14,10 +15,7 @@ import java.io.Serializable;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 /**
  * 文件数据实体类
@@ -62,10 +60,6 @@ import java.time.format.DateTimeFormatter;
 public class FileData implements Serializable {
 
     private static final long serialVersionUID = 1L;
-
-    /** 日期时间格式化（用于生成文件名） */
-    private static final DateTimeFormatter DATE_TIME_FORMATTER =
-            DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
 
     /** 文件原始名称（上传时的文件名） */
     private String originalName;
@@ -172,20 +166,18 @@ public class FileData implements Serializable {
     /**
      * 生成新的存储文件名
      * <p>
-     * 格式：yyyyMMddHHmmssSSS_随机6位.扩展名
+     * 统一采用 {@link FileUtils#generateStoredNameWithExt(String)} 的命名规则：
+     * {@code yyyyMMddHHmmssSSS_随机8位.扩展名}，扩展名经安全字符过滤，
+     * 非法或为空时不带扩展名。
+     * </p>
      *
-     * @return 新文件名
+     * @return 新文件名，同时缓存到 {@link #storedName}
      */
     public String generateStoredName() {
         if (this.storedName != null && !this.storedName.isEmpty()) {
             return this.storedName;
         }
-
-        String timestamp = LocalDateTime.now().format(DATE_TIME_FORMATTER);
-        String random = generateRandomString(6);
-        String ext = extension != null ? extension : "tmp";
-
-        this.storedName = timestamp + "_" + random + "." + ext;
+        this.storedName = FileUtils.generateStoredNameWithExt(this.extension);
         return this.storedName;
     }
 
@@ -197,23 +189,8 @@ public class FileData implements Serializable {
      */
     public String generateStoredName(String extension) {
         this.extension = extension;
+        this.storedName = null;
         return generateStoredName();
-    }
-
-    /**
-     * 生成随机字符串
-     *
-     * @param length 长度
-     * @return 随机字符串
-     */
-    private String generateRandomString(int length) {
-        String chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-        StringBuilder sb = new StringBuilder(length);
-        for (int i = 0; i < length; i++) {
-            int index = (int) (Math.random() * chars.length());
-            sb.append(chars.charAt(index));
-        }
-        return sb.toString();
     }
 
     /**
@@ -435,28 +412,20 @@ public class FileData implements Serializable {
 
     /**
      * 计算文件内容的哈希值
+     * <p>
+     * 统一委托 {@link DigestUtils#digest(String, byte[])}，输出小写十六进制。
+     * </p>
      *
      * @param algorithm 哈希算法（MD5 / SHA-1 / SHA-256）
      * @return 哈希字符串（小写十六进制），内容为空返回 null
+     * @throws com.dream.common.core.exception.BusinessException 算法不被 JDK 支持
      */
     public String calculateHash(String algorithm) {
         if (content == null || content.length == 0) {
             return null;
         }
-        try {
-            MessageDigest md = MessageDigest.getInstance(algorithm);
-            byte[] digest = md.digest(content);
-            StringBuilder sb = new StringBuilder(digest.length * 2);
-            for (byte b : digest) {
-                sb.append(Character.forDigit((b >> 4) & 0xF, 16));
-                sb.append(Character.forDigit(b & 0xF, 16));
-            }
-            this.hash = sb.toString();
-            return this.hash;
-        } catch (NoSuchAlgorithmException e) {
-            log.error("calculateHash failed: algorithm={}", algorithm, e);
-            return null;
-        }
+        this.hash = DigestUtils.digest(algorithm, content);
+        return this.hash;
     }
 
     // ==================== 文件输出 ====================

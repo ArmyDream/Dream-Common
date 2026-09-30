@@ -2,21 +2,25 @@ package com.dream.common.core.enums;
 
 import com.dream.common.core.utils.ValidateUtils;
 
+import java.util.regex.Pattern;
+
 /**
  * 正则表达式枚举
  * <p>
- * 统一管理项目中常用的正则表达式
+ * 统一管理项目中常用的正则表达式，并在枚举加载时预编译 {@link Pattern}
+ * </p>
  * <p>
  * 使用示例：
  * <pre>{@code
  * // 获取正则表达式
- * String mobileRegex = RegexEnum.MOBILE.getRegex();
+ * String mobileRegex = Regex.MOBILE.getRegex();
  *
- * // 校验手机号
- * boolean valid = "13800138000".matches(RegexEnum.MOBILE.getRegex());
+ * // 校验手机号（推荐：复用预编译 Pattern，避免重复编译）
+ * boolean valid = ValidateUtils.isMobile("13800138000");
+ * boolean valid2 = Regex.MOBILE.getPattern().matcher("13800138000").matches();
  *
  * // 获取所有正则枚举
- * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(RegexEnum.class);
+ * List<BaseEnum.EnumOption<String>> options = BaseEnum.options(Regex.class);
  * }</pre>
  *
  * @author dream
@@ -189,10 +193,16 @@ public enum Regex implements BaseEnum<String> {
     private final String regex;
     private final String description;
 
+    /**
+     * 预编译的正则，避免每次校验都重新编译
+     */
+    private final Pattern pattern;
+
     Regex(String label, String regex, String description) {
         this.label = label;
         this.regex = regex;
         this.description = description;
+        this.pattern = Pattern.compile(regex);
     }
 
     @Override
@@ -210,6 +220,19 @@ public enum Regex implements BaseEnum<String> {
      */
     public String getRegex() {
         return regex;
+    }
+
+    /**
+     * 获取预编译的正则对象。
+     * <p>
+     * 枚举加载时一次性编译，校验高频场景请直接用它，
+     * 避免 {@code String.matches}/{@code Pattern.compile} 每次调用重复编译。
+     * </p>
+     *
+     * @return 已编译的 {@link Pattern}
+     */
+    public Pattern getPattern() {
+        return pattern;
     }
 
     /**

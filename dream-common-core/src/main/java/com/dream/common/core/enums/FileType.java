@@ -11,6 +11,9 @@ import java.util.Set;
  *
  * <p>基于文件魔数（Magic Number）识别文件真实类型，防止文件类型伪造攻击。</p>
  *
+ * <p>本枚举是<b>文件</b>登记表（扩展名 + 魔数 + 下载 MIME），供上传校验与下载响应头使用；
+ * 报文侧的 Content-Type / Accept（JSON、表单、SSE 等）见 {@link ContentType}。</p>
+ *
  * <p>支持的文件类型包括：图片、文档、压缩包、音视频、可执行文件等常见格式。
  * 对于纯文本类文件（如 txt、json、css、js、svg）无固定魔数，仅通过扩展名识别；
  * {@link #XML} 与 {@link #HTML} 记录的是常见起始声明（{@code <?xml}、{@code <!DOCTYPE}），
@@ -55,7 +58,7 @@ public enum FileType implements BaseEnum<String> {
     BMP("bmp", "424D", "BMP位图", "image/bmp", FileCat.IMAGE),
 
     /** WEBP 图片 */
-    WEBP("webp", "52494646", "WEBP图片", "image/webp", FileCat.IMAGE),
+    WEBP("webp", "52494646", "57454250", "WEBP图片", "image/webp", FileCat.IMAGE),
 
     /** SVG 矢量图（文本格式，无固定字节签名，仅按扩展名识别） */
     SVG("svg", null, "SVG矢量图", "image/svg+xml", FileCat.IMAGE),
@@ -121,13 +124,13 @@ public enum FileType implements BaseEnum<String> {
     MP4("mp4", null, "MP4视频", "video/mp4", FileCat.MEDIA),
 
     /** AVI 视频 */
-    AVI("avi", "52494646", "AVI视频", "video/x-msvideo", FileCat.MEDIA),
+    AVI("avi", "52494646", "41564920", "AVI视频", "video/x-msvideo", FileCat.MEDIA),
 
     /** MOV 视频 */
     MOV("mov", "6D6F6F76", "MOV视频", "video/quicktime", FileCat.MEDIA),
 
     /** WAV 音频 */
-    WAV("wav", "52494646", "WAV音频", "audio/wav", FileCat.MEDIA),
+    WAV("wav", "52494646", "57415645", "WAV音频", "audio/wav", FileCat.MEDIA),
 
     /** FLV 视频 */
     FLV("flv", "464C56", "FLV视频", "video/x-flv", FileCat.MEDIA),
@@ -180,6 +183,16 @@ public enum FileType implements BaseEnum<String> {
     /** 魔数十六进制（可为 {@code null}，表示无固定魔数） */
     private final String magicHex;
 
+    /**
+     * 二级签名十六进制（可为 {@code null}）。
+     * <p>
+     * 用于主魔数相同、真实格式不同的容器族文件：例如 RIFF 容器的前 4 字节都是
+     * {@code 52494646}（"RIFF"），必须再看第 8 字节起的 FOURCC 才能区分
+     * WEBP / WAV / AVI。签名位置固定为{@value #SUB_MAGIC_OFFSET_BYTES}字节处。
+     * </p>
+     */
+    private final String subMagicHex;
+
     /** 中文描述 */
     private final String label;
 
@@ -191,6 +204,11 @@ public enum FileType implements BaseEnum<String> {
 
     /** 所有扩展名（含别名，不可变） */
     private final List<String> allExtensions;
+
+    /**
+     * 二级签名（FOURCC）所在字节偏移：主魔数之后跳过 4 字节长度字段。
+     */
+    private static final int SUB_MAGIC_OFFSET_BYTES = 8;
 
     /**
      * 构造器（单扩展名）。
@@ -217,8 +235,25 @@ public enum FileType implements BaseEnum<String> {
      */
     FileType(String extension, String magicHex, String label, String mimeType,
              FileCat category, String... extraExtensions) {
+        this(extension, magicHex, null, label, mimeType, category, extraExtensions);
+    }
+
+    /**
+     * 构造器（带二级签名，用于同主魔数的容器族）。
+     *
+     * @param extension       主扩展名
+     * @param magicHex        魔数十六进制，可为 {@code null}
+     * @param subMagicHex     第{@value #SUB_MAGIC_OFFSET_BYTES}字节处的二级签名，可为 {@code null}
+     * @param label           中文描述
+     * @param mimeType        MIME 类型
+     * @param category        文件分类
+     * @param extraExtensions 扩展的别名
+     */
+    FileType(String extension, String magicHex, String subMagicHex, String label, String mimeType,
+             FileCat category, String... extraExtensions) {
         this.extension = extension;
         this.magicHex = magicHex;
+        this.subMagicHex = subMagicHex;
         this.label = label;
         this.mimeType = mimeType;
         this.category = category;
@@ -253,6 +288,15 @@ public enum FileType implements BaseEnum<String> {
      */
     public String getMagicHex() {
         return magicHex;
+    }
+
+    /**
+     * 获取二级签名（FOURCC）十六进制字符串。
+     *
+     * @return 二级签名；无二级签名（主魔数已足够区分）时返回 {@code null}
+     */
+    public String getSubMagicHex() {
+        return subMagicHex;
     }
 
     /**
@@ -493,7 +537,9 @@ public enum FileType implements BaseEnum<String> {
     /**
      * 根据魔数查找文件类型（不区分大小写）。
      *
-     * <p>委托 {@link BaseEnum#fromFieldIgnoreCase(Class, java.util.function.Function, String)}。</p>
+     * <p><b>注意</b>：部分容器族共享同一主魔数（RIFF 族的 WEBP/WAV/AVI 前 4 字节都是
+     * {@code 52494646}），仅凭主魔数无法区分，此时返回<b>声明顺序最靠前</b>的一个。
+     * 需要精确结果请改用 {@link #fromMagic(String, String)} 并传入完整头部十六进制。</p>
      *
      * <pre>{@code
      * FileType type1 = FileType.fromMagic("FFD8FF");   // JPEG
@@ -504,7 +550,61 @@ public enum FileType implements BaseEnum<String> {
      * @return 匹配的文件类型；未找到或参数为 {@code null} 时返回 {@code null}
      */
     public static FileType fromMagic(String magicHex) {
-        return BaseEnum.fromFieldIgnoreCase(FileType.class, FileType::getMagicHex, magicHex);
+        return fromMagic(magicHex, magicHex);
+    }
+
+    /**
+     * 根据魔数 + 完整头部字节查找文件类型（不区分大小写）。
+     *
+     * <p>先按主魔数取前缀，再对带二级签名的容器族（如 RIFF）比对
+     * 第{@value #SUB_MAGIC_OFFSET_BYTES}字节处的 FOURCC，从而区分同魔数不同格式。</p>
+     *
+     * <pre>{@code
+     * // RIFF 头部：52494646(字节0-3) + 长度(4-7) + 57415645("WAVE", 字节8-11)
+     * FileType.fromMagic("52494646", "52494646E480000057415645"); // WAV
+     * }</pre>
+     *
+     * @param magicHex  待匹配的主魔数前缀，可为 {@code null}
+     * @param headerHex 文件头部的完整十六进制（长度不足时按无二级签名处理）
+     * @return 匹配的文件类型；未找到或主魔数为空时返回 {@code null}
+     */
+    public static FileType fromMagic(String magicHex, String headerHex) {
+        if (magicHex == null || magicHex.isEmpty()) {
+            return null;
+        }
+        FileType fallback = null;
+        for (FileType type : values()) {
+            if (!magicHex.equalsIgnoreCase(type.magicHex)) {
+                continue;
+            }
+            if (type.subMagicHex == null) {
+                // 该主魔数唯一，直接命中
+                return type;
+            }
+            if (fallback == null) {
+                fallback = type;
+            }
+            if (hasSubMagic(type, headerHex)) {
+                return type;
+            }
+        }
+        return fallback;
+    }
+
+    /**
+     * 判断头部十六进制在第{@value #SUB_MAGIC_OFFSET_BYTES}字节处是否命中给定类型的二级签名。
+     *
+     * @param type      文件类型（其 {@code subMagicHex} 非空）
+     * @param headerHex 完整头部十六进制
+     * @return true 表示二级签名匹配
+     */
+    private static boolean hasSubMagic(FileType type, String headerHex) {
+        if (headerHex == null) {
+            return false;
+        }
+        int from = SUB_MAGIC_OFFSET_BYTES * 2;
+        int to = from + type.subMagicHex.length();
+        return headerHex.length() >= to && type.subMagicHex.equalsIgnoreCase(headerHex.substring(from, to));
     }
 
     /**

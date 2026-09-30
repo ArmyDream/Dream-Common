@@ -2,6 +2,15 @@ package com.dream.common.core.enums;
 
 /**
  * HTTP 内容类型枚举
+ * <p>
+ * 面向<b>报文</b>的 Content-Type / Accept：请求编码方式（JSON、XML、表单、Multipart）、
+ * 响应类型以及 SSE 事件流，含带 {@code charset=UTF-8} 的显式变体。
+ * </p>
+ * <p>
+ * <b>与 {@link FileType} 的分工</b>：{@code FileType} 是<b>文件</b>登记表（扩展名 + 魔数 + 下载 MIME，
+ * 用于上传校验与下载响应头），本枚举是<b>HTTP 交互</b>登记表。两者只在文档/图片一类条目上取值相同，
+ * 新增文件类型请改 {@code FileType}，新增报文类型才改本枚举。
+ * </p>
  *
  * @author dream
  */

@@ -1,6 +1,7 @@
 package com.dream.common.data.utils;
 
 import com.dream.common.data.enums.EncryptType;
+import com.dream.common.tool.utils.crypto.CodecUtils;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.crypto.Cipher;
@@ -46,6 +47,23 @@ import java.util.Base64;
  *     md5-salt: xxxxxx   # MD5 加盐前缀（必填；兼容旧数据可显式配置为历史使用的盐）
  * }</pre>
  * </p>
+ * <p>
+ * <b>实现结构</b>：AES / DES / SM4(占位) 走同一套 CBC 流程
+ * （{@link #cbcEncrypt} / {@link #cbcDecrypt} + {@link CbcSpec} 参数表），
+ * 不再各算法一份代码；Base64 编解码复用 tool 模块 {@link CodecUtils}。
+ * </p>
+ * <p>
+ * <b>与其他加密工具的分工</b>（互不兼容，勿混用）：
+ * <ul>
+ *   <li>本类——字段落库/取库解密（{@code @Encrypt}），密文为 {@code Base64(IV + 密文)} 的 CBC 产物，
+ *       无完整性校验</li>
+ *   <li>{@code AesUtils}（tool）——报文与配置值的对称加密，AES/<b>GCM</b> 认证加密，
+ *       密文格式不同，无法解本类写入的数据；新代码优先用它</li>
+ *   <li>{@code DigestUtils}（tool）——标准加盐摘要是 {@code data + salt}（后缀），
+ *       本类 MD5 是 {@code salt + content}（前缀），摘要值不同，<b>不可互换</b>，
+ *       替换会让库中已存的加盐 MD5 全部失配</li>
+ * </ul>
+ * </p>
  *
  * @author dream
  */
@@ -85,22 +103,36 @@ public class EncryptUtil {
     /**
      * 通过 Spring 配置注入密钥与盐。
      * <p>由框架自动装配（{@code EncryptAutoConfiguration}）读取 {@code dream.encrypt.*} 后调用。</p>
+     * <p>
+     * 仅覆盖传入的非空项：传 {@code null} 或空串不会清空已有值，也不会抛异常，
+     * 相应操作仍按 fail-closed 规则处理。日志只输出被注入的配置项名，绝不输出密钥内容。
+     * </p>
      *
      * @param aesKey  AES 密钥（建议 16 字节）
      * @param desKey  DES 密钥（建议 8 字节）
      * @param md5Salt MD5 加盐前缀
      */
     public static synchronized void configure(String aesKey, String desKey, String md5Salt) {
+        StringBuilder injected = new StringBuilder();
         if (aesKey != null && !aesKey.isEmpty()) {
             AES_KEY = aesKey;
+            injected.append(", aes-key");
         }
         if (desKey != null && !desKey.isEmpty()) {
             DES_KEY = desKey;
+            injected.append(", des-key");
         }
         if (md5Salt != null && !md5Salt.isEmpty()) {
             MD5_SALT = md5Salt;
+            injected.append(", md5-salt");
         }
-        log.info("[EncryptUtil] 密钥已通过配置注入（dream.encrypt.*）");
+        if (injected.length() == 0) {
+            // 未配置属于合法状态（不使用 @Encrypt / 加解密的项目同样会走到这里），
+            // 真正的失败留到调用点 fail-closed 抛出，这里只作提示，避免启动期噪音升级成 WARN
+            log.info("[EncryptUtil] dream.encrypt.* 未配置密钥/盐，调用加解密时将 fail-closed 抛异常");
+            return;
+        }
+        log.info("[EncryptUtil] 已注入密钥/盐：{}", injected.substring(2));
     }
 
     /**
@@ -132,15 +164,16 @@ public class EncryptUtil {
      * <ul>
      *   <li>{@link EncryptType#AES}：AES/CBC/PKCS5Padding，输出 Base64(IV + 密文)</li>
      *   <li>{@link EncryptType#DES}：DES/CBC/PKCS5Padding，输出 Base64(IV + 密文)</li>
-     *   <li>{@link EncryptType#SM4}：简化实现，复用 AES</li>
-     *   <li>{@link EncryptType#BASE64}：Base64 编码</li>
+     *   <li>{@link EncryptType#SM4}：占位实现，复用 AES/CBC（并非国密，首次使用输出 WARN）</li>
+     *   <li>{@link EncryptType#BASE64}：Base64 编码（复用 {@code CodecUtils}，仅编码不是加密）</li>
      *   <li>{@link EncryptType#MD5}：加盐 MD5 摘要（不可逆）</li>
      * </ul>
      * </p>
      *
      * @param content 待加密内容，为 null 时返回 null
      * @param type    加密类型，为 null 时抛出 {@link IllegalArgumentException}（fail-closed）
-     * @param key     加密密钥，为 null 或空时使用配置/默认密钥
+     * @param key     加密密钥，为 null 或空时回退到 {@code dream.encrypt.*} 配置密钥；
+     *                两者均缺失时抛出异常，不使用任何内置默认值
      * @return 加密后的字符串
      * @throws IllegalArgumentException 加密类型非法或加密失败时抛出（fail-closed，不再静默回退明文）
      */
@@ -155,13 +188,15 @@ public class EncryptUtil {
         try {
             switch (type) {
                 case AES:
-                    return aesEncrypt(content, key);
+                    return cbcEncrypt(content, key, CbcSpec.AES);
                 case DES:
-                    return desEncrypt(content, key);
+                    return cbcEncrypt(content, key, CbcSpec.DES);
                 case SM4:
-                    return sm4Encrypt(content, key);
+                    // 占位实现：并非国密，复用 AES 参数行，详见 warnSm4Placeholder
+                    warnSm4Placeholder();
+                    return cbcEncrypt(content, key, CbcSpec.AES);
                 case BASE64:
-                    return base64Encode(content);
+                    return CodecUtils.base64Encode(content);
                 case MD5:
                     return md5Encrypt(content);
                 default:
@@ -183,7 +218,8 @@ public class EncryptUtil {
      *
      * @param content 待解密内容，为 null 时返回 null
      * @param type    解密类型，为 null 时抛出 {@link IllegalArgumentException}（fail-closed）
-     * @param key     解密密钥，为 null 或空时使用配置/默认密钥
+     * @param key     解密密钥，为 null 或空时回退到 {@code dream.encrypt.*} 配置密钥；
+     *                两者均缺失时抛出异常，不使用任何内置默认值
      * @return 解密后的字符串
      * @throws IllegalArgumentException 解密类型非法或解密失败时抛出（fail-closed）
      */
@@ -198,13 +234,14 @@ public class EncryptUtil {
         try {
             switch (type) {
                 case AES:
-                    return aesDecrypt(content, key);
+                    return cbcDecrypt(content, key, CbcSpec.AES);
                 case DES:
-                    return desDecrypt(content, key);
+                    return cbcDecrypt(content, key, CbcSpec.DES);
                 case SM4:
-                    return sm4Decrypt(content, key);
+                    // 占位实现：与加密侧一致，按 AES 参数解密
+                    return cbcDecrypt(content, key, CbcSpec.AES);
                 case BASE64:
-                    return base64Decode(content);
+                    return CodecUtils.base64Decode(content);
                 default:
                     throw new IllegalArgumentException("不支持的解密类型: " + type);
             }
@@ -217,161 +254,120 @@ public class EncryptUtil {
     }
 
     /**
-     * AES 加密
+     * CBC 分组模式加解密的<b>唯一</b>实现（AES / DES 及复用 AES 的 SM4 占位共用）
      * <p>
-     * 采用 {@code AES/CBC/PKCS5Padding} 模式，<b>每次随机生成 16 字节 IV</b>。
-     * 加密结果格式：{@code Base64(IV + 密文)}，解密时从中分离 IV 与密文，
-     * 因此随机 IV 不影响历史密文解密。
+     * 流程：密钥规范化（不足补 {@code '0'}、超出截断）→ <b>每次随机生成 IV</b> →
+     * 输出 {@code Base64(IV + 密文)}。算法、密钥长度、IV 长度全部由 {@link CbcSpec} 参数表给出，
+     * 新增分组算法只需在表里加一行。
+     * </p>
+     * <p>
+     * IV 随机化不影响历史密文解密：IV 一直存放在密文头部。
      * </p>
      *
      * @param content 待加密内容
-     * @param key     加密密钥，为空时使用配置密钥；不足 16 位自动填充，超过 16 位截断
+     * @param key     调用处显式传入的密钥，为空时回退到 {@code dream.encrypt.*} 配置的密钥
+     * @param spec    算法参数
      * @return Base64 编码的加密结果（含 IV 前缀）
      * @throws Exception 加密失败时抛出
      */
-    private static String aesEncrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
-        requireKey(secretKey, "aes-key");
-        byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
+    private static String cbcEncrypt(String content, String key, CbcSpec spec) throws Exception {
+        String secretKey = (key == null || key.isEmpty()) ? spec.configuredKey() : key;
+        requireKey(secretKey, spec.configName);
+        byte[] keyBytes = normalizeKey(secretKey, spec.keySize);
         // 每次加密随机生成 IV，避免固定 IV 导致同明文同密文（等值关系泄露）
-        byte[] ivBytes = randomBytes(AES_IV_SIZE);
+        byte[] ivBytes = randomBytes(spec.ivSize);
 
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
-        IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
-
-        Cipher cipher = Cipher.getInstance(AES_CIPHER_ALGORITHM);
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
+        Cipher cipher = Cipher.getInstance(spec.cipherAlgorithm);
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(keyBytes, spec.keyAlgorithm),
+                new IvParameterSpec(ivBytes));
         byte[] encryptedBytes = cipher.doFinal(content.getBytes(StandardCharsets.UTF_8));
 
         // 拼接 IV + 密文后统一 Base64 编码
-        byte[] output = new byte[AES_IV_SIZE + encryptedBytes.length];
-        System.arraycopy(ivBytes, 0, output, 0, AES_IV_SIZE);
-        System.arraycopy(encryptedBytes, 0, output, AES_IV_SIZE, encryptedBytes.length);
+        byte[] output = new byte[spec.ivSize + encryptedBytes.length];
+        System.arraycopy(ivBytes, 0, output, 0, spec.ivSize);
+        System.arraycopy(encryptedBytes, 0, output, spec.ivSize, encryptedBytes.length);
         return Base64.getEncoder().encodeToString(output);
     }
 
     /**
-     * AES 解密
-     * <p>
-     * 采用 {@code AES/CBC/PKCS5Padding} 模式，从 Base64 解码后分离 IV 与密文。
-     * </p>
+     * CBC 分组模式解密的<b>唯一</b>实现，与 {@link #cbcEncrypt} 对称：
+     * 从 Base64 解码后按 {@link CbcSpec#ivSize} 分离 IV 与密文。
      *
      * @param content Base64 编码的加密结果（含 IV 前缀）
-     * @param key     解密密钥，为空时使用默认密钥；不足 16 位自动填充，超过 16 位截断
+     * @param key     解密密钥，为空时回退到配置密钥
+     * @param spec    算法参数
      * @return 解密后的明文
      * @throws Exception 解密失败时抛出
      */
-    private static String aesDecrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? AES_KEY : key;
-        requireKey(secretKey, "aes-key");
-        byte[] keyBytes = normalizeKey(secretKey, AES_KEY_SIZE);
-
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, AES_ALGORITHM);
+    private static String cbcDecrypt(String content, String key, CbcSpec spec) throws Exception {
+        String secretKey = (key == null || key.isEmpty()) ? spec.configuredKey() : key;
+        requireKey(secretKey, spec.configName);
+        byte[] keyBytes = normalizeKey(secretKey, spec.keySize);
 
         byte[] decodedBytes = Base64.getDecoder().decode(content);
         // 分离 IV 与密文
-        byte[] iv = new byte[AES_IV_SIZE];
-        byte[] encryptedBytes = new byte[decodedBytes.length - AES_IV_SIZE];
-        System.arraycopy(decodedBytes, 0, iv, 0, AES_IV_SIZE);
-        System.arraycopy(decodedBytes, AES_IV_SIZE, encryptedBytes, 0, encryptedBytes.length);
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
+        byte[] iv = new byte[spec.ivSize];
+        byte[] encryptedBytes = new byte[decodedBytes.length - spec.ivSize];
+        System.arraycopy(decodedBytes, 0, iv, 0, spec.ivSize);
+        System.arraycopy(decodedBytes, spec.ivSize, encryptedBytes, 0, encryptedBytes.length);
 
-        Cipher cipher = Cipher.getInstance(AES_CIPHER_ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
-        return new String(decryptedBytes, StandardCharsets.UTF_8);
+        Cipher cipher = Cipher.getInstance(spec.cipherAlgorithm);
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(keyBytes, spec.keyAlgorithm),
+                new IvParameterSpec(iv));
+        return new String(cipher.doFinal(encryptedBytes), StandardCharsets.UTF_8);
     }
 
     /**
-     * DES 加密
+     * CBC 分组算法参数表：密钥算法、转换名、密钥/IV 长度与对应的配置项
      * <p>
-     * 采用 {@code DES/CBC/PKCS5Padding} 模式，<b>每次随机生成 8 字节 IV</b>。
-     * 加密结果格式：{@code Base64(IV + 密文)}，解密时从中分离 IV 与密文。
+     * {@link EncryptType#SM4} 复用 {@link #AES} 行（占位实现，并非国密），
+     * 因此 SM4 密文实为 AES 密文，替换真实 SM4 前必须做转密迁移。
      * </p>
-     *
-     * @param content 待加密内容
-     * @param key     加密密钥，为空时使用配置密钥；不足 8 位自动填充，超过 8 位截断
-     * @return Base64 编码的加密结果（含 IV 前缀）
-     * @throws Exception 加密失败时抛出
      */
-    private static String desEncrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
-        requireKey(secretKey, "des-key");
-        byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
-        byte[] ivBytes = randomBytes(DES_IV_SIZE);
+    private enum CbcSpec {
 
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
-        IvParameterSpec ivSpec = new IvParameterSpec(ivBytes);
+        /** AES/CBC/PKCS5Padding，16 字节密钥与 IV */
+        AES(AES_ALGORITHM, AES_CIPHER_ALGORITHM, AES_KEY_SIZE, AES_IV_SIZE, "aes-key"),
 
-        Cipher cipher = Cipher.getInstance(DES_CIPHER_ALGORITHM);
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, ivSpec);
-        byte[] encryptedBytes = cipher.doFinal(content.getBytes(StandardCharsets.UTF_8));
+        /** DES/CBC/PKCS5Padding，8 字节密钥与 IV（弱算法，仅兼容历史数据） */
+        DES(DES_ALGORITHM, DES_CIPHER_ALGORITHM, DES_KEY_SIZE, DES_IV_SIZE, "des-key");
 
-        // 拼接 IV + 密文后统一 Base64 编码
-        byte[] output = new byte[DES_IV_SIZE + encryptedBytes.length];
-        System.arraycopy(ivBytes, 0, output, 0, DES_IV_SIZE);
-        System.arraycopy(encryptedBytes, 0, output, DES_IV_SIZE, encryptedBytes.length);
-        return Base64.getEncoder().encodeToString(output);
-    }
+        /** {@link SecretKeySpec} 使用的密钥算法名 */
+        private final String keyAlgorithm;
+        /** {@link Cipher#getInstance(String)} 转换名 */
+        private final String cipherAlgorithm;
+        /** 密钥字节数 */
+        private final int keySize;
+        /** IV 字节数 */
+        private final int ivSize;
+        /** 配置项名（{@code dream.encrypt.xxx}），用于缺失密钥时的错误提示 */
+        private final String configName;
 
-    /**
-     * DES 解密
-     * <p>
-     * 采用 {@code DES/CBC/PKCS5Padding} 模式，从 Base64 解码后分离 IV 与密文。
-     * </p>
-     *
-     * @param content Base64 编码的加密结果（含 IV 前缀）
-     * @param key     解密密钥，为空时使用默认密钥；不足 8 位自动填充，超过 8 位截断
-     * @return 解密后的明文
-     * @throws Exception 解密失败时抛出
-     */
-    private static String desDecrypt(String content, String key) throws Exception {
-        String secretKey = (key == null || key.isEmpty()) ? DES_KEY : key;
-        requireKey(secretKey, "des-key");
-        byte[] keyBytes = normalizeKey(secretKey, DES_KEY_SIZE);
+        CbcSpec(String keyAlgorithm, String cipherAlgorithm, int keySize, int ivSize, String configName) {
+            this.keyAlgorithm = keyAlgorithm;
+            this.cipherAlgorithm = cipherAlgorithm;
+            this.keySize = keySize;
+            this.ivSize = ivSize;
+            this.configName = configName;
+        }
 
-        SecretKeySpec keySpec = new SecretKeySpec(keyBytes, DES_ALGORITHM);
-
-        byte[] decodedBytes = Base64.getDecoder().decode(content);
-        // 分离 IV 与密文
-        byte[] iv = new byte[DES_IV_SIZE];
-        byte[] encryptedBytes = new byte[decodedBytes.length - DES_IV_SIZE];
-        System.arraycopy(decodedBytes, 0, iv, 0, DES_IV_SIZE);
-        System.arraycopy(decodedBytes, DES_IV_SIZE, encryptedBytes, 0, encryptedBytes.length);
-        IvParameterSpec ivSpec = new IvParameterSpec(iv);
-
-        Cipher cipher = Cipher.getInstance(DES_CIPHER_ALGORITHM);
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, ivSpec);
-        byte[] decryptedBytes = cipher.doFinal(encryptedBytes);
-        return new String(decryptedBytes, StandardCharsets.UTF_8);
-    }
-
-    /**
-     * SM4 加密（<b>占位实现，并非国密</b>）
-     * <p>
-     * 当前复用 {@code AES/CBC/PKCS5Padding}，产物<b>不是</b>国密 SM4 密文。
-     * 首次调用会输出 WARN。需要真正的国密合规时：
-     * </p>
-     * <ol>
-     *   <li>引入 BouncyCastle（{@code org.bouncycastle:bcprov-jdk18on}）或 Hutool crypto；</li>
-     *   <li>替换本方法为真实 SM4 实现；</li>
-     *   <li><b>注意数据迁移</b>：库中已存有以 {@code SM4} 标记但实为 AES 的历史密文，
-     *       直接切换算法会导致旧密文无法解密，迁移前须先转密。</li>
-     * </ol>
-     *
-     * @param content 待加密内容
-     * @param key     加密密钥
-     * @return Base64 编码的加密结果（实为 AES 密文）
-     * @throws Exception 加密失败时抛出
-     */
-    private static String sm4Encrypt(String content, String key) throws Exception {
-        warnSm4Placeholder();
-        // 占位实现：复用 AES。并非真正的国密 SM4，详见方法 javadoc。
-        return aesEncrypt(content, key);
+        /**
+         * 当前通过 {@code dream.encrypt.*} 注入的密钥（未注入时为 {@code null}，使用即 fail-closed）
+         *
+         * @return 配置密钥
+         */
+        private String configuredKey() {
+            return this == DES ? DES_KEY : AES_KEY;
+        }
     }
 
     /**
      * 输出一次性告警，提示 SM4 当前为占位实现（并非国密），避免逐次刷屏。
+     * <p>
+     * 需要真正的国密合规时：引入 BouncyCastle（{@code org.bouncycastle:bcprov-jdk18on}）后替换
+     * {@link CbcSpec#AES} 行对应的实现；<b>库中已存有以 {@code SM4} 标记、实为 AES 的历史密文</b>，
+     * 直接切换算法会让旧密文无法解密，迁移前须先转密。
+     * </p>
      */
     private static void warnSm4Placeholder() {
         if (sm4Warned) {
@@ -383,48 +379,15 @@ public class EncryptUtil {
     }
 
     /**
-     * SM4 解密（简化实现）
-     * <p>
-     * 当前简化复用 {@code AES/CBC/PKCS5Padding} 实现，<b>并非真正的国密 SM4 算法</b>。
-     * 生产环境应引入 BouncyCastle 或 Hutool，详见 {@link #sm4Encrypt(String, String)} 的说明。
-     * </p>
-     *
-     * @param content Base64 编码的加密结果
-     * @param key     解密密钥
-     * @return 解密后的明文
-     * @throws Exception 解密失败时抛出
-     */
-    private static String sm4Decrypt(String content, String key) throws Exception {
-        // 简化处理：复用 AES 实现。实际应使用 BouncyCastle 或 Hutool 提供的国密 SM4 实现。
-        return aesDecrypt(content, key);
-    }
-
-    /**
-     * Base64 编码
-     *
-     * @param content 待编码内容
-     * @return Base64 编码后的字符串
-     */
-    private static String base64Encode(String content) {
-        return Base64.getEncoder().encodeToString(content.getBytes(StandardCharsets.UTF_8));
-    }
-
-    /**
-     * Base64 解码
-     *
-     * @param content Base64 编码的字符串
-     * @return 解码后的原始字符串
-     */
-    private static String base64Decode(String content) {
-        byte[] decodedBytes = Base64.getDecoder().decode(content);
-        return new String(decodedBytes, StandardCharsets.UTF_8);
-    }
-
-    /**
      * MD5 加密（不可逆）
      * <p>
      * 计算时在原始内容前加入固定 salt 前缀，以增强抗彩虹表攻击能力。
      * 注意：MD5 本身已不推荐用于密码存储等高安全场景，建议改用 BCrypt/Argon2。
+     * </p>
+     * <p>
+     * <b>不要替换成 tool 模块 {@code DigestUtils.md5Salt(data, salt)}</b>：
+     * 本方法的盐是 {@code salt + data}（前缀），DigestUtils 的是 {@code data + salt}（后缀），
+     * 两者摘要不同，直接替换会让库中已存的加盐 MD5 值全部失配。
      * </p>
      *
      * @param content 待摘要内容

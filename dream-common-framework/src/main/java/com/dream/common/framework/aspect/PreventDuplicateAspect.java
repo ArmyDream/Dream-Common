@@ -3,6 +3,7 @@ package com.dream.common.framework.aspect;
 import com.dream.common.core.annotation.PreventDuplicate;
 import com.dream.common.core.exception.BusinessException;
 import com.dream.common.framework.cache.CacheOperations;
+import com.dream.common.framework.support.SpelSupport;
 import com.dream.common.framework.utils.IpUtils;
 import com.dream.common.tool.utils.PreventDuplicateUtils;
 import lombok.extern.slf4j.Slf4j;
@@ -13,11 +14,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.LocalVariableTableParameterNameDiscoverer;
 import org.springframework.core.annotation.Order;
 import org.springframework.expression.Expression;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.springframework.stereotype.Component;
 import org.springframework.util.ReflectionUtils;
@@ -56,6 +54,13 @@ import java.util.concurrent.TimeUnit;
  * {@code includeUserId = false} 或改用 {@code includeIp = true}。
  * </p>
  *
+ * <h2>集群语义</h2>
+ * <p>
+ * 防重依赖 {@link CacheOperations#setIfAbsent} 的原子占位。只有 Redis 实现（
+ * {@code getType()} 为 {@code REDIS}）跨实例生效；Caffeine 兜底实现的占位仅存在于
+ * 当前 JVM，多实例部署时同一窗口的重复请求会各自放行，此时首次拦截会记 WARN 一次。
+ * </p>
+ *
  * <h2>开关</h2>
  * <p>{@code dream.framework.prevent-duplicate.enabled=false} 可整体关闭本切面。</p>
  *
@@ -74,12 +79,8 @@ public class PreventDuplicateAspect {
     /** 统一 Key 命名空间前缀 */
     private static final String KEY_NAMESPACE = "prevent-duplicate:";
 
-    /** SpEL 表达式解析器（线程安全） */
-    private static final ExpressionParser PARSER = new SpelExpressionParser();
-
-    /** 方法参数名发现器（依赖 -g 调试信息或 -parameters 编译参数） */
-    private static final LocalVariableTableParameterNameDiscoverer NAME_DISCOVERER =
-            new LocalVariableTableParameterNameDiscoverer();
+    /** 具备集群语义的缓存实现类型（见 {@link CacheOperations#getType()}） */
+    private static final String DISTRIBUTED_CACHE_TYPE = "REDIS";
 
     /** 缓存操作入口（Redis 优先，Caffeine 兜底） */
     private final ObjectProvider<CacheOperations> cacheOperationsProvider;
@@ -89,6 +90,9 @@ public class PreventDuplicateAspect {
 
     /** includeUserId 开启但无 Provider 时仅告警一次 */
     private volatile boolean missingUserIdWarned;
+
+    /** 缓存非 Redis 实现（单机语义）时仅告警一次 */
+    private volatile boolean nonDistributedWarned;
 
     public PreventDuplicateAspect(ObjectProvider<CacheOperations> cacheOperationsProvider,
                                   ObjectProvider<DuplicateUserIdProvider> userIdProvider) {
@@ -113,6 +117,8 @@ public class PreventDuplicateAspect {
             log.warn("未发现 CacheOperations Bean，跳过防重复提交检查: method={}", joinPoint.toShortString());
             return joinPoint.proceed();
         }
+        warnIfNonDistributed(cacheOperations);
+        warnIfNonDistributed(cacheOperations);
 
         Method targetMethod = resolveTargetMethod(joinPoint);
         String key = buildKey(annotation, targetMethod, joinPoint);
@@ -166,9 +172,9 @@ public class PreventDuplicateAspect {
      */
     private String evaluateSpel(String expressionString, Method method, ProceedingJoinPoint joinPoint) {
         try {
-            Expression expression = PARSER.parseExpression(expressionString);
+            Expression expression = SpelSupport.getParser().parseExpression(expressionString);
             SimpleEvaluationContext context = SimpleEvaluationContext.forReadOnlyDataBinding().build();
-            String[] paramNames = NAME_DISCOVERER.getParameterNames(method);
+            String[] paramNames = SpelSupport.getNameDiscoverer().getParameterNames(method);
             Object[] args = joinPoint.getArgs();
             if (paramNames != null) {
                 for (int i = 0; i < paramNames.length && i < args.length; i++) {
@@ -186,6 +192,30 @@ public class PreventDuplicateAspect {
             log.warn("SpEL 防重表达式求值失败，回退默认 Key 构建: spel={}", expressionString, e);
             return null;
         }
+    }
+
+    // ==================== 缓存实现集群语义 ====================
+
+    /**
+     * 当前缓存实现不具备集群语义时告警一次。
+     * <p>
+     * Caffeine 兜底实现的 {@code setIfAbsent} 只在单个 JVM 内生效，多实例部署时
+     * 同一窗口内的重复请求会各自放行，防重能力退化为"单机窗口"。
+     * </p>
+     *
+     * @param cacheOperations 当前生效的缓存操作入口
+     */
+    private void warnIfNonDistributed(CacheOperations cacheOperations) {
+        if (nonDistributedWarned) {
+            return;
+        }
+        String type = cacheOperations.getType();
+        if (type == null || DISTRIBUTED_CACHE_TYPE.equalsIgnoreCase(type.trim())) {
+            return;
+        }
+        nonDistributedWarned = true;
+        log.warn("当前 CacheOperations 实现类型为 {}（非 {}），防重复提交仅在单个 JVM 内生效；"
+                + "多实例部署请接入 Redis 以获得集群语义", type, DISTRIBUTED_CACHE_TYPE);
     }
 
     // ==================== 用户 ID ====================

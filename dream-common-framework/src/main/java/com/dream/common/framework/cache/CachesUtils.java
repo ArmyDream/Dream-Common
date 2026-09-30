@@ -28,13 +28,21 @@ import java.util.function.Function;
  *
  * <h2>降级策略</h2>
  * <ul>
- *   <li>{@code AUTO}（默认）：Redis 在场优先；Redis 不可用降级 Caffeine</li>
- *   <li>{@code REDIS}：强制 Redis；Redis 不可用不降级（直接抛出，用于强一致场景）</li>
+ *   <li>{@code AUTO}（默认）：Redis 在场优先；Redis 调用异常触发熔断并降级 Caffeine，冷却后自动回切</li>
+ *   <li>{@code REDIS}：只用 Redis，<b>不降级、不熔断</b>。调用异常时仅记 WARN，读返回默认值、写静默丢弃，
+ *       <b>不会向业务层抛异常</b>；需要"缓存故障即失败"的强一致语义时，请直接使用
+ *       {@link com.dream.common.framework.cache.redis.RedisUtils}，其异常会原样上送</li>
  *   <li>{@code CAFFEINE}：强制本地 Caffeine</li>
  * </ul>
  * <p>
+ * 本类对所有缓存异常做了兜底：静态 API <b>永不抛出缓存层异常</b>，故障表现为"读到默认值 / 写未生效"。
+ * 因此不要把缓存当作强一致存储；一致性要求高的场景请用 {@code RedisUtils} 或数据库。
+ * </p>
+ * <p>
  * <b>「不引入不报错」</b>：本类仅依赖 {@link CacheOperations} / {@link CaffeineCacheOperations}
  * 等不引入 Redis 类型的抽象，Redis 依赖缺失时也能正常编译与运行（自动使用 Caffeine）。
+ * 这与 Redis 侧自动配置的行为不同：显式 {@code spring.data.redis.*} 配置了不可达的地址时启动即失败，
+ * 以便把连接问题暴露在部署期而非运行期。
  * </p>
  *
  * <h2>使用示例</h2>
@@ -52,6 +60,23 @@ import java.util.function.Function;
  *
  * // 延时双删（注解，见 CacheDoubleDelete）
  * }</pre>
+ *
+ * <h2>三个入口怎么选</h2>
+ * <ul>
+ *   <li>{@code CachesUtils}（本类，静态）：业务默认入口。带熔断/兜底、永不抛缓存异常，
+ *       适合"缓存只加速、失效可回源"的场景</li>
+ *   <li>{@link CacheOperations}（注入接口）：框架扩展点。自定义缓存实现（如多级缓存、测试桩）
+ *       实现本接口替换底层；<b>直接调它绕过本类的熔断兜底</b>，异常原样上送，
+ *       业务代码一般不应注入本接口</li>
+ *   <li>{@link com.dream.common.framework.cache.redis.RedisUtils}（注入）：Redis 专属能力
+ *       （原子自增/计数、过期时间控制、批量读写、{@code opsForXxx} 等本类未覆盖的命令）。
+ *       同样<b>不降级、不吞异常</b>，一致性/正确性要求高的读写选它而不是选本类；
+ *       分布式锁、信号量等原语在 {@code RedissonUtils}，不在本类</li>
+ * </ul>
+ * <p>
+ * 同一个 Key 只应通过一套入口访问：{@code AUTO} 降级期间本类可能把数据写在 Caffeine 本地，
+ * 而 {@code RedisUtils} 只读写 Redis，混用会出现"写了读不到"。
+ * </p>
  *
  * @author dream
  */
@@ -168,7 +193,9 @@ public class CachesUtils {
         }
         // 熔断中：检查冷却
         CacheProperties props = properties;
-        long cooldownMs = (props != null ? props.getRedis().getHealthCooldownSeconds() : 30L) * 1000L;
+        long cooldownMs = (props != null
+                ? props.getRedis().getHealthCooldownSeconds()
+                : CacheProperties.Redis.DEFAULT_HEALTH_COOLDOWN_SECONDS) * 1000L;
         if (System.currentTimeMillis() - lastFailureTime >= cooldownMs) {
             log.info("[CachesUtils] Redis 熔断冷却结束，尝试恢复...");
             return p;
@@ -307,7 +334,7 @@ public class CachesUtils {
             return;
         }
         CacheProperties props = properties;
-        long expire = props != null ? props.getDefaultExpire() : 180L;
+        long expire = props != null ? props.getDefaultExpire() : CacheProperties.DEFAULT_EXPIRE_SECONDS;
         writeWithFallback(ops -> ops.set(key, value, expire, TimeUnit.SECONDS));
     }
 
@@ -415,7 +442,7 @@ public class CachesUtils {
      */
     public static <T> T getOrCreate(String key, java.util.function.Supplier<T> supplier) {
         CacheProperties props = properties;
-        long expire = props != null ? props.getDefaultExpire() : 180L;
+        long expire = props != null ? props.getDefaultExpire() : CacheProperties.DEFAULT_EXPIRE_SECONDS;
         return getOrCreate(key, supplier, expire, TimeUnit.SECONDS);
     }
 

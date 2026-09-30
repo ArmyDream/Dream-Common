@@ -65,9 +65,6 @@ public final class DigestUtils {
     private static final ThreadLocal<MessageDigest> SHA512_DIGEST =
             ThreadLocal.withInitial(() -> getInstance(SHA512));
 
-    /** Hex 字符表 */
-    private static final char[] HEX_DIGITS = "0123456789abcdef".toCharArray();
-
     private DigestUtils() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated");
     }
@@ -283,13 +280,33 @@ public final class DigestUtils {
 
     // ==================== 通用摘要 ====================
 
+    /**
+     * 按指定算法计算字符串摘要（UTF-8 字节，小写十六进制输出）。
+     *
+     * @param algorithm 摘要算法，如 {@code MD5}、{@code SHA-256}
+     * @param data      待摘要字符串
+     * @return 小写十六进制摘要
+     * @throws BusinessException 算法不被 JDK 支持
+     */
     public static String digest(String algorithm, String data) {
+        return digest(algorithm, data.getBytes(CharsetEnum.UTF_8.getCharset()));
+    }
+
+    /**
+     * 按指定算法计算字节数组摘要（小写十六进制输出）。
+     *
+     * @param algorithm 摘要算法，如 {@code MD5}、{@code SHA-256}
+     * @param data      待摘要字节数组
+     * @return 小写十六进制摘要
+     * @throws BusinessException 算法不被 JDK 支持
+     */
+    public static String digest(String algorithm, byte[] data) {
         Objects.requireNonNull(algorithm, "algorithm must not be null");
         Objects.requireNonNull(data, "data must not be null");
 
         try {
             MessageDigest md = MessageDigest.getInstance(algorithm);
-            return toHex(md.digest(data.getBytes(CharsetEnum.UTF_8.getCharset())));
+            return toHex(md.digest(data));
         } catch (NoSuchAlgorithmException e) {
             log.error("Unknown algorithm: {}", algorithm, e);
             throw new BusinessException("Unknown algorithm: " + algorithm, e);
@@ -326,14 +343,11 @@ public final class DigestUtils {
         return toHex(digest);
     }
 
+    /**
+     * 字节数组转小写十六进制，统一委托 {@link CodecUtils#hexEncode(byte[])}。
+     */
     private static String toHex(byte[] bytes) {
-        char[] chars = new char[bytes.length * 2];
-        for (int i = 0; i < bytes.length; i++) {
-            int b = bytes[i] & 0xFF;
-            chars[i * 2] = HEX_DIGITS[b >>> 4];
-            chars[i * 2 + 1] = HEX_DIGITS[b & 0x0F];
-        }
-        return new String(chars);
+        return CodecUtils.hexEncode(bytes);
     }
 
     private static String fileDigest(File file, MessageDigest md) {

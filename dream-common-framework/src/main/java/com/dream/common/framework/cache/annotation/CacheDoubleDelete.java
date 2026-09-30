@@ -41,27 +41,37 @@ import java.util.concurrent.TimeUnit;
  * 多 Key 场景可在同一方法上重复标注（{@link Repeatable}）。
  * </p>
  *
+ * <h2>与 {@code @QueryCache} 配对</h2>
+ * <p>
+ * 本注解<b>不做 Key 前缀拼接</b>：{@link #key()} / {@link #keys()} / {@link #spel()} 求出的字符串
+ * 就是最终删除的 Key（{@link #prefix()} 只决定"精确删"还是"按前缀批量删"）。
+ * 因此要删掉 {@code QueryCache} 写入的缓存，两侧 Key 必须逐字一致，
+ * 含 {@code QueryCache} 侧 {@code prefix} 拼上的模块前缀。
+ * 命名空间约定见 {@link QueryCache}：业务 Key 自带模块前缀（如 {@code dream:user:}），
+ * 不要使用框架保留前缀 {@code prevent-duplicate:}、{@code ws:msg:}。
+ * </p>
+ *
  * <h2>使用示例</h2>
  * <pre>{@code
  * // 1. 固定 key
- * @CacheDoubleDelete(key = "user:1001")
+ * @CacheDoubleDelete(key = "dream:user:1001")
  * public void updateUser(UserDTO dto) { ... }
  *
  * // 2. SpEL 动态 key（推荐）
- * @CacheDoubleDelete(spel = "'user:' + #dto.id", delay = 500)
+ * @CacheDoubleDelete(spel = "'dream:user:' + #dto.id", delay = 500)
  * public void updateUser(@Param("dto") UserDTO dto) { ... }
  *
- * // 3. 前缀批量删除
- * @CacheDoubleDelete(key = "user:", prefix = true)
+ * // 3. 前缀批量删除（清空某用户相关的所有查询缓存）
+ * @CacheDoubleDelete(key = "dream:user:list:", prefix = true)
  * public void batchUpdateUsers() { ... }
  *
  * // 4. 多 key 重复标注
- * @CacheDoubleDelete(spel = "'user:' + #dto.id")
- * @CacheDoubleDelete(spel = "'user_extra:' + #dto.id")
+ * @CacheDoubleDelete(spel = "'dream:user:' + #dto.id")
+ * @CacheDoubleDelete(spel = "'dream:user_extra:' + #dto.id")
  * public void updateUser(@Param("dto") UserDTO dto) { ... }
  *
  * // 5. 异常时也执行第二次删除（默认 false：仅方法正常返回后删除）
- * @CacheDoubleDelete(key = "order:1001", deleteOnException = true)
+ * @CacheDoubleDelete(key = "dream:order:1001", deleteOnException = true)
  * public void updateOrder(OrderDTO dto) { ... }
  * }</pre>
  *
@@ -105,6 +115,10 @@ public @interface CacheDoubleDelete {
      * <p>
      * true：使用 {@link com.dream.common.framework.cache.CachesUtils#deletePrefix(String)} 删除匹配前缀的所有 Key
      * false：精确删除单个 Key
+     * </p>
+     * <p>
+     * 注意与 {@code QueryCache#prefix()} 无关：后者是拼进 Key 的字符串模块前缀，
+     * 本属性只是"精确删 / 按前缀批量删"的模式开关。
      * </p>
      *
      * @return 是否前缀模式

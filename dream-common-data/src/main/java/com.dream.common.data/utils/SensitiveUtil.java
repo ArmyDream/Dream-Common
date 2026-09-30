@@ -1,13 +1,21 @@
 package com.dream.common.data.utils;
 
+import com.dream.common.core.utils.DesensitizeUtils;
 import com.dream.common.data.enums.SensitiveType;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 数据脱敏工具类
+ * 数据脱敏工具类 —— {@link SensitiveType} 到掩码规则的映射表
  * <p>
- * 根据不同的敏感数据类型（手机号、身份证、银行卡、邮箱、姓名、地址等）
- * 对原始数据进行脱敏处理，将敏感部分替换为占位字符（默认 {@code *}）。
+ * 掩码算法不在本类实现，统一委托 core 模块的
+ * {@link DesensitizeUtils#desensitize(String, int, int, String)}（框架内唯一实现）。
+ * 本类只负责两件事：按 {@link SensitiveType} 选择"保留前几位 / 后几位"，
+ * 以及在数据明显不属于该类型（长度不符、无 {@code @}）时不做处理，避免输出误导性的部分掩码。
+ * </p>
+ * <p>
+ * <b>保留位数与 core 的 {@code DesensitizeType} 故意不同</b>：本注解面向前端展示，取值更严格
+ * （身份证前3后4 而非前6后4，不暴露属地码；地址只留前2位即省市，而 core 的 ADDRESS 留前6位）。
+ * 两侧数字不要相互"对齐"，改动任一侧都会影响已上线的展示结果。
  * </p>
  * <p>
  * 使用示例：
@@ -44,7 +52,7 @@ public class SensitiveUtil {
      * @return 脱敏后的字符串
      */
     public static String desensitize(String value, SensitiveType type, String rule, String replaceChar) {
-        if (value == null || value.isEmpty()) {
+        if (value == null || value.isEmpty() || type == null) {
             return value;
         }
 
@@ -52,17 +60,29 @@ public class SensitiveUtil {
 
         switch (type) {
             case MOBILE:
-                return desensitizeMobile(value, replace);
+                // 仅 11 位手机号才脱敏，其余长度原样返回（避免把座机/测试号掩成误导性的结果）
+                return value.length() == 11
+                        ? DesensitizeUtils.desensitize(value, 3, 4, replace)
+                        : value;
             case ID_CARD:
-                return desensitizeIdCard(value, replace);
+                // 长度不足 10 位不处理；保留前3后4（core 的 ID_CARD 保留前6，会露出属地码，
+                // 展示场景按更严格的这条走）
+                return value.length() < 10
+                        ? value
+                        : DesensitizeUtils.desensitize(value, 3, 4, replace);
             case BANK_CARD:
-                return desensitizeBankCard(value, replace);
+                // 保留前4后4（BIN 前缀 + 末4位可定位发卡行与卡号尾号，再多了就等于不脱敏）
+                return value.length() < 10
+                        ? value
+                        : DesensitizeUtils.desensitize(value, 4, 4, replace);
             case EMAIL:
                 return desensitizeEmail(value, replace);
             case NAME:
-                return desensitizeName(value, replace);
+                // 保留姓氏、隐藏名字：张三 -> 张*
+                return DesensitizeUtils.desensitize(value, 1, 0, replace);
             case ADDRESS:
-                return desensitizeAddress(value, replace);
+                // 只保留前 2 位（省市），core 的 ADDRESS 保留前 6 位对展示太宽
+                return DesensitizeUtils.desensitize(value, 2, 0, replace);
             case CUSTOM:
                 return desensitizeCustom(value, rule, replace);
             default:
@@ -71,108 +91,25 @@ public class SensitiveUtil {
     }
 
     /**
-     * 手机号脱敏（138****1234）
-     * <p>仅对长度为 11 的手机号脱敏，其余原样返回。</p>
+     * 邮箱脱敏：保留本地部分首字符，{@code @} 与域名完整保留，本地部分其余字符掩码替换
+     * <p>
+     * 与 core 的 {@code DesensitizeUtils.desensitizeEmail(String)} 为同一条规则，
+     * 差别只在占位字符可自定义，以及无 {@code @} 的畸形值本类原样返回（core 会按通用前后缀规则掩码）。
+     * </p>
      *
-     * @param mobile       手机号
-     * @param replaceChar  替换占位字符
-     * @return 脱敏后的手机号
-     */
-    private static String desensitizeMobile(String mobile, String replaceChar) {
-        if (mobile.length() != 11) {
-            return mobile;
-        }
-        return mobile.substring(0, 3) + repeat(replaceChar, 4) + mobile.substring(7);
-    }
-
-    /**
-     * 身份证脱敏（110***********1234）
-     * <p>保留前 3 位与后 4 位，中间部分替换为占位字符。长度不足 10 时原样返回。</p>
-     *
-     * @param idCard       身份证号
-     * @param replaceChar  替换占位字符
-     * @return 脱敏后的身份证号
-     */
-    private static String desensitizeIdCard(String idCard, String replaceChar) {
-        if (idCard.length() < 10) {
-            return idCard;
-        }
-        int prefixLen = 3;
-        int suffixLen = 4;
-        String prefix = idCard.substring(0, prefixLen);
-        String suffix = idCard.substring(idCard.length() - suffixLen);
-        return prefix + repeat(replaceChar, idCard.length() - prefixLen - suffixLen) + suffix;
-    }
-
-    /**
-     * 银行卡号脱敏（6222***********1234）
-     * <p>保留前 4 位与后 4 位，中间部分替换为占位字符。长度不足 10 时原样返回。</p>
-     *
-     * @param bankCard     银行卡号
-     * @param replaceChar  替换占位字符
-     * @return 脱敏后的银行卡号
-     */
-    private static String desensitizeBankCard(String bankCard, String replaceChar) {
-        if (bankCard.length() < 10) {
-            return bankCard;
-        }
-        int prefixLen = 4;
-        int suffixLen = 4;
-        String prefix = bankCard.substring(0, prefixLen);
-        String suffix = bankCard.substring(bankCard.length() - suffixLen);
-        return prefix + repeat(replaceChar, bankCard.length() - prefixLen - suffixLen) + suffix;
-    }
-
-    /**
-     * 邮箱脱敏（abc***@xx.com）
-     * <p>保留首字符与域名部分，中间替换为 3 个占位字符。
-     * 当 {@code @} 前缀长度不足时原样返回。</p>
-     *
-     * @param email        邮箱地址
-     * @param replaceChar  替换占位字符
+     * @param email       邮箱地址
+     * @param replaceChar 替换占位字符
      * @return 脱敏后的邮箱地址
      */
     private static String desensitizeEmail(String email, String replaceChar) {
-        int atIndex = email.indexOf("@");
-        if (atIndex <= 1) {
+        int atIndex = email.indexOf('@');
+        if (atIndex < 1) {
+            // 无 @ 或 "@domain" 形态：没有本地部分可掩，原样返回
             return email;
         }
-        String prefix = email.substring(0, 1);
-        String suffix = email.substring(atIndex);
-        return prefix + repeat(replaceChar, 3) + suffix;
-    }
-
-    /**
-     * 姓名脱敏（*三）
-     * <p>保留姓之后的部分，首字符替换为占位字符。长度不足等于 1 时原样返回。</p>
-     *
-     * @param name         姓名
-     * @param replaceChar  替换占位字符
-     * @return 脱敏后的姓名
-     */
-    private static String desensitizeName(String name, String replaceChar) {
-        if (name.length() <= 1) {
-            return name;
-        }
-        return replaceChar + name.substring(1);
-    }
-
-    /**
-     * 地址脱敏（北京市****）
-     * <p>保留前 2 位，其余部分替换为占位字符。长度不足等于 2 时原样返回。</p>
-     *
-     * @param address      地址
-     * @param replaceChar  替换占位字符
-     * @return 脱敏后的地址
-     */
-    private static String desensitizeAddress(String address, String replaceChar) {
-        int len = address.length();
-        if (len <= 2) {
-            return address;
-        }
-        int keepLen = 2;
-        String prefix = address.substring(0, keepLen);
-        return prefix + repeat(replaceChar, len - keepLen);
+        // 本地部分仅 1 位时连该字符一起掩掉，否则等于不脱敏
+        int prefix = atIndex == 1 ? 0 : 1;
+        return DesensitizeUtils.desensitize(email, prefix, email.length() - atIndex, replaceChar);
     }
 
     /**
@@ -195,39 +132,13 @@ public class SensitiveUtil {
 
         try {
             String[] parts = rule.split("-");
-            int prefixLen = Integer.parseInt(parts[0]);
-            int suffixLen = Integer.parseInt(parts[1]);
-
-            if (value.length() <= prefixLen + suffixLen) {
-                return value;
-            }
-
-            String prefix = value.substring(0, prefixLen);
-            String suffix = value.substring(value.length() - suffixLen);
-            return prefix + repeat(replaceChar, value.length() - prefixLen - suffixLen) + suffix;
+            int prefixLen = Integer.parseInt(parts[0].trim());
+            int suffixLen = Integer.parseInt(parts[1].trim());
+            return DesensitizeUtils.desensitize(value, prefixLen, suffixLen, replaceChar);
         } catch (Exception e) {
-            // 规则解析或处理失败时记录日志并原样返回，避免影响主流程
+            // 规则解析失败时记录日志并原样返回，避免影响主流程
             log.warn("自定义脱敏规则处理失败，value=\"{}\", rule=\"{}\"", value, rule, e);
             return value;
         }
-    }
-
-    /**
-     * 将指定字符重复拼接指定次数
-     * <p>
-     * 注：JDK 11+ 可直接使用 {@link String#repeat(int)} 替代本方法，
-     * 此处为兼容更低版本 JDK 保留循环拼接实现。
-     * </p>
-     *
-     * @param str   需要重复的字符
-     * @param count 重复次数
-     * @return 重复拼接后的字符串
-     */
-    private static String repeat(String str, int count) {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < count; i++) {
-            sb.append(str);
-        }
-        return sb.toString();
     }
 }

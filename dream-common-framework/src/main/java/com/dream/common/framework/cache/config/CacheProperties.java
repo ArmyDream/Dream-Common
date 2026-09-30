@@ -1,5 +1,6 @@
 package com.dream.common.framework.cache.config;
 
+import com.dream.common.core.constant.Business;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -33,6 +34,14 @@ import java.util.concurrent.TimeUnit;
 public class CacheProperties {
 
     /**
+     * 默认过期时间（秒），与 {@code CachesCaffeineUtils.DEFAULT_EXPIRE_TIME} 同源
+     * <p>
+     * 未绑定 Spring 配置（如静态工具先于容器初始化）时也走这一常量，避免各处再硬编码 180。
+     * </p>
+     */
+    public static final long DEFAULT_EXPIRE_SECONDS = Business.CACHE_EXPIRE_3_MIN;
+
+    /**
      * 缓存类型选择
      * <ul>
      *   <li>{@code AUTO}：自动（Redis 在场优先，不可用降级 Caffeine）—— 默认</li>
@@ -49,8 +58,12 @@ public class CacheProperties {
 
     /**
      * 默认过期时间（秒）
+     * <p>
+     * 取 {@link #DEFAULT_EXPIRE_SECONDS}，与 {@code CachesCaffeineUtils.DEFAULT_EXPIRE_TIME}
+     * 同一来源，避免两处各写 180。
+     * </p>
      */
-    private long defaultExpire = 180L;
+    private long defaultExpire = DEFAULT_EXPIRE_SECONDS;
 
     /**
      * Redis 相关配置
@@ -100,14 +113,18 @@ public class CacheProperties {
     public static class Redis {
 
         /**
-         * Redis 熔断后再次探活的冷却时间（秒）
+         * 熔断后再探活的默认冷却时间（秒），未绑定配置时使用
          */
-        private long healthCooldownSeconds = 30L;
+        public static final long DEFAULT_HEALTH_COOLDOWN_SECONDS = 30L;
 
         /**
-         * 探活时执行的 PING 超时时间（毫秒）
+         * Redis 熔断后再次探活的冷却时间（秒）
+         * <p>
+         * 探活为<b>被动</b>方式：冷却期结束后的首次真实调用即为探测，成功则回切主缓存，
+         * 失败则重新进入冷却。因此不存在独立的主动 PING 通道，也就没有 PING 超时配置项。
+         * </p>
          */
-        private long pingTimeoutMs = 1000L;
+        private long healthCooldownSeconds = DEFAULT_HEALTH_COOLDOWN_SECONDS;
     }
 
     /**

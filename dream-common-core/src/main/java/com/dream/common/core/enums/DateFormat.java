@@ -76,17 +76,15 @@ public enum DateFormat implements BaseEnum<String> {
             "^\\d{8}$"),
 
     TIME_COMPACT("HHmmss", "紧凑时间",
-            "^\\d{6}$"),
-
-    // ==================== 数据库专用 ====================
-
-    ORACLE_DB("YYYY-MM-DD HH24:MI:SS", "Oracle数据库", null),
-
-    MYBATIS_DB("%Y-%m-%d %H:%i:%s", "MyBatis", null);
+            "^\\d{6}$");
 
     // 注意：TIMESTAMP_MILLIS 与 DATE_TIME_COMPACT_MILLIS 的 pattern 和 regex 完全相同（^\d{17}$）
     // TIMESTAMP_SECOND 与 DATE_TIME_COMPACT 的 pattern 和 regex 完全相同（^\d{14}$）
     // 为避免 matchPattern() 歧义，不再重复定义，请直接引用对应的紧凑格式枚举
+    //
+    // 也不收录数据库侧格式串（Oracle 的 'YYYY-MM-DD HH24:MI:SS'、MySQL/MyBatis 的 '%Y-%m-%d %H:%i:%s'）：
+    // 本枚举的 pattern 一律交给 SimpleDateFormat / DateTimeFormatter 使用，上面两种写法不是合法的
+    // Java pattern（'%Y' 会直接抛 IllegalArgumentException），只应出现在 SQL 语句里。
 
     private final String pattern;
     private final String label;
@@ -141,9 +139,6 @@ public enum DateFormat implements BaseEnum<String> {
             case DATE_COMPACT:
             case TIME_COMPACT:
                 return "#FF7A45";
-            case ORACLE_DB:
-            case MYBATIS_DB:
-                return "#8C8C8C";
             case DATE_TIME_CHINESE:
             case DATE_CHINESE:
                 return "#FF4D4F";
@@ -179,12 +174,9 @@ public enum DateFormat implements BaseEnum<String> {
 
     /**
      * 获取所有的 Pattern，用于校验
-     * 排查 数据库、Oracle、MyBatis 的时间格式
      */
     public static String[] getAllPatterns() {
-        return Arrays.stream(values()).filter(
-                format -> !(format == ORACLE_DB || format == MYBATIS_DB)
-        ).map(BaseEnum::getValue).toArray(String[]::new);
+        return Arrays.stream(values()).map(BaseEnum::getValue).toArray(String[]::new);
     }
 
     public static List<String> getWeekList(Language lang) {

@@ -39,6 +39,19 @@ import java.util.function.Supplier;
  *   <li><b>线程工厂</b>：{@link #namedThreadFactory(String)}</li>
  * </ul>
  *
+ * <h2>两个线程池的分工</h2>
+ * <ul>
+ *   <li><b>{@code taskThreadPool}（Spring Bean）</b>：{@code @Async} 与 Spring 异步基础设施使用，
+ *       参数来自 {@code spring.task.execution.*}，带 MDC 装饰器。</li>
+ *   <li><b>全局默认池（{@link #getDefaultExecutor()}）</b>：本类静态入口
+ *       {@link #execute(Runnable)} / {@link #submit(Callable)} 使用，参数取本类 {@code DEFAULT_*} 常量，
+ *       JVM 关闭时自动 shutdown。</li>
+ * </ul>
+ * <p>
+ * 两者是独立实例、互不复用：同一份配置不会同时作用于两个池，请按入口选择调参位置。
+ * 业务侧需要统一时，建议显式注入 {@code taskThreadPool} 而非使用静态入口。
+ * </p>
+ *
  * <h2>Spring Boot 配置示例（application.yml）</h2>
  * <pre>{@code
  * spring:
@@ -91,8 +104,15 @@ public final class ThreadPoolUtils {
     /** 默认空闲线程存活时间（秒） */
     public static final long DEFAULT_KEEP_ALIVE_SECONDS = 60L;
 
-    /** 默认队列容量 */
-    public static final int DEFAULT_QUEUE_CAPACITY = Integer.MAX_VALUE;
+    /**
+     * 默认队列容量
+     * <p>
+     * 必须是有界值：线程池只有在<b>队列已满</b>时才会把线程数扩到 {@code maxPoolSize}，
+     * 也用 {@code CallerRunsPolicy} 做背压。若默认 {@code Integer.MAX_VALUE}（无界队列），
+     * {@code maxPoolSize} 与拒绝策略都会失效——任务只会在核心线程上排队，最终堆积到 OOM。
+     * </p>
+     */
+    public static final int DEFAULT_QUEUE_CAPACITY = 512;
 
     /** 默认关闭等待时间（秒） */
     public static final long DEFAULT_SHUTDOWN_TIMEOUT_SECONDS = 30L;

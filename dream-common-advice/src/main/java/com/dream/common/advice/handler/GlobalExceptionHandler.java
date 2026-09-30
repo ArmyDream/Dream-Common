@@ -3,6 +3,7 @@ package com.dream.common.advice.handler;
 import com.dream.common.core.api.ExceptionHandlerDelegate;
 import com.dream.common.core.enums.ResponseCode;
 import com.dream.common.core.exception.BusinessException;
+import com.dream.common.core.utils.DesensitizeUtils;
 import com.dream.common.core.utils.HandleUtils;
 import com.dream.common.core.utils.R;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +38,6 @@ import java.io.IOException;
 import java.sql.SQLIntegrityConstraintViolationException;
 import java.sql.SQLSyntaxErrorException;
 import java.util.List;
-import java.util.Locale;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -567,41 +567,12 @@ public class GlobalExceptionHandler {
             if (httpReq != null) {
                 String uri = httpReq.getRequestURI();
                 String qs = httpReq.getQueryString();
-                return qs != null ? uri + "?" + maskSensitiveQuery(qs) : uri;
+                return qs != null ? uri + "?" + DesensitizeUtils.maskSensitiveQuery(qs) : uri;
             }
         }
         if (request != null) {
             return request.getDescription(false);
         }
         return "unknown";
-    }
-
-    /**
-     * 日志输出前对查询串中的敏感参数值脱敏（password/token/code 等）。
-     *
-     * @param queryString 原始查询串
-     * @return 脱敏后的查询串
-     */
-    private String maskSensitiveQuery(String queryString) {
-        String[] pairs = queryString.split("&");
-        StringBuilder sb = new StringBuilder(queryString.length());
-        for (int i = 0; i < pairs.length; i++) {
-            if (i > 0) {
-                sb.append('&');
-            }
-            String pair = pairs[i];
-            int eq = pair.indexOf('=');
-            if (eq > 0) {
-                String name = pair.substring(0, eq).toLowerCase(Locale.ROOT);
-                if (name.contains("password") || name.contains("passwd") || name.contains("pwd")
-                        || name.contains("token") || name.contains("secret") || name.contains("code")
-                        || name.contains("captcha") || name.contains("authorization")) {
-                    sb.append(name).append("=***");
-                    continue;
-                }
-            }
-            sb.append(pair);
-        }
-        return sb.toString();
     }
 }

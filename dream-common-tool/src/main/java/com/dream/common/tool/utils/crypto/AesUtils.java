@@ -21,17 +21,26 @@ import java.util.Objects;
 /**
  * AES 对称加密工具类
  * <p>
- * 提供 AES-128/192/256 加密解密能力，支持 ECB 和 GCM 两种模式。
- * <b>推荐使用 GCM 模式（认证加密，安全性更高）</b>；ECB 方法已标记过时，仅供兼容历史数据。
+ * 提供 AES-128/192/256 加密解密能力，统一采用 GCM 认证加密模式。
  * </p>
  * <p>
  * 核心能力：
  * <ul>
- *   <li>{@link #encrypt(String, String)} / {@link #decrypt(String, String)} —— AES/ECB 加解密（<b>已过时</b>，仅兼容历史数据）</li>
- *   <li>{@link #encryptGcm(String, String)} / {@link #decryptGcm(String, String)} —— AES/GCM 加解密（推荐）</li>
+ *   <li>{@link #encryptGcm(String, String)} / {@link #decryptGcm(String, String)} —— AES/GCM 加解密（随机 IV，密文含 IV）</li>
  *   <li>{@link #encryptWithSalt(String, String, String)} —— 带盐值加密（PBKDF2 密钥派生 + GCM）</li>
  *   <li>{@link #generateKey()} / {@link #generateKey(int)} —— 生成随机密钥</li>
  * </ul>
+ * </p>
+ * <p>
+ * <b>与 data 模块 {@code EncryptUtil} 的分工</b>：本类是<b>报文/配置值</b>加密入口（GCM，自带完整性校验，
+ * 输出 {@code Base64(IV + 密文 + tag)}）；{@code EncryptUtil} 是<b>字段落库</b>加密入口
+ * （CBC/PKCS5Padding，配合 {@code @Encrypt} 注解与 {@code dream.encrypt.*} 配置，密文格式
+ * {@code Base64(IV + 密文)}，无认证 tag）。
+ * </p>
+ * <p>
+ * 两套密文<b>格式互不兼容、不可混用</b>：把 {@code EncryptUtil} 已入库的历史密文改用本类解密会得到
+ * 乱码或校验失败，反之亦然。切换存储算法必须先做数据迁移，因此两侧格式保持冻结，不要"顺手统一"。
+ * 新代码若不涉及历史数据，优先使用本类（GCM 认证加密）。
  * </p>
  *
  * @author dream
@@ -42,9 +51,6 @@ public final class AesUtils {
 
     /** AES 算法名 */
     private static final String AES = "AES";
-
-    /** AES/ECB/PKCS5Padding 转换 */
-    private static final String AES_ECB_PKCS5 = "AES/ECB/PKCS5Padding";
 
     /** AES/GCM/NoPadding 转换 */
     private static final String AES_GCM_NOPADDING = "AES/GCM/NoPadding";
@@ -70,127 +76,6 @@ public final class AesUtils {
     private AesUtils() {
         throw new UnsupportedOperationException("Utility class cannot be instantiated");
     }
-
-    // ==================== AES/ECB 加密解密 ====================
-
-    /**
-     * AES/ECB 加密（字符串 → Base64）
-     * <p>
-     * <b>已过时</b>：ECB 分组模式下相同明文块产生相同密文，明文结构（长度、重复块）可被统计分析，
-     * 仅用于兼容历史数据；新业务请使用 {@link #encryptGcm(String, String)}。
-     * </p>
-     *
-     * @param data 明文数据，不能为 null
-     * @param key  密钥（16/24/32 字节，对应 AES-128/192/256）
-     * @return Base64 编码的密文
-     * @throws BusinessException 如果加密失败
-     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #encryptGcm(String, String)}
-     */
-    @Deprecated
-    public static String encrypt(String data, String key) {
-        Objects.requireNonNull(data, "data must not be null");
-        Objects.requireNonNull(key, "key must not be null");
-
-        try {
-            SecretKeySpec keySpec = parseKey(key);
-            Cipher cipher = Cipher.getInstance(AES_ECB_PKCS5);
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
-            byte[] encrypted = cipher.doFinal(data.getBytes(CharsetEnum.UTF_8.getCharset()));
-            log.debug("AES/ECB encryption completed");
-            return Base64.getEncoder().encodeToString(encrypted);
-        } catch (Exception e) {
-            log.error("AES/ECB encrypt failed", e);
-            throw new BusinessException("AES/ECB encrypt failed", e);
-        }
-    }
-
-    /**
-     * AES/ECB 解密（Base64 → 字符串）
-     * <p>
-     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于解密历史密文；新业务请使用 {@link #decryptGcm(String, String)}。
-     * </p>
-     *
-     * @param encryptedData Base64 编码的密文，不能为 null
-     * @param key           密钥（16/24/32 字节）
-     * @return 解密后的明文
-     * @throws BusinessException 如果解密失败
-     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #decryptGcm(String, String)}
-     */
-    @Deprecated
-    public static String decrypt(String encryptedData, String key) {
-        Objects.requireNonNull(encryptedData, "encryptedData must not be null");
-        Objects.requireNonNull(key, "key must not be null");
-
-        try {
-            SecretKeySpec keySpec = parseKey(key);
-            Cipher cipher = Cipher.getInstance(AES_ECB_PKCS5);
-            cipher.init(Cipher.DECRYPT_MODE, keySpec);
-            byte[] decrypted = cipher.doFinal(Base64.getDecoder().decode(encryptedData));
-            log.debug("AES/ECB decryption completed");
-            return new String(decrypted, CharsetEnum.UTF_8.getCharset());
-        } catch (Exception e) {
-            log.error("AES/ECB decrypt failed", e);
-            throw new BusinessException("AES/ECB decrypt failed", e);
-        }
-    }
-
-    /**
-     * AES/ECB 加密（字节数组）
-     * <p>
-     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于兼容历史数据；新业务请使用 {@link #encryptGcm(byte[], byte[])}。
-     * </p>
-     *
-     * @param data 明文数据
-     * @param key  密钥字节数组（16/24/32 字节）
-     * @return 密文字节数组
-     * @throws BusinessException 如果加密失败
-     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #encryptGcm(byte[], byte[])}
-     */
-    @Deprecated
-    public static byte[] encrypt(byte[] data, byte[] key) {
-        Objects.requireNonNull(data, "data must not be null");
-        Objects.requireNonNull(key, "key must not be null");
-
-        try {
-            SecretKeySpec keySpec = new SecretKeySpec(key, AES);
-            Cipher cipher = Cipher.getInstance(AES_ECB_PKCS5);
-            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
-            return cipher.doFinal(data);
-        } catch (Exception e) {
-            log.error("AES/ECB encrypt (bytes) failed", e);
-            throw new BusinessException("AES/ECB encrypt failed", e);
-        }
-    }
-
-    /**
-     * AES/ECB 解密（字节数组）
-     * <p>
-     * <b>已过时</b>：ECB 模式存在安全隐患，仅用于解密历史密文；新业务请使用 {@link #decryptGcm(byte[], byte[])}。
-     * </p>
-     *
-     * @param encryptedData 密文字节数组
-     * @param key           密钥字节数组（16/24/32 字节）
-     * @return 明文字节数组
-     * @throws BusinessException 如果解密失败
-     * @deprecated 使用存在安全隐患的 ECB 模式，请改用 {@link #decryptGcm(byte[], byte[])}
-     */
-    @Deprecated
-    public static byte[] decrypt(byte[] encryptedData, byte[] key) {
-        Objects.requireNonNull(encryptedData, "encryptedData must not be null");
-        Objects.requireNonNull(key, "key must not be null");
-
-        try {
-            SecretKeySpec keySpec = new SecretKeySpec(key, AES);
-            Cipher cipher = Cipher.getInstance(AES_ECB_PKCS5);
-            cipher.init(Cipher.DECRYPT_MODE, keySpec);
-            return cipher.doFinal(encryptedData);
-        } catch (Exception e) {
-            log.error("AES/ECB decrypt (bytes) failed", e);
-            throw new BusinessException("AES/ECB decrypt failed", e);
-        }
-    }
-
-    // ==================== AES/GCM 加密解密（推荐） ====================
 
     /**
      * AES/GCM 加密（字符串 → Base64）

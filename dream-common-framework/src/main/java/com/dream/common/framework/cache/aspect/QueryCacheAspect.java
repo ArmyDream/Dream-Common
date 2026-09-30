@@ -4,6 +4,7 @@ import com.dream.common.core.utils.R;
 import com.dream.common.framework.cache.CachesUtils;
 import com.dream.common.framework.cache.annotation.QueryCache;
 import com.dream.common.framework.cache.config.CacheProperties;
+import com.dream.common.framework.support.SpelSupport;
 import com.dream.common.tool.utils.StringUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -14,10 +15,6 @@ import org.aspectj.lang.reflect.MethodSignature;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.expression.MethodBasedEvaluationContext;
-import org.springframework.core.DefaultParameterNameDiscoverer;
-import org.springframework.core.ParameterNameDiscoverer;
-import org.springframework.expression.ExpressionParser;
-import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.stereotype.Component;
 
 import java.lang.reflect.Method;
@@ -55,12 +52,6 @@ import java.util.concurrent.TimeUnit;
 @Component
 @ConditionalOnProperty(prefix = "dream.cache.query-cache", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class QueryCacheAspect {
-
-    /** SpEL 表达式解析器（线程安全） */
-    private final ExpressionParser parser = new SpelExpressionParser();
-
-    /** 方法参数名发现器 */
-    private final ParameterNameDiscoverer parameterNameDiscoverer = new DefaultParameterNameDiscoverer();
 
     /** 缓存配置（可选注入） */
     private final ObjectProvider<CacheProperties> propertiesProvider;
@@ -110,12 +101,11 @@ public class QueryCacheAspect {
         }
 
         // 2. 计算 condition
-        MethodBasedEvaluationContext ctx = new MethodBasedEvaluationContext(
-                null, method, args, parameterNameDiscoverer);
-        ctx.setVariable("args", args);
+        MethodBasedEvaluationContext ctx = SpelSupport.newMethodContext(method, args);
         if (StringUtils.isNotBlank(annotation.condition())) {
             try {
-                Boolean satisfied = parser.parseExpression(annotation.condition()).getValue(ctx, Boolean.class);
+                Boolean satisfied = SpelSupport.getParser().parseExpression(annotation.condition())
+                        .getValue(ctx, Boolean.class);
                 if (satisfied == null || !satisfied) {
                     if (log.isDebugEnabled()) {
                         log.debug("[QueryCache] condition 不满足，跳过缓存 | method={} | cond={}",
@@ -181,7 +171,7 @@ public class QueryCacheAspect {
             if (expire <= 0L) {
                 // 回退到默认过期时间
                 CacheProperties props = propertiesProvider.getIfAvailable();
-                expire = (props != null) ? props.getDefaultExpire() : 180L;
+                expire = (props != null) ? props.getDefaultExpire() : CacheProperties.DEFAULT_EXPIRE_SECONDS;
                 unit = TimeUnit.SECONDS;
             }
             CachesUtils.set(cacheKey, data, expire, unit);
@@ -215,7 +205,7 @@ public class QueryCacheAspect {
         String key;
         if (StringUtils.isNotBlank(annotation.spel())) {
             try {
-                Object value = parser.parseExpression(annotation.spel()).getValue(ctx);
+                Object value = SpelSupport.getParser().parseExpression(annotation.spel()).getValue(ctx);
                 key = (value == null) ? "" : String.valueOf(value);
             } catch (Exception e) {
                 log.warn("[QueryCache] SpEL 解析失败，回退到默认 Key | spel={} | err={}",

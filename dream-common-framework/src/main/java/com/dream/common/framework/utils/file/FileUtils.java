@@ -3,14 +3,15 @@ package com.dream.common.framework.utils.file;
 import com.dream.common.core.enums.FileCat;
 import com.dream.common.core.enums.FileType;
 import com.dream.common.core.enums.StringPool;
+import com.dream.common.framework.utils.ServletUtils;
 import com.dream.common.tool.utils.StringUtils;
+import com.dream.common.tool.utils.crypto.CodecUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.*;
-import java.net.URLEncoder;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.Charset;
@@ -115,9 +116,17 @@ public final class FileUtils {
     private static final String RANDOM_CHARS = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     /**
-     * 魔数检测所需的头部字节数（当前最长魔数为 6 字节，留足余量）
+     * 魔数检测所需的头部字节数
+     * <p>
+     * 需覆盖最长魔数（BT 种子 10 字节）以及 RIFF 容器第 8 字节起的 FOURCC，留足余量。
+     * </p>
      */
     private static final int MAGIC_HEADER_SIZE = 32;
+
+    /**
+     * 通用附件下载的 MIME 类型（未知二进制流）
+     */
+    private static final String CONTENT_TYPE_OCTET_STREAM = "application/octet-stream";
 
     /**
      * 客户端文件名为空或清洗后为空时的占位名
@@ -298,6 +307,9 @@ public final class FileUtils {
 
     /**
      * 按魔数匹配文件类型，从长到短截取头部字节尝试
+     * <p>
+     * 传入完整头部十六进制，使共享主魔数的容器族（RIFF 的 WEBP/WAV/AVI）能按二级签名区分。
+     * </p>
      *
      * @param header 头部字节
      * @param length 参与匹配的有效字节数
@@ -312,30 +324,12 @@ public final class FileUtils {
             if (len > magicHex.length()) {
                 continue;
             }
-            FileType type = FileType.fromMagic(magicHex.substring(0, len));
+            FileType type = FileType.fromMagic(magicHex.substring(0, len), magicHex);
             if (type != null) {
                 return type;
             }
         }
         return null;
-    }
-
-    /**
-     * 判断头部字节是否以指定魔数开头
-     *
-     * @param header   头部字节
-     * @param magicHex 十六进制魔数
-     * @return true 表示内容以该魔数开头
-     */
-    private static boolean startsWithMagic(byte[] header, String magicHex) {
-        if (header == null || StringUtils.isObjectBlank(magicHex) || magicHex.length() % 2 != 0) {
-            return false;
-        }
-        int magicBytes = magicHex.length() / 2;
-        if (header.length < magicBytes) {
-            return false;
-        }
-        return magicHex.equalsIgnoreCase(bytesToHex(header, magicBytes));
     }
 
     /**
@@ -1597,14 +1591,24 @@ public final class FileUtils {
     }
 
     /**
-     * 判断检测出的类型是否被允许（同魔数的不同扩展名互相认可）
+     * 判断检测出的类型是否被允许
+     * <p>
+     * 规则：
+     * <ol>
+     *   <li>与允许类型完全一致 → 允许。</li>
+     *   <li>同主魔数的<b>不可区分族</b>之间互相认可（如 DOCX/XLSX/ZIP/JAR 都是 {@code 504B0304}，
+     *       DOC/XLS/PPT 都是 {@code D0CF11E0}）→ 允许。</li>
+     *   <li>只要有一方带<b>二级签名</b>（RIFF 族的 WEBP/WAV/AVI，主魔数同为 {@code 52494646}，
+     *       但 FOURCC 已能精确判定）→ <b>不再互相认可</b>，必须精确匹配，
+     *       否则音频文件可借"同魔数"混进图片白名单。</li>
+     * </ol>
+     * </p>
      *
      * @param detected     魔数检测出的类型
      * @param allowedTypes 允许的文件类型
      * @return true 表示允许
      */
     private static boolean magicAllowed(FileType detected, FileType... allowedTypes) {
-        String detectedMagic = detected.getMagicHex();
         for (FileType type : allowedTypes) {
             if (type == null) {
                 continue;
@@ -1613,7 +1617,11 @@ public final class FileUtils {
                 return true;
             }
             String magic = type.getMagicHex();
-            if (StringUtils.isObjectNotBlank(magic) && magic.equalsIgnoreCase(detectedMagic)) {
+            if (!StringUtils.isObjectNotBlank(magic) || !magic.equalsIgnoreCase(detected.getMagicHex())) {
+                continue;
+            }
+            // 魔数相同：任一方能被二级签名精确定位时，就不允许跨类型认可
+            if (type.getSubMagicHex() == null && detected.getSubMagicHex() == null) {
                 return true;
             }
         }
@@ -1719,10 +1727,7 @@ public final class FileUtils {
                 ? path.getFileName().toString()
                 : downloadName;
         try {
-            String encoded = URLEncoder.encode(fileName, "UTF-8").replaceAll("\\+", "%20");
-            response.setContentType("application/octet-stream");
-            response.setCharacterEncoding("utf-8");
-            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+            ServletUtils.writeDownloadHeaders(response, fileName, CONTENT_TYPE_OCTET_STREAM);
             response.setContentLengthLong(Files.size(path));
             Files.copy(path, response.getOutputStream());
             response.getOutputStream().flush();
@@ -1748,10 +1753,7 @@ public final class FileUtils {
             return false;
         }
         try {
-            String encoded = URLEncoder.encode(downloadName, "UTF-8").replaceAll("\\+", "%20");
-            response.setContentType("application/octet-stream");
-            response.setCharacterEncoding("utf-8");
-            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+            ServletUtils.writeDownloadHeaders(response, downloadName, CONTENT_TYPE_OCTET_STREAM);
             response.setContentLength(data.length);
             response.getOutputStream().write(data);
             response.getOutputStream().flush();
@@ -2113,15 +2115,13 @@ public final class FileUtils {
     }
 
     /**
-     * 字节数组转十六进制（大写）
+     * 字节数组前 length 字节转十六进制（小写，委托 {@link CodecUtils#hexEncode(byte[])}）
+     * <p>
+     * 魔数比对均为 {@code equalsIgnoreCase}，大小写不影响判定，统一小写以免与工具类输出分歧。
+     * </p>
      */
     private static String bytesToHex(byte[] bytes, int length) {
-        StringBuilder sb = new StringBuilder(length * 2);
-        for (int i = 0; i < length; i++) {
-            sb.append(Character.forDigit((bytes[i] >> 4) & 0xF, 16));
-            sb.append(Character.forDigit(bytes[i] & 0xF, 16));
-        }
-        return sb.toString().toUpperCase();
+        return CodecUtils.hexEncode(Arrays.copyOf(bytes, length));
     }
 
     /**

@@ -2,11 +2,13 @@ package com.dream.common.tool.utils;
 
 import com.dream.common.core.constant.Business;
 import com.dream.common.core.enums.StringPool;
+import com.dream.common.tool.utils.id.UuidGenerator;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.lang.reflect.Array;
 import java.math.BigDecimal;
+import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
@@ -37,6 +39,12 @@ import java.util.stream.Stream;
 public final class StringUtils extends org.apache.commons.lang3.StringUtils {
 
     // ==================== 常量 ====================
+
+    /** 验证码等安全随机串的来源（{@link java.util.Random} 子类，线程安全） */
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
+    /** 数字验证码长度 */
+    private static final int VERIFY_CODE_LENGTH = 6;
 
     // ==================== 金额大写转换常量 ====================
 
@@ -1402,12 +1410,16 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
 
     /**
      * 生成标准 UUID（含 -）
-     * <p>示例：{@code uuid() → "550e8400-e29b-41d4-a716-446655440000"}
+     * <p>
+     * 统一委托 {@link UuidGenerator#uuid()}（UUID v4 随机），与 id 包共用一个后端，
+     * 不再单独走 {@code java.util.UUID}。
+     * </p>
+     * <p>示例：{@code uuid() → "550e8400-e29b-41d4-a716-446655440000"}</p>
      *
      * @return UUID 字符串
      */
     public static String uuid() {
-        return UUID.randomUUID().toString();
+        return UuidGenerator.getInstance().uuid();
     }
 
     /**
@@ -1417,25 +1429,26 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 无连字符的 UUID 字符串
      */
     public static String simpleUuid() {
-        String result = uuid().replace(StringPool.DASH.getValue(), EMPTY);
-        if (log.isDebugEnabled()) {
-            log.debug("simpleUuid: {}", result);
-        }
-        return result;
+        return UuidGenerator.getInstance().simpleUuid();
     }
 
     /**
      * 生成6位纯数字验证码
-     * <p>示例：{@code generateVerifyCode() → "834521"}
+     * <p>
+     * 使用 {@link SecureRandom} 取值，保证不可预测；每位独立取 0-9，
+     * 因此可能出现前导 0（如 {@code "034521"}），比较时请按字符串而非数值。
+     * 出于安全考虑不打印验证码日志。
+     * </p>
+     * <p>示例：{@code generateVerifyCode() → "834521"}</p>
      *
      * @return 6位随机数字字符串
      */
     public static String generateVerifyCode() {
-        String result = String.valueOf((int) ((Math.random() * 9 + 1) * Math.pow(10, 5)));
-        if (log.isDebugEnabled()) {
-            log.debug("generateVerifyCode: {}", result);
+        StringBuilder code = new StringBuilder(VERIFY_CODE_LENGTH);
+        for (int i = 0; i < VERIFY_CODE_LENGTH; i++) {
+            code.append(SECURE_RANDOM.nextInt(10));
         }
-        return result;
+        return code.toString();
     }
 
     /**

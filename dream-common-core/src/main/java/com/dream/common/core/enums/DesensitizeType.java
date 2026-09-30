@@ -20,7 +20,11 @@ public enum DesensitizeType implements BaseEnum<String> {
     TELEPHONE("telephone", "固定电话", 3, 3),
 
     /**
-     * 邮箱：保留前2位和后3位
+     * 邮箱：保留前2位和后3位（通用前后缀规则，不识别 @ 结构）
+     * <p>
+     * 需要按邮箱结构脱敏（保留本地部分首字符与完整域名）时，
+     * 用 {@code DesensitizeUtils.desensitizeEmail(String)}，不要用本枚举值。
+     * </p>
      */
     EMAIL("email", "邮箱", 2, 3),
 
