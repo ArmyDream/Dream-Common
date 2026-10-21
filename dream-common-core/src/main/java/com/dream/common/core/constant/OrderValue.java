@@ -10,11 +10,14 @@ package com.dream.common.core.constant;
  * <p>
  * 过滤器链规划（请求方向由外到内）：
  * <pre>
- *   TraceIdFilter(-200) → CorsFilter(-150) → SaServletFilter(-140)
- *     → SecurityHeaderFilter(-130) → AccessLogFilter(-120) → 业务
+ *   TraceIdFilter(-200) → SaTokenContextFilterForServlet(-104, Sa-Token 自动注册)
+ *     → CorsFilter(-103) → SaServletFilter(-102)
+ *     → SecurityHeaderFilter(-101) → AccessLogFilter(-100) → 业务
  * </pre>
  * AccessLog 位于鉴权之后，避免 OPTIONS 预检与未鉴权请求刷爆访问日志；
- * TraceId 预留 -200 至 {@link #MIN_VALUE} 区间给下游 APM（SkyWalking 等）。
+ * TraceId 预留 -200 至 {@link #MIN_VALUE} 区间给下游 APM（SkyWalking 等）；
+ * SaTokenContextFilterForServlet（Sa-Token 1.42+ 自带）负责初始化 ThreadLocal 上下文，
+ * 所有调用 Sa-Router / Sa-Holder / StpUtil 的自定义组件必须排在它之后。
  * </p>
  *
  * @author dream
@@ -47,24 +50,31 @@ public final class OrderValue {
     public static final int TRACE_FILTER = -200;
 
     /**
-     * CORS 过滤器
+     * Sa-Token 上下文初始化过滤器顺序约定（官方 SaTokenConsts.SA_TOKEN_CONTEXT_FILTER_ORDER = -104）。
+     * Dream 所有依赖 Sa-Token API（SaRouter / SaHolder / StpUtil）的自定义 Filter / Aspect
+     * 必须排在本值之后，否则会触发 {@code SaTokenContextException: 上下文尚未初始化}。
      */
-    public static final int CORS_FILTER = -150;
+    public static final int SA_TOKEN_CONTEXT_FILTER = -104;
 
     /**
-     * Sa-Token 鉴权过滤器
+     * CORS 过滤器（必须排在 Sa-Token 上下文初始化之后）
      */
-    public static final int SA_TOKEN_FILTER = -140;
+    public static final int CORS_FILTER = -103;
+
+    /**
+     * Sa-Token 鉴权过滤器（必须排在 Sa-Token 上下文初始化之后）
+     */
+    public static final int SA_TOKEN_FILTER = -102;
 
     /**
      * 安全响应头过滤器
      */
-    public static final int SECURITY_HEADER_FILTER = -130;
+    public static final int SECURITY_HEADER_FILTER = -101;
 
     /**
      * 访问日志过滤器（位于鉴权之后，只记录已通过鉴权入口的请求）
      */
-    public static final int ACCESS_LOG_FILTER = -120;
+    public static final int ACCESS_LOG_FILTER = -100;
 
     /**
      * 切面统一规划：权限校验
