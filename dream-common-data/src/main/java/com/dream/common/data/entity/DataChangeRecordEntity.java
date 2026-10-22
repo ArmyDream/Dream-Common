@@ -21,7 +21,7 @@ import lombok.EqualsAndHashCode;
  * DataChangeRecordEntity record = new DataChangeRecordEntity();
  * record.setTableName("sys_user");
  * record.setDataId("123");
- * record.setOperationType("UPDATE");
+ * record.setOperationType("update");
  * record.setFieldName("username");
  * record.setOldValue("old");
  * record.setNewValue("new");
@@ -34,6 +34,11 @@ import lombok.EqualsAndHashCode;
 @EqualsAndHashCode(callSuper = true)
 @TableName("sys_data_change_record")
 public class DataChangeRecordEntity extends BaseEntity {
+
+    /**
+     * 租户ID（本表通常加入租户拦截器 IGNORE_TABLES，由业务侧 Handler 手动注入）
+     */
+    private String tenantId;
 
     /**
      * 表名
@@ -51,7 +56,7 @@ public class DataChangeRecordEntity extends BaseEntity {
     private String dataId;
 
     /**
-     * 操作类型(INSERT/UPDATE/DELETE)
+     * 操作类型（insert/update/delete，存储 {@code OperationType.getValue()}，与字典 sys_oper_type 对齐）
      */
     private String operationType;
 

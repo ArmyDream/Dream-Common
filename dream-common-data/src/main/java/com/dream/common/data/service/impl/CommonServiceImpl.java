@@ -1,17 +1,21 @@
 package com.dream.common.data.service.impl;
 
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 
 import com.dream.common.core.annotation.Dict;
+import com.dream.common.core.enums.OperationType;
 import com.dream.common.core.exception.BusinessException;
 import com.dream.common.data.annotation.DataChangeRecord;
 import com.dream.common.data.annotation.DataIntegrity;
 import com.dream.common.data.annotation.Encrypt;
 import com.dream.common.data.annotation.QueryCondition;
 import com.dream.common.data.annotation.Sensitive;
+import com.dream.common.data.api.DataChangeRecordHandler;
 import com.dream.common.data.entity.CommonPageQuery;
 import com.dream.common.data.entity.CommonQuery;
 import com.dream.common.data.entity.DataChangeRecordEntity;
@@ -25,13 +29,17 @@ import com.dream.common.data.utils.SensitiveUtil;
 import com.dream.common.tool.utils.dict.DictUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.lang.Nullable;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.Serializable;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -64,15 +72,27 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends ServiceImpl<M, T> implements CommonService<T> {
 
     /**
-     * 数据变更记录 Mapper（可选依赖）。
-     * 通过 Setter 注入，Spring 容器中有该 Bean 则注入，没有则跳过。
-     * 遵循 Spring 官方建议：强制依赖用构造器，可选依赖用 Setter。
+     * 变更记录字段值的最大长度（对齐 sys_data_change_record 表 VARCHAR(2000)），超出截断
      */
-    private CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper;
+    private static final int MAX_CHANGE_VALUE_LENGTH = 2000;
 
-    @Autowired(required = false)
-    public void setDataChangeRecordMapper(CommonMapper<DataChangeRecordEntity> dataChangeRecordMapper) {
-        this.dataChangeRecordMapper = dataChangeRecordMapper;
+    /**
+     * 变更记录中排除的框架审计字段（变更记录行自身已携带 createBy/createTime 等审计信息）
+     */
+    private static final Set<String> CHANGE_RECORD_AUDIT_FIELDS =
+            new HashSet<>(Arrays.asList("createBy", "createTime", "updateBy", "updateTime"));
+
+    /**
+     * 数据变更记录处理器（可选依赖）。
+     * 通过 Setter 注入 {@link ObjectProvider}：容器中注册了 {@link DataChangeRecordHandler}
+     * 实现 Bean 则由其接管批量分发（落库 / 上报），未注册时仅打印 INFO 日志，
+     * 行为与 {@code OperationLogHandler} 的默认策略一致。
+     */
+    private ObjectProvider<DataChangeRecordHandler> changeRecordHandlerProvider;
+
+    @Autowired
+    public void setChangeRecordHandlerProvider(ObjectProvider<DataChangeRecordHandler> changeRecordHandlerProvider) {
+        this.changeRecordHandlerProvider = changeRecordHandlerProvider;
     }
 
     /**
@@ -307,6 +327,65 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                 return updateEntity(entity);
             }
         }
+    }
+
+    /**
+     * 根据 ID 删除实体（带数据变更记录）。
+     * <p>
+     * 覆盖 MyBatis-Plus 默认实现：删除前先查询原数据，删除成功后记录 DELETE 变更
+     * （仅当实体标注了 {@link DataChangeRecord} 注解时生效）。逻辑删除实体同样适用。
+     * </p>
+     *
+     * @param id 主键 ID
+     * @return 是否删除成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeById(Serializable id) {
+        T oldEntity = baseMapper.selectById(id);
+        boolean success = super.removeById(id);
+        if (success && oldEntity != null) {
+            recordDataChange(oldEntity, OperationType.DELETE, oldEntity, null);
+        }
+        return success;
+    }
+
+    /**
+     * 根据 ID 列表批量删除实体（带数据变更记录）。
+     * <p>
+     * 删除前一次性批量查询原数据，删除成功后合并全部实体的 DELETE 变更记录统一分发，
+     * 避免逐实体调用处理器。
+     * </p>
+     * <p>
+     * 参数使用原生 {@link Collection} 类型：MyBatis-Plus 3.5.17 中
+     * {@code extension.repository.IRepository#removeByIds(Collection)} 与
+     * {@code spring.service.IService#removeByIds(Collection<? extends Serializable>)}
+     * 双接口签名并存，任何泛型参数化都会造成名称冲突，原生类型擦除后可同时覆盖两者。
+     * </p>
+     *
+     * @param ids 主键 ID 列表
+     * @return 是否删除成功
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    public boolean removeByIds(Collection ids) {
+        if (ids == null || ids.isEmpty()) {
+            return false;
+        }
+        List<T> oldEntities = baseMapper.selectByIds(ids);
+        boolean success = super.removeByIds(ids);
+        if (success && oldEntities != null && !oldEntities.isEmpty()) {
+            DataChangeRecord annotation = resolveChangeRecordAnnotation(oldEntities.get(0).getClass());
+            if (annotation != null) {
+                List<DataChangeRecordEntity> allRecords = new ArrayList<>();
+                for (T oldEntity : oldEntities) {
+                    allRecords.addAll(buildChangeRecords(oldEntity.getClass(), annotation, OperationType.DELETE, oldEntity, null));
+                }
+                dispatchChangeRecords(annotation, allRecords);
+            }
+        }
+        return success;
     }
 
     /**
@@ -576,7 +655,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      */
     protected void afterAdd(T entity) {
         // 记录数据变更
-        recordDataChange(entity, "INSERT", null, entity);
+        recordDataChange(entity, OperationType.INSERT, null, entity);
     }
 
     /**
@@ -590,7 +669,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
         encryptEntity(newEntity);
 
         // 记录变更
-        recordDataChange(newEntity, "UPDATE", oldEntity, newEntity);
+        recordDataChange(newEntity, OperationType.UPDATE, oldEntity, newEntity);
     }
 
     /**
@@ -892,62 +971,206 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     /**
      * 记录数据变更。
      * <p>
-     * 仅当实体类标注了 {@link DataChangeRecord} 注解且 {@link DataChangeRecord#enable()} 与
-     * {@link DataChangeRecord#persistent()} 均为 {@code true}，且 {@link #dataChangeRecordMapper}
-     * 不为 {@code null} 时，才会扫描实体（含父类）字段并记录前后值变化。
+     * 仅当实体类标注了 {@link DataChangeRecord} 注解且 {@link DataChangeRecord#enable()}
+     * 为 {@code true} 时，扫描实体（含父类）字段并生成字段级前后值记录；
+     * 汇总后一次性分发给 {@link DataChangeRecordHandler}（容器中存在且
+     * {@link DataChangeRecord#persistent()} 为 {@code true} 时），否则打印 INFO 日志。
      * </p>
      *
-     * @param entity        实体对象（用于读取类上的注解）
-     * @param operationType 操作类型（INSERT/UPDATE/DELETE）
-     * @param oldEntity     原数据（新增时可为 {@code null}）
-     * @param newEntity     新数据（删除时可为 {@code null}）
+     * @param entity        实体对象（用于读取类上的注解），删除场景传原数据
+     * @param operationType 操作类型（{@link OperationType#INSERT}/{@link OperationType#UPDATE}/{@link OperationType#DELETE}）
+     * @param oldEntity     原数据（新增时为 {@code null}）
+     * @param newEntity     新数据（删除时为 {@code null}）
      */
-    protected void recordDataChange(T entity, String operationType, T oldEntity, T newEntity) {
-        DataChangeRecord record = entity.getClass().getAnnotation(DataChangeRecord.class);
-        if (record == null || !record.enable()) {
+    protected void recordDataChange(T entity, OperationType operationType, T oldEntity, T newEntity) {
+        if (entity == null) {
             return;
         }
-
-        if (!record.persistent() || dataChangeRecordMapper == null) {
+        DataChangeRecord annotation = resolveChangeRecordAnnotation(entity.getClass());
+        if (annotation == null) {
             return;
         }
+        List<DataChangeRecordEntity> records =
+                buildChangeRecords(entity.getClass(), annotation, operationType, oldEntity, newEntity);
+        dispatchChangeRecords(annotation, records);
+    }
 
-        String tableName = record.tableName();
+    /**
+     * 解析实体类上的 {@link DataChangeRecord} 注解。
+     *
+     * @param entityClass 实体类
+     * @return 注解实例；未标注或 {@code enable()=false} 时返回 {@code null}
+     */
+    private DataChangeRecord resolveChangeRecordAnnotation(Class<?> entityClass) {
+        if (entityClass == null) {
+            return null;
+        }
+        DataChangeRecord annotation = entityClass.getAnnotation(DataChangeRecord.class);
+        if (annotation == null || !annotation.enable()) {
+            return null;
+        }
+        return annotation;
+    }
+
+    /**
+     * 构建字段级变更记录列表。
+     * <p>
+     * 字段过滤规则：排除 static / transient 字段、{@code @TableField(exist=false)} 非持久化字段、
+     * 主键字段（{@code dataId} 已承载）、框架审计字段（createBy/createTime/updateBy/updateTime，
+     * 变更记录行自身已带审计信息）、{@link DataIntegrity} 声明的 MD5 派生字段。
+     * </p>
+     * <p>
+     * 变更判定规则：INSERT 记录全部非空新值；DELETE 记录全部非空旧值；
+     * UPDATE 仅记录"新值非空且与旧值不等"的字段（对齐 MyBatis-Plus updateById 只更新非空字段的语义）。
+     * </p>
+     *
+     * @param entityClass   实体类
+     * @param annotation    变更记录注解
+     * @param operationType 操作类型（落库存储其 {@link OperationType#getValue()}，与字典 sys_oper_type 对齐）
+     * @param oldEntity     原数据（可为 {@code null}）
+     * @param newEntity     新数据（可为 {@code null}）
+     * @return 变更记录列表，不会为 {@code null}
+     */
+    private List<DataChangeRecordEntity> buildChangeRecords(Class<?> entityClass, DataChangeRecord annotation,
+                                                            OperationType operationType, T oldEntity, T newEntity) {
+        List<DataChangeRecordEntity> records = new ArrayList<>();
+        String tableName = annotation.tableName();
         if (tableName == null || tableName.isEmpty()) {
-            tableName = MybatisPlusUtils.getTableName(entity.getClass());
+            tableName = MybatisPlusUtils.getTableName(entityClass);
         }
+        String dataId = newEntity != null ? getEntityId(newEntity) : (oldEntity != null ? getEntityId(oldEntity) : null);
+        String md5Field = resolveMd5Field(entityClass);
 
-        String dataId = getEntityId(newEntity);
-
-        List<Field> fields = getAllFields(entity.getClass());
+        List<Field> fields = getAllFields(entityClass);
         for (Field field : fields) {
+            if (isSkippedChangeField(field, md5Field)) {
+                continue;
+            }
             field.setAccessible(true);
             try {
-                String oldValue = oldEntity != null ? String.valueOf(field.get(oldEntity)) : null;
-                String newValue = newEntity != null ? String.valueOf(field.get(newEntity)) : null;
-
-                // 如果值没有变化，不记录
-                if (oldValue != null && oldValue.equals(newValue)) {
+                String oldValue = oldEntity != null ? toChangeValue(field.get(oldEntity)) : null;
+                String newValue = newEntity != null ? toChangeValue(field.get(newEntity)) : null;
+                if (!isChanged(operationType, oldValue, newValue)) {
                     continue;
                 }
 
                 DataChangeRecordEntity recordEntity = new DataChangeRecordEntity();
                 recordEntity.setTableName(tableName);
-                recordEntity.setTableDesc(record.tableDesc());
+                recordEntity.setTableDesc(annotation.tableDesc());
                 recordEntity.setDataId(dataId);
-                recordEntity.setOperationType(operationType);
+                recordEntity.setOperationType(operationType.getValue());
                 recordEntity.setFieldName(field.getName());
                 recordEntity.setFieldDesc(field.getName());
-                recordEntity.setFieldKey("");
+                recordEntity.setFieldKey(field.getName());
                 recordEntity.setOldValue(oldValue);
                 recordEntity.setNewValue(newValue);
                 recordEntity.setCreateTime(LocalDateTime.now());
-
-                dataChangeRecordMapper.insert(recordEntity);
+                records.add(recordEntity);
             } catch (IllegalAccessException e) {
                 log.error("记录数据变更失败", e);
             }
         }
+        return records;
+    }
+
+    /**
+     * 分发变更记录：{@code persistent()=true} 且容器中存在 {@link DataChangeRecordHandler}
+     * 时批量移交（处理异常仅记录日志，不影响业务）；否则打印 INFO 摘要日志。
+     *
+     * @param annotation 变更记录注解
+     * @param records    变更记录列表
+     */
+    private void dispatchChangeRecords(DataChangeRecord annotation, List<DataChangeRecordEntity> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        DataChangeRecordHandler handler = changeRecordHandlerProvider != null
+                ? changeRecordHandlerProvider.getIfAvailable() : null;
+        if (annotation.persistent() && handler != null) {
+            try {
+                handler.handle(records);
+            } catch (Exception e) {
+                log.error("数据变更记录处理失败: table={}", records.get(0).getTableName(), e);
+            }
+            return;
+        }
+        DataChangeRecordEntity first = records.get(0);
+        log.info("数据变更记录: table={}, dataId={}, operationType={}, 变更字段数={}",
+                first.getTableName(), first.getDataId(), first.getOperationType(), records.size());
+    }
+
+    /**
+     * 判断字段值是否构成一次需要记录的变更。
+     *
+     * @param operationType 操作类型
+     * @param oldValue      旧值（已转字符串）
+     * @param newValue      新值（已转字符串）
+     * @return true 表示需要记录
+     */
+    private boolean isChanged(OperationType operationType, String oldValue, String newValue) {
+        if (OperationType.INSERT == operationType) {
+            return newValue != null;
+        }
+        if (OperationType.DELETE == operationType) {
+            return oldValue != null;
+        }
+        // UPDATE：仅记录新值非空且与旧值不等的字段
+        return newValue != null && !newValue.equals(oldValue);
+    }
+
+    /**
+     * 字段是否无需记录（静态 / 非持久化 / 主键 / 框架审计字段 / MD5 派生字段）。
+     *
+     * @param field    字段对象
+     * @param md5Field {@link DataIntegrity} 声明的 MD5 字段名，可为 {@code null}
+     * @return true 表示跳过
+     */
+    private boolean isSkippedChangeField(Field field, String md5Field) {
+        int modifiers = field.getModifiers();
+        if (Modifier.isStatic(modifiers) || Modifier.isTransient(modifiers)) {
+            return true;
+        }
+        TableField tableField = field.getAnnotation(TableField.class);
+        if (tableField != null && !tableField.exist()) {
+            return true;
+        }
+        String name = field.getName();
+        if (field.isAnnotationPresent(TableId.class) || "id".equals(name)) {
+            return true;
+        }
+        if (CHANGE_RECORD_AUDIT_FIELDS.contains(name)) {
+            return true;
+        }
+        return md5Field != null && md5Field.equals(name);
+    }
+
+    /**
+     * 解析 {@link DataIntegrity} 声明的 MD5 字段名。
+     *
+     * @param entityClass 实体类
+     * @return MD5 字段名；未启用完整性注解时返回 {@code null}
+     */
+    private String resolveMd5Field(Class<?> entityClass) {
+        DataIntegrity integrity = entityClass.getAnnotation(DataIntegrity.class);
+        if (integrity == null || !integrity.enable()) {
+            return null;
+        }
+        String md5Field = integrity.md5Field();
+        return md5Field == null || md5Field.isEmpty() ? null : md5Field;
+    }
+
+    /**
+     * 字段值转字符串（null 安全 + 超长截断）。
+     *
+     * @param value 字段值
+     * @return 字符串形式；入参为 {@code null} 时返回 {@code null}
+     */
+    private String toChangeValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String str = String.valueOf(value);
+        return str.length() > MAX_CHANGE_VALUE_LENGTH ? str.substring(0, MAX_CHANGE_VALUE_LENGTH) : str;
     }
 
     /**
