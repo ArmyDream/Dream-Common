@@ -29,6 +29,16 @@ public final class Security {
      */
     public static final String ROLE_ADMIN = "admin";
 
+    // ==================== 权限 ====================
+    /**
+     * 超级管理员通配权限。
+     * <p>
+     * Sa-Token 约定：权限集合包含 {@code "*"} 即视为拥有所有权限，
+     * 超管无需动态维护全部权限标识，避免权限缓存脏读。
+     * </p>
+     */
+    public static final String SUPER_ADMIN_PERMISSION = "*";
+
     // ==================== 缓存 Key 前缀 ====================
     public static final String CACHE_PREFIX_TOKEN = "dream:security:token:";
     public static final String CACHE_PREFIX_SESSION = "dream:security:session:";

@@ -27,6 +27,16 @@ public class RoleVo implements Serializable {
     /** 角色名称 */
     private String roleName;
 
+    /**
+     * 数据范围。
+     *
+     * <p>取值为 {@link com.dream.common.core.enums.DataScope} 枚举的 value（字符串），
+     * 例如 {@code "ALL"} / {@code "DEPT_AND_CHILD"} / {@code "SELF"}。</p>
+     *
+     * @see com.dream.common.core.enums.DataScope
+     */
+    private String dataScope;
+
     /** 备注 */
     private String remark;
 
@@ -52,6 +62,14 @@ public class RoleVo implements Serializable {
 
     public void setRoleName(String roleName) {
         this.roleName = roleName;
+    }
+
+    public String getDataScope() {
+        return dataScope;
+    }
+
+    public void setDataScope(String dataScope) {
+        this.dataScope = dataScope;
     }
 
     public String getRemark() {

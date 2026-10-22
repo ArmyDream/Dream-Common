@@ -59,6 +59,17 @@ public abstract class AbstractUnitVo implements Serializable {
     /** 父级名称 */
     private String parentName;
 
+    /**
+     * 祖先链（闭包表或路径枚举法存储的层级路径）。
+     *
+     * <p>格式形如 {@code "0,100,200"}，以根节点 {@code 0} 起始，按层级顺序拼接 ID，
+     * 末尾不带逗号。用于数据权限过滤（如 {@code ancestors LIKE '%当前部门ID%'} 实现子部门递归）
+     * 和树构建时的父子关系判定。</p>
+     *
+     * <p>dream-standalone 的 sys_dept 表有此字段，其他项目可按需使用或留空。</p>
+     */
+    private String ancestors;
+
     /** 机构、部门 层级 */
     private String level;
 
@@ -163,6 +174,14 @@ public abstract class AbstractUnitVo implements Serializable {
 
     public void setParentName(String parentName) {
         this.parentName = parentName;
+    }
+
+    public String getAncestors() {
+        return ancestors;
+    }
+
+    public void setAncestors(String ancestors) {
+        this.ancestors = ancestors;
     }
 
     public String getLevel() {
