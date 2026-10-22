@@ -105,6 +105,18 @@ public class UserProfileVo implements Serializable {
     /** 所属部门 */
     private DeptVo dept;
 
+    /**
+     * 本部门子部门ID列表（登录时预计算）。
+     * <p>用于数据范围 DEPT_AND_CHILD 的 SQL 过滤，避免拦截器内递归查询。</p>
+     */
+    private List<String> deptChildIds;
+
+    /**
+     * 所属机构子部门ID列表（登录时预计算）。
+     * <p>用于数据范围 ORG / ORG_AND_CHILD 的 SQL 过滤，避免拦截器内递归查询。</p>
+     */
+    private List<String> orgChildDeptIds;
+
     /** 兼任岗位 */
     private List<PostVo> posts;
 
@@ -118,6 +130,13 @@ public class UserProfileVo implements Serializable {
 
     /** 是否超级管理员 */
     private Boolean superAdmin = false;
+
+    /**
+     * 数据范围（登录时多角色合并后的最终结果）。
+     * <p>取值来源：{@link com.dream.common.core.enums.DataScope#getValue()}
+     * 的英文字面量（ALL/CUSTOM/ORG/ORG_AND_CHILD/DEPT_AND_CHILD/DEPT/SELF）。</p>
+     */
+    private String dataScope;
 
     // ==================== ⑦ 租户信息 ====================
 
@@ -261,6 +280,32 @@ public class UserProfileVo implements Serializable {
     }
 
     /**
+     * 获取本部门子部门ID列表（空安全）。
+     *
+     * @return 子部门ID列表，永不为 {@code null}
+     */
+    public List<String> getDeptChildIds() {
+        return deptChildIds == null ? Collections.emptyList() : deptChildIds;
+    }
+
+    public void setDeptChildIds(List<String> deptChildIds) {
+        this.deptChildIds = deptChildIds;
+    }
+
+    /**
+     * 获取所属机构子部门ID列表（空安全）。
+     *
+     * @return 子部门ID列表，永不为 {@code null}
+     */
+    public List<String> getOrgChildDeptIds() {
+        return orgChildDeptIds == null ? Collections.emptyList() : orgChildDeptIds;
+    }
+
+    public void setOrgChildDeptIds(List<String> orgChildDeptIds) {
+        this.orgChildDeptIds = orgChildDeptIds;
+    }
+
+    /**
      * 获取岗位列表（空安全）。
      *
      * @return 岗位列表，永不为 {@code null}
@@ -305,6 +350,14 @@ public class UserProfileVo implements Serializable {
 
     public void setSuperAdmin(Boolean superAdmin) {
         this.superAdmin = superAdmin;
+    }
+
+    public String getDataScope() {
+        return dataScope;
+    }
+
+    public void setDataScope(String dataScope) {
+        this.dataScope = dataScope;
     }
 
     public String getTenantId() {

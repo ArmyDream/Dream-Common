@@ -8,6 +8,8 @@ import com.dream.common.core.vo.sys.UserProfileVo;
 import com.dream.common.framework.cache.CachesUtils;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -42,6 +44,21 @@ public final class SecurityUtils {
     /** 会话中存取用户名的 key */
     private static final String SESSION_KEY_USERNAME = "username";
 
+    /** 会话中存取租户ID的 key */
+    private static final String SESSION_KEY_TENANT_ID = "tenantId";
+
+    /** 会话中存取数据范围的 key */
+    private static final String SESSION_KEY_DATA_SCOPE = "dataScope";
+
+    /** 会话中存取机构子部门ID列表的 key */
+    private static final String SESSION_KEY_ORG_CHILD_DEPT_IDS = "orgChildDeptIds";
+
+    /** 会话中存取本部门子部门ID列表的 key */
+    private static final String SESSION_KEY_DEPT_CHILD_IDS = "childDeptIds";
+
+    /** 会话中存取所属机构ID的 key */
+    private static final String SESSION_KEY_ORG_ID = "orgId";
+
     private SecurityUtils() {
     }
 
@@ -60,7 +77,7 @@ public final class SecurityUtils {
 
         // 不传 SaLoginParameter，token 有效期直接采用 sa-token 全局配置
         StpUtil.login(loginUser.getUserId());
-        StpUtil.getSession().set(SESSION_KEY_USERNAME, loginUser.getUsername());
+        syncLoginContextToSession(loginUser);
         cacheLoginUser(loginUser, SaManager.getConfig().getTimeout());
         log.info("用户登录成功 | userId={} | username={} | timeout={}s(全局配置)",
                 loginUser.getUserId(), loginUser.getUsername(), SaManager.getConfig().getTimeout());
@@ -82,7 +99,7 @@ public final class SecurityUtils {
         }
 
         StpUtil.login(loginUser.getUserId(), new SaLoginParameter().setTimeout(timeout));
-        StpUtil.getSession().set(SESSION_KEY_USERNAME, loginUser.getUsername());
+        syncLoginContextToSession(loginUser);
         cacheLoginUser(loginUser, timeout);
         log.info("用户登录成功 | userId={} | username={} | timeout={}s",
                 loginUser.getUserId(), loginUser.getUsername(), timeout);
@@ -125,6 +142,120 @@ public final class SecurityUtils {
      */
     public static boolean isLogin() {
         return StpUtil.isLogin();
+    }
+
+    // ==================== 静默访问（无 SaTokenContext 线程安全） ====================
+
+    /**
+     * 静默判断登录状态：SaTokenContext 未初始化（定时任务 / 异步线程 / 启动期）时返回
+     * {@code false} 而非抛出异常。
+     *
+     * @return true 已登录
+     */
+    public static boolean isLoginQuietly() {
+        try {
+            return StpUtil.isLogin();
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 静默获取当前用户ID：未登录或 SaTokenContext 未初始化时返回 {@code null}。
+     *
+     * @return 用户ID字符串，可能为 {@code null}
+     */
+    public static String getUserIdQuietly() {
+        try {
+            return StpUtil.isLogin() ? StpUtil.getLoginIdAsString() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 静默获取当前登录用户完整档案：未登录、缓存不存在或 SaTokenContext 未初始化时返回 {@code null}。
+     *
+     * @return UserProfileVo，可能为 {@code null}
+     */
+    public static UserProfileVo getLoginUserQuietly() {
+        try {
+            return getLoginUser();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    // ==================== 登录上下文（token 级，存 Sa Session） ====================
+
+    /**
+     * 获取当前会话的租户ID。
+     * <p>token 级数据（多端独立），登录时由 {@link #login} 从用户档案同步写入；
+     * 未登录或无上下文时返回 {@code null}，调用方自行兜底。</p>
+     *
+     * @return 租户ID，可能为 {@code null}
+     */
+    public static String getTenantId() {
+        return getSessionAttributeQuietly(SESSION_KEY_TENANT_ID);
+    }
+
+    /**
+     * 获取当前会话的数据范围（多角色合并结果，英文字面量如 ALL/DEPT/SELF）。
+     *
+     * @return 数据范围字面量，未登录或无上下文时返回 {@code null}
+     */
+    public static String getDataScope() {
+        return getSessionAttributeQuietly(SESSION_KEY_DATA_SCOPE);
+    }
+
+    /**
+     * 获取当前会话的所属机构子部门ID列表（登录时预计算）。
+     *
+     * @return 子部门ID列表，未登录或无上下文时返回空列表（不为 {@code null}）
+     */
+    @SuppressWarnings("unchecked")
+    public static List<String> getOrgChildDeptIds() {
+        Object value = getSessionAttributeQuietly(SESSION_KEY_ORG_CHILD_DEPT_IDS);
+        if (value instanceof List) {
+            return (List<String>) value;
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 获取当前会话的本部门子部门ID列表（登录时预计算，供 DEPT_AND_CHILD 数据范围使用）。
+     *
+     * @return 子部门ID列表，未登录或无上下文时返回空列表（不为 {@code null}）
+     */
+    @SuppressWarnings("unchecked")
+    public static List<String> getChildDeptIds() {
+        Object value = getSessionAttributeQuietly(SESSION_KEY_DEPT_CHILD_IDS);
+        if (value instanceof List) {
+            return (List<String>) value;
+        }
+        return Collections.emptyList();
+    }
+
+    /**
+     * 获取当前会话的所属机构ID（沿部门 ancestors 向上最近的机构节点）。
+     *
+     * @return 机构ID，未登录、无部门归属或无上下文时返回 {@code null}
+     */
+    public static String getOrgId() {
+        return getSessionAttributeQuietly(SESSION_KEY_ORG_ID);
+    }
+
+    /**
+     * 切换当前会话的租户（仅写 Sa Session，token 级，不影响其他端）。
+     * <p>调用方需同步更新线程上下文（如 TenantContextHolder）；
+     * 用户档案缓存中的归属租户不变。</p>
+     *
+     * @param tenantId 目标租户ID
+     */
+    public static void switchTenant(String tenantId) {
+        if (tenantId != null && isLoginQuietly()) {
+            StpUtil.getSession().set(SESSION_KEY_TENANT_ID, tenantId);
+        }
     }
 
     /**
@@ -193,7 +324,8 @@ public final class SecurityUtils {
     }
 
     /**
-     * 手动刷新当前用户的缓存档案。
+     * 手动刷新当前用户的缓存档案，并同步刷新 Sa Session 中的登录上下文
+     * （仅当刷新的档案属于当前登录用户时）。
      *
      * @param loginUser 最新的用户信息
      */
@@ -202,6 +334,9 @@ public final class SecurityUtils {
             return;
         }
         cacheLoginUser(loginUser);
+        if (loginUser.getUserId().equals(getUserIdQuietly())) {
+            syncLoginContextToSession(loginUser);
+        }
         log.debug("刷新登录用户缓存 | userId={}", loginUser.getUserId());
     }
 
@@ -400,6 +535,49 @@ public final class SecurityUtils {
     }
 
     // ==================== 内部方法 ====================
+
+    /**
+     * 登录 / 刷新时将用户档案中的上下文数据同步写入 Sa Session（token 级）。
+     * <p>username / tenantId / dataScope / orgId 为 {@code null} 时跳过，避免覆盖已有会话数据；
+     * orgChildDeptIds / deptChildIds 始终写入（getter 空安全），确保刷新后能清除旧值。</p>
+     *
+     * @param loginUser 登录用户信息
+     */
+    private static void syncLoginContextToSession(UserProfileVo loginUser) {
+        if (loginUser.getUsername() != null) {
+            StpUtil.getSession().set(SESSION_KEY_USERNAME, loginUser.getUsername());
+        }
+        if (loginUser.getTenantId() != null) {
+            StpUtil.getSession().set(SESSION_KEY_TENANT_ID, loginUser.getTenantId());
+        }
+        if (loginUser.getDataScope() != null) {
+            StpUtil.getSession().set(SESSION_KEY_DATA_SCOPE, loginUser.getDataScope());
+        }
+        StpUtil.getSession().set(SESSION_KEY_ORG_CHILD_DEPT_IDS, loginUser.getOrgChildDeptIds());
+        StpUtil.getSession().set(SESSION_KEY_DEPT_CHILD_IDS, loginUser.getDeptChildIds());
+        if (loginUser.getOrg() != null && loginUser.getOrg().getId() != null) {
+            StpUtil.getSession().set(SESSION_KEY_ORG_ID, loginUser.getOrg().getId());
+        }
+    }
+
+    /**
+     * 静默读取当前会话属性：未登录或 SaTokenContext 未初始化时返回 {@code null}。
+     *
+     * @param key 属性键
+     * @param <V> 属性类型
+     * @return 属性值，可能为 {@code null}
+     */
+    @SuppressWarnings("unchecked")
+    private static <V> V getSessionAttributeQuietly(String key) {
+        try {
+            if (!StpUtil.isLogin()) {
+                return null;
+            }
+            return (V) StpUtil.getSession().get(key);
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /**
      * 构造登录用户档案缓存 key。
