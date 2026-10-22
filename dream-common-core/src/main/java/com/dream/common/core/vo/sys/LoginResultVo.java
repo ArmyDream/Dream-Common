@@ -59,6 +59,11 @@ public class LoginResultVo implements Serializable {
     private String accessToken;
 
     /**
+     * 令牌请求头/参数名（Sa-Token {@code tokenName}，告知客户端用哪个 header 携带令牌）
+     */
+    private String tokenName;
+
+    /**
      * 刷新令牌
      */
     private String refreshToken;
@@ -150,6 +155,14 @@ public class LoginResultVo implements Serializable {
 
     public void setAccessToken(String accessToken) {
         this.accessToken = accessToken;
+    }
+
+    public String getTokenName() {
+        return tokenName;
+    }
+
+    public void setTokenName(String tokenName) {
+        this.tokenName = tokenName;
     }
 
     public String getRefreshToken() {
