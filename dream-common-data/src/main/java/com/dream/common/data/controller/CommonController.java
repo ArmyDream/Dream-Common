@@ -173,8 +173,8 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      */
     @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.VIEW)
-    @GetMapping("/get/{id}")
-    public R<T> getById(@PathVariable String id) {
+    @GetMapping("/get")
+    public R<T> getById(@RequestParam String id) {
         return R.ok(baseService.findById(id));
     }
 
@@ -235,7 +235,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      */
     @Permission(value = "edit", type = PermissionType.EDIT)
     @Log(operationType = OperationType.UPDATE)
-    @PutMapping("/update")
+    @PostMapping("/update")
     public R<T> update(@RequestBody T entity) {
         return R.ok("修改成功", baseService.updateEntity(entity));
     }
@@ -265,8 +265,8 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      */
     @Permission(value = "delete", type = PermissionType.DELETE)
     @Log(operationType = OperationType.DELETE)
-    @DeleteMapping("/delete/{id}")
-    public R<Boolean> deleteById(@PathVariable String id) {
+    @PostMapping("/delete")
+    public R<Boolean> deleteById(@RequestParam String id) {
         boolean success = baseService.removeById(id);
         return R.ok(success ? "删除成功" : "删除失败", success);
     }
@@ -279,7 +279,7 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      */
     @Permission(value = "delete", type = PermissionType.DELETE)
     @Log(operationType = OperationType.DELETE)
-    @DeleteMapping("/delete/batch")
+    @PostMapping("/delete/batch")
     public R<Boolean> deleteBatch(@RequestBody List<String> ids) {
         if (ids == null || ids.isEmpty()) {
             throw BusinessException.badRequest("ID列表不能为空");
@@ -298,8 +298,8 @@ public abstract class CommonController<S extends CommonService<T>, T> {
      */
     @Permission(value = "query", type = PermissionType.DETAIL)
     @Log(operationType = OperationType.VIEW)
-    @GetMapping("/check/integrity/{id}")
-    public R<Boolean> checkIntegrity(@PathVariable String id) {
+    @GetMapping("/check/integrity")
+    public R<Boolean> checkIntegrity(@RequestParam String id) {
         return R.ok(baseService.checkDataIntegrity(id));
     }
 }
