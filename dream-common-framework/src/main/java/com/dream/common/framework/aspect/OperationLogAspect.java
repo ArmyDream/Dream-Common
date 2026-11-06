@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.dream.common.core.annotation.Log;
+import com.dream.common.core.config.ControllerConfig;
 import com.dream.common.core.constant.OrderValue;
 import com.dream.common.core.constant.SysKey;
 import com.dream.common.core.enums.LogType;
@@ -35,7 +36,10 @@ import javax.servlet.http.HttpSession;
 import java.lang.reflect.Method;
 import java.security.Principal;
 import java.util.HashSet;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 操作日志切面：{@link Log} 注解的实际执行者。
@@ -75,6 +79,14 @@ import java.util.Set;
  * 需要操作人时在业务侧的 {@link OperationLogHandler} 实现里补全。
  * </p>
  *
+ * <h2>模块标题</h2>
+ * <p>
+ * {@code @Log(title)} 留空时反射读取目标 Controller 的 {@code getControllerConfig().getLogTitle()}
+ * （如「用户管理」）兜底，仍取不到则退到操作类型中文名。反射而非接口是因为 framework 层不依赖
+ * data 模块，且业务侧的 {@code getControllerConfig()} 通常是 {@code protected}——与
+ * {@code PermissionAspect} 取权限前缀的方式一致。详见 {@code resolveTitle}。
+ * </p>
+ *
  * <h2>开关</h2>
  * <p>{@code dream.framework.operation-log.enabled=false} 可整体关闭本切面。</p>
  *
@@ -111,6 +123,11 @@ public class OperationLogAspect {
 
     /** 业务侧日志处理器（可选） */
     private final ObjectProvider<OperationLogHandler> handlerProvider;
+
+    /**
+     * {@code getControllerConfig} 方法缓存；用 {@link Optional} 包装以支持「类未声明该方法」的空缓存。
+     */
+    private static final Map<Class<?>, Optional<Method>> CONFIG_METHOD_CACHE = new ConcurrentHashMap<>();
 
     public OperationLogAspect(ObjectProvider<OperationLogHandler> handlerProvider) {
         this.handlerProvider = handlerProvider;
@@ -165,7 +182,7 @@ public class OperationLogAspect {
         Method targetMethod = resolveTargetMethod(joinPoint);
         OperationLog entry = new OperationLog();
         entry.setTraceId(MDC.get(SysKey.TRACE_ID));
-        entry.setTitle(annotation.title());
+        entry.setTitle(resolveTitle(annotation, joinPoint.getTarget()));
         entry.setOperationType(annotation.operationType().getValue());
         entry.setLogType(annotation.logType().getValue());
         entry.setClassName(targetMethod.getDeclaringClass().getName());
@@ -185,6 +202,67 @@ public class OperationLogAspect {
             entry.setErrorMsg(truncate(error.getClass().getName() + ": " + error.getMessage(), MAX_ERROR_LENGTH));
         }
         dispatch(entry);
+    }
+
+    /**
+     * 解析模块标题，优先级：{@link Log#title()} &gt; 目标 Controller 的
+     * {@code ControllerConfig.logTitle}（通用 CRUD 基类的注解是共享的，标题只能在运行时取）
+     * &gt; {@link Log#operationType()} 的中文名（如「新增」），避免标题列为空。
+     *
+     * @param annotation 注解实例
+     * @param target     目标对象（通常是 Controller 实例），可能为 {@code null}
+     * @return 模块标题，非 {@code null}
+     */
+    private String resolveTitle(Log annotation, Object target) {
+        String title = annotation.title();
+        if (title != null && !title.trim().isEmpty()) {
+            return title;
+        }
+        String logTitle = readLogTitle(target);
+        if (logTitle != null && !logTitle.trim().isEmpty()) {
+            return logTitle;
+        }
+        return annotation.operationType().getLabel();
+    }
+
+    /**
+     * 反射读取 Controller 声明的模块名；任何失败都只当作「未配置」，不影响日志采集。
+     *
+     * @param target 目标对象，可为 {@code null}
+     * @return 模块名；无 {@code getControllerConfig()} 或未配置 logTitle 时为 {@code null}
+     */
+    private String readLogTitle(Object target) {
+        if (target == null) {
+            return null;
+        }
+        Method method = CONFIG_METHOD_CACHE
+                .computeIfAbsent(target.getClass(), c -> Optional.ofNullable(findControllerConfigMethod(c)))
+                .orElse(null);
+        if (method == null) {
+            return null;
+        }
+        try {
+            Object config = method.invoke(target);
+            return config instanceof ControllerConfig ? ((ControllerConfig) config).getLogTitle() : null;
+        } catch (Exception e) {
+            log.debug("读取模块标题失败: class={}", target.getClass().getName(), e);
+            return null;
+        }
+    }
+
+    /**
+     * 沿继承链查找 {@code getControllerConfig()}（业务侧多为 {@code protected}），并放开访问权限。
+     *
+     * @param clazz 目标类
+     * @return 方法对象，未找到返回 {@code null}
+     */
+    private Method findControllerConfigMethod(Class<?> clazz) {
+        Method method = ReflectionUtils.findMethod(clazz, "getControllerConfig");
+        if (method == null) {
+            return null;
+        }
+        ReflectionUtils.makeAccessible(method);
+        return method;
     }
 
     /**

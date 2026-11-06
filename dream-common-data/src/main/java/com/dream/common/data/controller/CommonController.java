@@ -46,6 +46,9 @@ import java.util.List;
  * AOP 切面自动记录请求参数、响应结果、执行耗时等信息。
  * </p>
  * <p>
+ * 注解里的 {@link Log#title()} 留空（基类方法被所有模块共享，标题不可能写死），
+ * 操作日志切面会在运行时读取子类重写的 {@code getControllerConfig().getLogTitle()}
+ * （如「用户管理」）作为模块标题，子类只需重写该方法即可自动带上。
  * </p>
  *
  * <h2>使用示例</h2>

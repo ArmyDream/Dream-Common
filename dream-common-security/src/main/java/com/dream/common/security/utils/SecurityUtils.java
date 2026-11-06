@@ -174,6 +174,20 @@ public final class SecurityUtils {
     }
 
     /**
+     * 静默获取当前登录用户名：未登录或 SaTokenContext 未初始化时返回 {@code null}。
+     * <p>取值来源为 Sa Session 中登录时写入的 {@code username}，不依赖用户档案缓存。</p>
+     *
+     * @return 登录账号，可能为 {@code null}
+     */
+    public static String getUsernameQuietly() {
+        try {
+            return StpUtil.isLogin() ? getUsername() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 静默获取当前登录用户完整档案：未登录、缓存不存在或 SaTokenContext 未初始化时返回 {@code null}。
      *
      * @return UserProfileVo，可能为 {@code null}

@@ -1,6 +1,8 @@
 package com.dream.common.data.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.dream.common.data.annotation.QueryCondition;
+import com.dream.common.data.enums.QueryType;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -43,46 +45,55 @@ public class DataChangeRecordEntity extends BaseEntity {
     /**
      * 表名
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String tableName;
 
     /**
      * 表描述
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String tableDesc;
 
     /**
      * 数据ID
      */
+    @QueryCondition
     private String dataId;
 
     /**
      * 操作类型（insert/update/delete，存储 {@code OperationType.getValue()}，与字典 sys_oper_type 对齐）
      */
+    @QueryCondition
     private String operationType;
 
     /**
      * 字段名
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String fieldName;
 
     /**
      * 字段描述
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String fieldDesc;
 
     /**
      * 字段key(用于标识)
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String fieldKey;
 
     /**
      * 修改前值
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String oldValue;
 
     /**
      * 修改后值
      */
+    @QueryCondition(type = QueryType.LIKE)
     private String newValue;
 
 }
