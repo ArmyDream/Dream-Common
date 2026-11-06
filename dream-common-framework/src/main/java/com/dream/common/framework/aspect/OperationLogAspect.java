@@ -116,6 +116,9 @@ public class OperationLogAspect {
     /** 内容被截断时的后缀 */
     private static final String TRUNCATED_SUFFIX = "...(truncated)";
 
+    /** CGLIB 增强类的类名片段，用于识别代理类 */
+    private static final String CGLIB_CLASS_MARKER = "$$";
+
     /** 不写入日志的参数类型（容器对象 / 大文件 / 校验结果，序列化无意义或代价高） */
     private static final Class<?>[] SKIPPED_PARAM_TYPES = {
             ServletRequest.class, ServletResponse.class, HttpSession.class,
@@ -190,7 +193,7 @@ public class OperationLogAspect {
         entry.setTitle(resolveTitle(annotation, config));
         entry.setOperationType(annotation.operationType().getValue());
         entry.setLogType(annotation.logType().getValue());
-        entry.setClassName(targetMethod.getDeclaringClass().getName());
+        entry.setClassName(resolveClassName(joinPoint.getTarget(), targetMethod));
         entry.setMethodName(targetMethod.getName());
         fillRequestInfo(entry);
         entry.setSuccess(error == null);
@@ -476,5 +479,25 @@ public class OperationLogAspect {
         } catch (Exception e) {
             return method;
         }
+    }
+
+    /**
+     * 类名取「哪个类在执行」，而不是「方法在哪声明」：通用 CRUD 的 page/add/update 都声明在
+     * {@code CommonController}，按声明类存会让所有模块的日志挤成同一行；CGLIB 代理子类
+     * （{@code XxxController$$EnhancerBySpringCGLIB$$...}）不含业务语义，退回声明类。
+     *
+     * @param target       目标对象，可能为 {@code null}
+     * @param targetMethod 实际执行的方法
+     * @return 类全限定名，非 {@code null}
+     */
+    private String resolveClassName(Object target, Method targetMethod) {
+        if (target == null) {
+            return targetMethod.getDeclaringClass().getName();
+        }
+        Class<?> targetClass = target.getClass();
+        if (targetClass.isSynthetic() || targetClass.getName().contains(CGLIB_CLASS_MARKER)) {
+            return targetMethod.getDeclaringClass().getName();
+        }
+        return targetClass.getName();
     }
 }
