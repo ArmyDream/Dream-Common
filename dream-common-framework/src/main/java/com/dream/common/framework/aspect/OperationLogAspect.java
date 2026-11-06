@@ -79,12 +79,13 @@ import java.util.concurrent.ConcurrentHashMap;
  * 需要操作人时在业务侧的 {@link OperationLogHandler} 实现里补全。
  * </p>
  *
- * <h2>模块标题</h2>
+ * <h2>模块标题与开关</h2>
  * <p>
- * {@code @Log(title)} 留空时反射读取目标 Controller 的 {@code getControllerConfig().getLogTitle()}
- * （如「用户管理」）兜底，仍取不到则退到操作类型中文名。反射而非接口是因为 framework 层不依赖
- * data 模块，且业务侧的 {@code getControllerConfig()} 通常是 {@code protected}——与
- * {@code PermissionAspect} 取权限前缀的方式一致。详见 {@code resolveTitle}。
+ * {@code @Log(title)} 留空时取目标 Controller 的 {@code ControllerConfig.logTitle}（如「用户管理」），
+ * 仍取不到则退到操作类型中文名；{@code ControllerConfig.logEnabled=false} 时整个 Controller 不采集。
+ * 之所以反射而不是接口，是因为 framework 层不依赖 data 模块，且业务侧的
+ * {@code getControllerConfig()} 通常是 {@code protected}——与 {@code PermissionAspect}
+ * 取权限前缀的方式一致。详见 {@code readControllerConfig}。
  * </p>
  *
  * <h2>开关</h2>
@@ -179,10 +180,14 @@ public class OperationLogAspect {
         if (annotation.logType() == LogType.EXCEPTION && error == null) {
             return;
         }
+        ControllerConfig config = readControllerConfig(joinPoint.getTarget());
+        if (config != null && !config.isLogEnabled()) {
+            return;
+        }
         Method targetMethod = resolveTargetMethod(joinPoint);
         OperationLog entry = new OperationLog();
         entry.setTraceId(MDC.get(SysKey.TRACE_ID));
-        entry.setTitle(resolveTitle(annotation, joinPoint.getTarget()));
+        entry.setTitle(resolveTitle(annotation, config));
         entry.setOperationType(annotation.operationType().getValue());
         entry.setLogType(annotation.logType().getValue());
         entry.setClassName(targetMethod.getDeclaringClass().getName());
@@ -205,20 +210,20 @@ public class OperationLogAspect {
     }
 
     /**
-     * 解析模块标题，优先级：{@link Log#title()} &gt; 目标 Controller 的
-     * {@code ControllerConfig.logTitle}（通用 CRUD 基类的注解是共享的，标题只能在运行时取）
+     * 解析模块标题，优先级：{@link Log#title()} &gt; {@code ControllerConfig.logTitle}
+     * （通用 CRUD 基类的注解是共享的，标题只能在运行时取）
      * &gt; {@link Log#operationType()} 的中文名（如「新增」），避免标题列为空。
      *
      * @param annotation 注解实例
-     * @param target     目标对象（通常是 Controller 实例），可能为 {@code null}
+     * @param config     目标 Controller 的配置，可能为 {@code null}
      * @return 模块标题，非 {@code null}
      */
-    private String resolveTitle(Log annotation, Object target) {
+    private String resolveTitle(Log annotation, ControllerConfig config) {
         String title = annotation.title();
         if (title != null && !title.trim().isEmpty()) {
             return title;
         }
-        String logTitle = readLogTitle(target);
+        String logTitle = config != null ? config.getLogTitle() : null;
         if (logTitle != null && !logTitle.trim().isEmpty()) {
             return logTitle;
         }
@@ -226,12 +231,12 @@ public class OperationLogAspect {
     }
 
     /**
-     * 反射读取 Controller 声明的模块名；任何失败都只当作「未配置」，不影响日志采集。
+     * 反射读取 Controller 声明的配置；任何失败都只当作「未配置」，不影响日志采集。
      *
      * @param target 目标对象，可为 {@code null}
-     * @return 模块名；无 {@code getControllerConfig()} 或未配置 logTitle 时为 {@code null}
+     * @return 配置；无 {@code getControllerConfig()} 时返回 {@code null}
      */
-    private String readLogTitle(Object target) {
+    private ControllerConfig readControllerConfig(Object target) {
         if (target == null) {
             return null;
         }
@@ -243,9 +248,9 @@ public class OperationLogAspect {
         }
         try {
             Object config = method.invoke(target);
-            return config instanceof ControllerConfig ? ((ControllerConfig) config).getLogTitle() : null;
+            return config instanceof ControllerConfig ? (ControllerConfig) config : null;
         } catch (Exception e) {
-            log.debug("读取模块标题失败: class={}", target.getClass().getName(), e);
+            log.debug("读取 ControllerConfig 失败: class={}", target.getClass().getName(), e);
             return null;
         }
     }

@@ -188,6 +188,22 @@ public final class SecurityUtils {
     }
 
     /**
+     * 静默获取当前登录用户昵称：未登录、用户档案缓存缺失或 SaTokenContext 未初始化时返回 {@code null}。
+     * <p>昵称只存在于登录时写入的用户档案缓存（不像 {@link #getUsernameQuietly()} 可从 Sa Session 取），
+     * 因此要求「一定有值」的调用方需再回退到登录账号。</p>
+     *
+     * @return 用户昵称，可能为 {@code null}
+     */
+    public static String getNicknameQuietly() {
+        try {
+            UserProfileVo profile = getLoginUser();
+            return profile != null ? profile.getNickname() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
      * 静默获取当前登录用户完整档案：未登录、缓存不存在或 SaTokenContext 未初始化时返回 {@code null}。
      *
      * @return UserProfileVo，可能为 {@code null}
