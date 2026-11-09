@@ -64,6 +64,7 @@ import java.util.regex.Pattern;
  *   <li>读取后处理：自动解密、脱敏、字典标签填充（含父类字段）</li>
  *   <li>数据变更记录：基于 {@link DataChangeRecord} 注解记录字段级前后变更</li>
  *   <li>数据完整性：基于 {@link DataIntegrity} 注解进行 MD5 防篡改校验</li>
+ *   <li>扩展点：查询/新增/修改/删除的前后置钩子，集中定义在类尾「生命周期钩子」分区，子类按需重写</li>
  * </ul>
  *
  * @param <M> Mapper 类型，必须继承 {@link CommonMapper}
@@ -204,51 +205,6 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 查询前置钩子：注解条件构建完成后、执行 SQL 前调用，子类可往 Wrapper 追加条件。
-     * <p>
-     * 典型用途是<b>只能由后端构造</b>的条件——数据范围、跨表子查询这类需要
-     * {@code inSql / exists / apply} 的场景。它们刻意不进 {@link com.dream.common.data.annotation.QueryCondition}
-     * 白名单（值来自外部请求即等于 SQL 注入面），参数一律在后端拼好后再交给钩子。
-     * </p>
-     * <p>
-     * 生效范围：{@link #findList}（{@link #findOne} 复用它）与 {@link #findPage}；
-     * 按主键直查的 {@link #findById} 不构建 Wrapper，故不经过本钩子。
-     * </p>
-     *
-     * @param queryWrapper 已按注解白名单构建好的 Wrapper，可直接追加条件
-     * @param query        原始查询条件实体（分页时为 {@code params}，可能为 {@code null}）
-     */
-    protected void beforeQuery(QueryWrapper<T> queryWrapper, T query) {
-        // 子类可重写：追加后端构造的查询条件
-    }
-
-    /**
-     * 查询后置钩子：框架解密/脱敏/字典处理完成后、结果返回调用方前调用。
-     * <p>
-     * 与 {@link #processPageResult} 的分工：本钩子对列表与分页两条路径都生效、入参统一是记录集合，
-     * 适合做「批量补关联名称」这类与分页无关的加工；{@code processPageResult} 只在分页路径触发，
-     * 且能拿到分页参数，适合改 total/追加聚合字段。两者执行顺序为 afterQuery → processPageResult。
-     * </p>
-     *
-     * @param records 待返回的记录集合（分页时为当前页记录），可直接原地修改
-     * @param query   原始查询条件实体，可能为 {@code null}
-     */
-    protected void afterQuery(List<T> records, T query) {
-        // 子类可重写：对查询结果做业务加工
-    }
-
-    /**
-     * 分页查询结果后处理钩子，子类可重写以实现自定义逻辑。
-     *
-     * @param page      分页结果
-     * @param pageQuery 原始分页查询参数
-     */
-    @Override
-    public void processPageResult(IPage<T> page, CommonPageQuery<T> pageQuery) {
-        // 子类可重写此方法实现自定义处理
-    }
-
-    /**
      * 新增实体（带前置/后置处理）。
      * <p>前置处理包括字段加密、数据完整性 MD5 计算；新增后会触发数据变更记录。</p>
      *
@@ -374,10 +330,11 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 根据 ID 删除实体（带数据变更记录）。
+     * 根据 ID 删除实体（带前后钩子与数据变更记录）。
      * <p>
-     * 覆盖 MyBatis-Plus 默认实现：删除前先查询原数据，删除成功后记录 DELETE 变更
-     * （仅当实体标注了 {@link DataChangeRecord} 注解时生效）。逻辑删除实体同样适用。
+     * 覆盖 MyBatis-Plus 默认实现：删除前先查询原数据，依次调用 {@link #beforeDelete}、执行删除、
+     * {@link #afterDelete}（默认记录 DELETE 变更，仅当实体标注 {@link DataChangeRecord} 时生效）。
+     * 逻辑删除实体同样适用；ID 查不到原数据时两个钩子都不触发。
      * </p>
      *
      * @param id 主键 ID
@@ -387,18 +344,23 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     @Transactional(rollbackFor = Exception.class)
     public boolean removeById(Serializable id) {
         T oldEntity = baseMapper.selectById(id);
+        if (oldEntity != null) {
+            beforeDelete(oldEntity);
+        }
+
         boolean success = super.removeById(id);
+
         if (success && oldEntity != null) {
-            recordDataChange(oldEntity, OperationType.DELETE, oldEntity, null);
+            afterDelete(oldEntity);
         }
         return success;
     }
 
     /**
-     * 根据 ID 列表批量删除实体（带数据变更记录）。
+     * 根据 ID 列表批量删除实体（带批量前后钩子与数据变更记录）。
      * <p>
-     * 删除前一次性批量查询原数据，删除成功后合并全部实体的 DELETE 变更记录统一分发，
-     * 避免逐实体调用处理器。
+     * 删除前一次性批量查询原数据，依次调用 {@link #beforeDeleteBatch}、执行删除、{@link #afterDeleteBatch}；
+     * 后置钩子默认合并全部实体的 DELETE 变更记录后统一分发，避免逐实体调用处理器。
      * </p>
      * <p>
      * 参数使用原生 {@link Collection} 类型：MyBatis-Plus 3.5.17 中
@@ -417,17 +379,17 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
         if (ids == null || ids.isEmpty()) {
             return false;
         }
+
         List<T> oldEntities = baseMapper.selectByIds(ids);
+        boolean hasOld = oldEntities != null && !oldEntities.isEmpty();
+        if (hasOld) {
+            beforeDeleteBatch(oldEntities);
+        }
+
         boolean success = super.removeByIds(ids);
-        if (success && oldEntities != null && !oldEntities.isEmpty()) {
-            DataChangeRecord annotation = resolveChangeRecordAnnotation(oldEntities.get(0).getClass());
-            if (annotation != null) {
-                List<DataChangeRecordEntity> allRecords = new ArrayList<>();
-                for (T oldEntity : oldEntities) {
-                    allRecords.addAll(buildChangeRecords(oldEntity.getClass(), annotation, OperationType.DELETE, oldEntity, null));
-                }
-                dispatchChangeRecords(annotation, allRecords);
-            }
+
+        if (success && hasOld) {
+            afterDeleteBatch(oldEntities);
         }
         return success;
     }
@@ -802,49 +764,6 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             throw new IllegalArgumentException("非法的排序列名: " + column);
         }
         return column;
-    }
-
-    /**
-     * 新增前处理：对实体字段执行加密。
-     *
-     * @param entity 待新增实体
-     */
-    protected void beforeAdd(T entity) {
-        // 加密处理
-        encryptEntity(entity);
-    }
-
-    /**
-     * 新增后处理：记录数据变更。
-     *
-     * @param entity 已新增实体
-     */
-    protected void afterAdd(T entity) {
-        // 记录数据变更
-        recordDataChange(entity, OperationType.INSERT, null, entity);
-    }
-
-    /**
-     * 更新前处理：对新值执行加密，并记录字段级变更。
-     *
-     * @param oldEntity 原数据
-     * @param newEntity 新数据
-     */
-    protected void beforeUpdate(T oldEntity, T newEntity) {
-        // 加密处理
-        encryptEntity(newEntity);
-
-        // 记录变更
-        recordDataChange(newEntity, OperationType.UPDATE, oldEntity, newEntity);
-    }
-
-    /**
-     * 更新后处理钩子，子类可重写以实现自定义逻辑。
-     *
-     * @param entity 已更新实体
-     */
-    protected void afterUpdate(T entity) {
-        // 后续处理
     }
 
     /**
@@ -1419,6 +1338,142 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             log.error("获取实体ID失败", e);
         }
         return null;
+    }
+
+    /* ================================================================================
+     * 生命周期钩子：子类按需重写。重写带默认实现的钩子（beforeAdd / afterAdd /
+     * beforeUpdate / afterDelete / afterDeleteBatch）时若仍需加密与数据变更记录，要调用 super。
+     *
+     *   findList / findOne   beforeQuery → SQL → processResultList → afterQuery
+     *   findPage             beforeQuery → SQL → processResultList → afterQuery → processPageResult
+     *   findById             无钩子（不构建 Wrapper，只做内联解密/脱敏/字典）
+     *   addEntity / addBatch beforeAdd → 写库 → afterAdd
+     *   updateEntity         beforeUpdate(old, new) → 写库 → afterUpdate
+     *   saveOrUpdateEntity   透传到 addEntity / updateEntity，钩子同上
+     *   removeById           beforeDelete → 删库 → afterDelete
+     *   removeByIds          beforeDeleteBatch → 删库 → afterDeleteBatch
+     ================================================================================ */
+
+    /**
+     * 查询前置钩子：注解条件构建完成后、执行 SQL 前调用，子类可往 Wrapper 追加条件。
+     * <p>
+     * 数据范围、跨表子查询这类需要 {@code inSql / exists / apply} 的条件在这里由后端构造，
+     * 规则见 {@link com.dream.common.data.annotation.QueryCondition} 的说明。
+     * </p>
+     *
+     * @param queryWrapper 已按注解白名单构建好的 Wrapper，可直接追加条件
+     * @param query        原始查询条件实体（分页时为 {@code params}），可能为 {@code null}
+     */
+    protected void beforeQuery(QueryWrapper<T> queryWrapper, T query) {
+        // 子类可重写：追加后端构造的查询条件
+    }
+
+    /**
+     * 查询后置钩子：框架解密/脱敏/字典处理完成后、结果返回调用方前调用。
+     * <p>
+     * 与 {@link #processPageResult} 的分工：本钩子对列表与分页两条路径都生效、入参统一是记录集合，
+     * 适合「批量补关联名称」这类与分页无关的加工；{@code processPageResult} 只在分页路径触发且能拿到分页参数。
+     * </p>
+     *
+     * @param records 待返回的记录集合（分页时为当前页记录），可直接原地修改
+     * @param query   原始查询条件实体，可能为 {@code null}
+     */
+    protected void afterQuery(List<T> records, T query) {
+        // 子类可重写：对查询结果做业务加工
+    }
+
+    /**
+     * 分页结果后处理钩子：{@link #afterQuery} 之后调用，子类可改 total、追加聚合字段等。
+     *
+     * @param page      分页结果
+     * @param pageQuery 原始分页查询参数
+     */
+    @Override
+    public void processPageResult(IPage<T> page, CommonPageQuery<T> pageQuery) {
+        // 子类可重写此方法实现自定义处理
+    }
+
+    /**
+     * 新增前钩子：默认执行字段加密。
+     *
+     * @param entity 待新增实体
+     */
+    protected void beforeAdd(T entity) {
+        encryptEntity(entity);
+    }
+
+    /**
+     * 新增后钩子：默认记录 INSERT 数据变更。
+     * <p>{@link #addBatch} 目前只触发 {@link #beforeAdd}，不触发本钩子。</p>
+     *
+     * @param entity 已新增实体
+     */
+    protected void afterAdd(T entity) {
+        recordDataChange(entity, OperationType.INSERT, null, entity);
+    }
+
+    /**
+     * 更新前钩子：默认对新值加密并记录字段级变更。
+     *
+     * @param oldEntity 原数据
+     * @param newEntity 新数据
+     */
+    protected void beforeUpdate(T oldEntity, T newEntity) {
+        encryptEntity(newEntity);
+        recordDataChange(newEntity, OperationType.UPDATE, oldEntity, newEntity);
+    }
+
+    /**
+     * 更新后钩子：默认空实现。
+     *
+     * @param entity 已更新实体
+     */
+    protected void afterUpdate(T entity) {
+        // 子类可重写：更新成功后的业务处理
+    }
+
+    /**
+     * 删除前钩子：原数据已查出、尚未删除时调用；ID 查不到数据时不触发。
+     *
+     * @param entity 待删除的原数据
+     */
+    protected void beforeDelete(T entity) {
+        // 子类可重写：删除前的校验、关联数据清理等
+    }
+
+    /**
+     * 删除后钩子：删除成功后调用，默认记录 DELETE 数据变更。
+     *
+     * @param entity 已删除的原数据
+     */
+    protected void afterDelete(T entity) {
+        recordDataChange(entity, OperationType.DELETE, entity, null);
+    }
+
+    /**
+     * 批量删除前钩子：原数据已批量查出、尚未删除时调用；默认空实现。
+     *
+     * @param entities 待删除的原数据集合，非空
+     */
+    protected void beforeDeleteBatch(List<T> entities) {
+        // 子类可重写：批量删除前的业务处理
+    }
+
+    /**
+     * 批量删除后钩子：删除成功后调用，默认合并全部实体的 DELETE 变更记录后一次性分发。
+     *
+     * @param entities 已删除的原数据集合，非空
+     */
+    protected void afterDeleteBatch(List<T> entities) {
+        DataChangeRecord annotation = resolveChangeRecordAnnotation(entities.get(0).getClass());
+        if (annotation == null) {
+            return;
+        }
+        List<DataChangeRecordEntity> allRecords = new ArrayList<>();
+        for (T oldEntity : entities) {
+            allRecords.addAll(buildChangeRecords(oldEntity.getClass(), annotation, OperationType.DELETE, oldEntity, null));
+        }
+        dispatchChangeRecords(annotation, allRecords);
     }
 
 }
