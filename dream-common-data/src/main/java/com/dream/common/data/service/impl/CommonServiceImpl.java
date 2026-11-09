@@ -34,17 +34,20 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.Serializable;
+import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 /**
  * 抽象通用 Service 实现类。
@@ -140,7 +143,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
 
     /**
      * 根据条件查询实体列表。
-     * <p>内部使用 {@link #buildQueryWrapper} 构建条件，并对结果进行解密/脱敏/字典处理。</p>
+     * <p>内部使用 {@link #buildQueryWrapper} 构建条件，依次经过
+     * {@link #beforeQuery} → 执行 SQL → 解密/脱敏/字典处理 → {@link #afterQuery}。</p>
      *
      * @param query 查询条件实体，为 {@code null} 时返回全量
      * @return 匹配的实体列表，不会为 {@code null}
@@ -148,15 +152,17 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     @Override
     public List<T> findList(T query) {
         QueryWrapper<T> queryWrapper = buildQueryWrapper(query);
+        beforeQuery(queryWrapper, query);
         List<T> list = baseMapper.selectList(queryWrapper);
         processResultList(list);
+        afterQuery(list, query);
         return list;
     }
 
     /**
      * 分页查询。
-     * <p>支持排序、自动构建查询条件，并对分页结果进行解密/脱敏/字典处理，
-     * 最后调用 {@link #processPageResult} 供子类做后处理。</p>
+     * <p>支持排序、自动构建查询条件，依次经过 {@link #beforeQuery} → 执行 SQL →
+     * 解密/脱敏/字典处理 → {@link #afterQuery} → {@link #processPageResult}。</p>
      *
      * @param pageQuery 分页查询参数（含查询条件与排序字段）
      * @return 分页结果
@@ -165,6 +171,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     public IPage<T> findPage(CommonPageQuery<T> pageQuery) {
         Page<T> page = pageQuery.toPage();
         QueryWrapper<T> queryWrapper = buildQueryWrapper(pageQuery.getParams());
+        beforeQuery(queryWrapper, pageQuery.getParams());
 
         // 处理排序
         if (pageQuery.getOrderFields() != null && !pageQuery.getOrderFields().isEmpty()) {
@@ -187,10 +194,47 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
         // 对查询结果进行后续处理(解密、脱敏等)
         processResultList(resultPage.getRecords());
 
+        // 查询后置钩子（业务补充关联数据等），再交给分页结果后处理
+        afterQuery(resultPage.getRecords(), pageQuery.getParams());
+
         // 调用分页结果后处理方法
         processPageResult(resultPage, pageQuery);
 
         return resultPage;
+    }
+
+    /**
+     * 查询前置钩子：注解条件构建完成后、执行 SQL 前调用，子类可往 Wrapper 追加条件。
+     * <p>
+     * 典型用途是<b>只能由后端构造</b>的条件——数据范围、跨表子查询这类需要
+     * {@code inSql / exists / apply} 的场景。它们刻意不进 {@link com.dream.common.data.annotation.QueryCondition}
+     * 白名单（值来自外部请求即等于 SQL 注入面），参数一律在后端拼好后再交给钩子。
+     * </p>
+     * <p>
+     * 生效范围：{@link #findList}（{@link #findOne} 复用它）与 {@link #findPage}；
+     * 按主键直查的 {@link #findById} 不构建 Wrapper，故不经过本钩子。
+     * </p>
+     *
+     * @param queryWrapper 已按注解白名单构建好的 Wrapper，可直接追加条件
+     * @param query        原始查询条件实体（分页时为 {@code params}，可能为 {@code null}）
+     */
+    protected void beforeQuery(QueryWrapper<T> queryWrapper, T query) {
+        // 子类可重写：追加后端构造的查询条件
+    }
+
+    /**
+     * 查询后置钩子：框架解密/脱敏/字典处理完成后、结果返回调用方前调用。
+     * <p>
+     * 与 {@link #processPageResult} 的分工：本钩子对列表与分页两条路径都生效、入参统一是记录集合，
+     * 适合做「批量补关联名称」这类与分页无关的加工；{@code processPageResult} 只在分页路径触发，
+     * 且能拿到分页参数，适合改 total/追加聚合字段。两者执行顺序为 afterQuery → processPageResult。
+     * </p>
+     *
+     * @param records 待返回的记录集合（分页时为当前页记录），可直接原地修改
+     * @param query   原始查询条件实体，可能为 {@code null}
+     */
+    protected void afterQuery(List<T> records, T query) {
+        // 子类可重写：对查询结果做业务加工
     }
 
     /**
@@ -466,8 +510,19 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * 根据查询条件实体构建 MyBatis-Plus QueryWrapper。
      * <p>
      * 扫描查询对象（含父类）所有带 {@link QueryCondition} 注解的字段，
-     * 根据注解配置的 {@link QueryType} 构建对应的查询条件。
+     * 按注解配置的 {@link QueryType} 映射到 MyBatis-Plus 对应的条件方法。
      * </p>
+     *
+     * <p>取值规则：</p>
+     * <ul>
+     *   <li>值为 {@code null}、空白字符串、空集合或空数组时跳过该条件；
+     *       {@link QueryType#EQ_OR_IS_NULL} 例外，它以 {@code null} 表达 {@code IS NULL}。</li>
+     *   <li>多值条件（IN / NOT_IN / BETWEEN / NOT_BETWEEN）统一接受集合与数组；
+     *       字符串只有在 {@code splitToIn=true} 或范围类条件下才按分隔符切割。</li>
+     *   <li>切割后为空集合时跳过，不会生成 {@code IN ()} 这类非法 SQL。</li>
+     *   <li>需要拼接原始 SQL 的条件（{@code inSql / exists / apply} 等）刻意不进本注解白名单，
+     *       由后端在 {@link #beforeQuery} 中自行构造。</li>
+     * </ul>
      *
      * @param query 查询条件实体，为 {@code null} 时返回空 Wrapper
      * @return 构建好的 QueryWrapper
@@ -489,86 +544,197 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             field.setAccessible(true);
             try {
                 Object value = field.get(query);
-                if (value == null) {
+                QueryType type = condition.type();
+                // 历史语义：splitToIn=true 且未显式换掉默认的 EQ 时按 IN 处理，保持对外兼容
+                if (condition.splitToIn() && type == QueryType.EQ) {
+                    type = QueryType.IN;
+                }
+                if (type == QueryType.EQ_OR_IS_NULL) {
+                    if (isBlankValue(value)) {
+                        // 未赋值（null / 空白串 / 空集合）统一表达为 IS NULL
+                        value = null;
+                    }
+                } else if (isBlankValue(value)) {
                     continue;
                 }
 
                 String column = getColumnName(field, condition);
-                QueryType type = condition.type();
+                // splitToIn 只负责「字符串切成多值」，落到 in 还是 notIn 仍由 type 决定
+                boolean splitString = condition.splitToIn()
+                        || type == QueryType.BETWEEN || type == QueryType.NOT_BETWEEN;
+                List<Object> values = toConditionValues(value, condition.splitSeparator(), splitString);
 
-                // 处理字符串切割为IN查询
-                if (condition.splitToIn() && value instanceof String) {
-                    String[] values = ((String) value).split(condition.splitSeparator());
-                    queryWrapper.in(column, (Object[]) values);
-                    continue;
-                }
-
-                // 根据查询类型构建条件
-                switch (type) {
-                    case EQ:
-                        queryWrapper.eq(column, value);
-                        break;
-                    case NE:
-                        queryWrapper.ne(column, value);
-                        break;
-                    case GT:
-                        queryWrapper.gt(column, value);
-                        break;
-                    case GE:
-                        queryWrapper.ge(column, value);
-                        break;
-                    case LT:
-                        queryWrapper.lt(column, value);
-                        break;
-                    case LE:
-                        queryWrapper.le(column, value);
-                        break;
-                    case LIKE:
-                        queryWrapper.like(column, value);
-                        break;
-                    case LIKE_LEFT:
-                        queryWrapper.likeLeft(column, value);
-                        break;
-                    case LIKE_RIGHT:
-                        queryWrapper.likeRight(column, value);
-                        break;
-                    case IN:
-                        if (value instanceof List) {
-                            queryWrapper.in(column, (List<?>) value);
-                        }
-                        break;
-                    case NOT_IN:
-                        if (value instanceof List) {
-                            queryWrapper.notIn(column, (List<?>) value);
-                        }
-                        break;
-                    case BETWEEN:
-                        // 值为 List 时取前两个元素作为范围；值为 String 时按逗号分割
-                        if (value instanceof List) {
-                            List<?> range = (List<?>) value;
-                            if (range.size() >= 2) {
-                                queryWrapper.between(column, range.get(0), range.get(1));
-                            }
-                        } else if (value instanceof String) {
-                            String[] parts = ((String) value).split(condition.splitSeparator());
-                            if (parts.length >= 2) {
-                                queryWrapper.between(column, parts[0].trim(), parts[1].trim());
-                            }
-                        }
-                        break;
-                    case IS_NULL:
-                        queryWrapper.isNull(column);
-                        break;
-                    case IS_NOT_NULL:
-                        queryWrapper.isNotNull(column);
-                        break;
-                }
+                applyCondition(queryWrapper, column, type, value, values);
             } catch (IllegalAccessException e) {
-                log.error("构建查询条件失败", e);
+                log.error("构建查询条件失败 | field={}", field.getName(), e);
             }
         }
 
         return queryWrapper;
+    }
+
+    /**
+     * 将单个查询条件按类型落到 Wrapper 上。
+     *
+     * @param queryWrapper 目标 Wrapper
+     * @param column       数据库列名
+     * @param type         查询类型
+     * @param value        字段原始值
+     * @param values       归一化后的多值集合
+     */
+    private void applyCondition(QueryWrapper<T> queryWrapper, String column, QueryType type,
+                                Object value, List<Object> values) {
+        switch (type) {
+            case EQ:
+                queryWrapper.eq(column, value);
+                break;
+            case EQ_OR_IS_NULL:
+                queryWrapper.eqOrIsNull(column, value);
+                break;
+            case NE:
+                queryWrapper.ne(column, value);
+                break;
+            case GT:
+                queryWrapper.gt(column, value);
+                break;
+            case GE:
+                queryWrapper.ge(column, value);
+                break;
+            case LT:
+                queryWrapper.lt(column, value);
+                break;
+            case LE:
+                queryWrapper.le(column, value);
+                break;
+            case LIKE:
+                queryWrapper.like(column, value);
+                break;
+            case LIKE_LEFT:
+                queryWrapper.likeLeft(column, value);
+                break;
+            case LIKE_RIGHT:
+                queryWrapper.likeRight(column, value);
+                break;
+            case NOT_LIKE:
+                queryWrapper.notLike(column, value);
+                break;
+            case NOT_LIKE_LEFT:
+                queryWrapper.notLikeLeft(column, value);
+                break;
+            case NOT_LIKE_RIGHT:
+                queryWrapper.notLikeRight(column, value);
+                break;
+            case IN:
+                if (!values.isEmpty()) {
+                    queryWrapper.in(column, values);
+                }
+                break;
+            case NOT_IN:
+                if (!values.isEmpty()) {
+                    queryWrapper.notIn(column, values);
+                }
+                break;
+            case BETWEEN:
+            case NOT_BETWEEN:
+                if (values.size() >= 2) {
+                    if (type == QueryType.BETWEEN) {
+                        queryWrapper.between(column, values.get(0), values.get(1));
+                    } else {
+                        queryWrapper.notBetween(column, values.get(0), values.get(1));
+                    }
+                } else {
+                    log.warn("范围查询需要两个值，条件已忽略 | column={} 值个数={}", column, values.size());
+                }
+                break;
+            case IS_NULL:
+                if (isSwitchOn(value)) {
+                    queryWrapper.isNull(column);
+                }
+                break;
+            case IS_NOT_NULL:
+                if (isSwitchOn(value)) {
+                    queryWrapper.isNotNull(column);
+                }
+                break;
+            default:
+                log.warn("未支持的查询类型，条件已忽略 | column={} type={}", column, type);
+                break;
+        }
+    }
+
+    /**
+     * 将字段值归一化为条件值集合：集合与数组原样展开，字符串按需按分隔符切割，其余作为单值；
+     * 同时去除 {@code null} 与空白字符串元素并 trim。
+     *
+     * @param value       字段原始值
+     * @param separator   分隔符，为空时按逗号处理
+     * @param splitString 是否对字符串值执行分隔符切割
+     * @return 归一化后的值集合，不会为 {@code null}
+     */
+    protected List<Object> toConditionValues(Object value, String separator, boolean splitString) {
+        List<Object> raw = new ArrayList<>();
+        if (value == null) {
+            return raw;
+        }
+
+        if (value instanceof Collection) {
+            raw.addAll((Collection<?>) value);
+        } else if (value.getClass().isArray()) {
+            for (int i = 0, len = Array.getLength(value); i < len; i++) {
+                raw.add(Array.get(value, i));
+            }
+        } else if (value instanceof String && splitString) {
+            String sep = (separator == null || separator.isEmpty()) ? "," : separator;
+            Collections.addAll(raw, ((String) value).split(Pattern.quote(sep)));
+        } else {
+            raw.add(value);
+        }
+
+        List<Object> values = new ArrayList<>(raw.size());
+        for (Object item : raw) {
+            if (item instanceof String) {
+                String text = ((String) item).trim();
+                if (!text.isEmpty()) {
+                    values.add(text);
+                }
+            } else if (item != null) {
+                values.add(item);
+            }
+        }
+        return values;
+    }
+
+    /**
+     * 判断值是否应视为「未赋值」：{@code null}、空白字符串、空集合或空数组。
+     *
+     * @param value 字段值
+     * @return {@code true} 表示应跳过该条件
+     */
+    protected boolean isBlankValue(Object value) {
+        if (value == null) {
+            return true;
+        }
+        if (value instanceof String) {
+            return ((String) value).trim().isEmpty();
+        }
+        if (value instanceof Collection) {
+            return ((Collection<?>) value).isEmpty();
+        }
+        if (value.getClass().isArray()) {
+            return Array.getLength(value) == 0;
+        }
+        return false;
+    }
+
+    /**
+     * IS NULL / IS NOT NULL 的开关语义：值为 {@link Boolean} 时以 {@code true} 为准，
+     * 其他类型非空即生效。
+     *
+     * @param value 字段值
+     * @return {@code true} 表示追加该条件
+     */
+    protected boolean isSwitchOn(Object value) {
+        return !(value instanceof Boolean) || (Boolean) value;
     }
 
     /**

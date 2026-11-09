@@ -58,6 +58,18 @@ public enum QueryType {
      */
     LIKE_RIGHT,
     /**
+     * 模糊排除（NOT LIKE %v%）
+     */
+    NOT_LIKE,
+    /**
+     * 左模糊排除（NOT LIKE %v）
+     */
+    NOT_LIKE_LEFT,
+    /**
+     * 右模糊排除（NOT LIKE v%）
+     */
+    NOT_LIKE_RIGHT,
+    /**
      * IN查询
      */
     IN,
@@ -70,12 +82,20 @@ public enum QueryType {
      */
     BETWEEN,
     /**
+     * NOT BETWEEN
+     */
+    NOT_BETWEEN,
+    /**
      * IS NULL
      */
     IS_NULL,
     /**
      * IS NOT NULL
      */
-    IS_NOT_NULL
+    IS_NOT_NULL,
+    /**
+     * 等于；值为 {@code null} 时降级为 IS NULL
+     */
+    EQ_OR_IS_NULL
 
 }

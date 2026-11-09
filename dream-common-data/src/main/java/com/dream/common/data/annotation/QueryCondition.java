@@ -11,6 +11,12 @@ import java.lang.annotation.*;
  * 会扫描实体字段上的本注解，根据注解配置拼接 SQL where 条件。
  * </p>
  *
+ * <p>
+ * 本注解只生成「列名 + 占位参数」形式的条件，不提供 {@code inSql / exists / apply} 一类原始 SQL 入口：
+ * 注解里的值来自外部请求，允许拼 SQL 等于留下注入面。子查询、数据范围这类条件应由后端自行拼好参数，
+ * 再通过 {@code CommonServiceImpl#beforeQuery} 钩子追加到 Wrapper 上。
+ * </p>
+ *
  * <p>使用示例：</p>
  * <pre>{@code
  * public class UserQuery {
@@ -42,7 +48,7 @@ public @interface QueryCondition {
     String column() default "";
 
     /**
-     * 查询方式
+     * 查询方式。多值方式（IN / NOT_IN / BETWEEN / NOT_BETWEEN）的字段类型可用集合、数组或切割后的字符串
      */
     QueryType type() default QueryType.EQ;
 
@@ -52,7 +58,9 @@ public @interface QueryCondition {
     boolean camelToUnderscore() default true;
 
     /**
-     * 当字段类型为String时，是否按分隔符切割转为IN查询
+     * 当字段类型为 String 时，是否按 {@link #splitSeparator()} 切割为多值。
+     * <p>切割后按 {@link #type()} 生成 IN 或 NOT IN；type 仍为默认的 EQ 时按 IN 处理（兼容旧用法）。
+     * BETWEEN / NOT_BETWEEN 无需开启也会切割。空白片段会被丢弃，全部为空时不生成条件。</p>
      */
     boolean splitToIn() default false;
 
