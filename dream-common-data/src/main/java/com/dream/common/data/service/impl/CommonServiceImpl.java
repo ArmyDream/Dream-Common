@@ -1,9 +1,14 @@
 package com.dream.common.data.service.impl;
 
+import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.FieldStrategy;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.core.metadata.TableInfo;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 
@@ -26,27 +31,34 @@ import com.dream.common.data.service.CommonService;
 import com.dream.common.data.utils.EncryptUtil;
 import com.dream.common.data.utils.MybatisPlusUtils;
 import com.dream.common.data.utils.SensitiveUtil;
+import com.dream.common.tool.utils.dict.DictItem;
 import com.dream.common.tool.utils.dict.DictUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.Serializable;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -66,6 +78,8 @@ import java.util.regex.Pattern;
  *   <li>数据完整性：基于 {@link DataIntegrity} 注解进行 MD5 防篡改校验</li>
  *   <li>扩展点：查询/新增/修改/删除的前后置钩子，集中定义在类尾「生命周期钩子」分区，子类按需重写</li>
  * </ul>
+ * <p>实体写入会原地写入密文、MD5 以及 MyBatis-Plus 自动填充值；布尔型标准写入方法不回查。
+ * 任意 Wrapper 更新、链式更新和 Map/对象投影保留 MyBatis-Plus 原始语义，不承诺实体级处理。</p>
  *
  * @param <M> Mapper 类型，必须继承 {@link CommonMapper}
  * @param <T> 实体类型
@@ -95,52 +109,70 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      */
     private ObjectProvider<DataChangeRecordHandler> changeRecordHandlerProvider;
 
+    /**
+     * 注入可选的数据变更记录处理器。
+     *
+     * @param changeRecordHandlerProvider 处理器提供者，不会为 {@code null}
+     */
     @Autowired
     public void setChangeRecordHandlerProvider(ObjectProvider<DataChangeRecordHandler> changeRecordHandlerProvider) {
         this.changeRecordHandlerProvider = changeRecordHandlerProvider;
     }
 
-    /**
-     * 实体类类型缓存
-     */
-    private final Map<String, Class<T>> entityClassTypeCache = new ConcurrentHashMap<>();
-    private Class<T> entityClass;
+    /** 实体字段元数据缓存；缓存不可变列表，由 {@link #getAllFields(Class)} 返回独立副本。 */
+    private static final ClassValue<List<Field>> ENTITY_FIELDS_CACHE = new ClassValue<List<Field>>() {
+        @Override
+        protected List<Field> computeValue(Class<?> type) {
+            List<Field> fields = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+            Class<?> current = type;
+            while (current != null && current != Object.class) {
+                for (Field field : current.getDeclaredFields()) {
+                    if (seen.add(field.getName())) {
+                        field.setAccessible(true);
+                        fields.add(field);
+                    }
+                }
+                current = current.getSuperclass();
+            }
+            return Collections.unmodifiableList(fields);
+        }
+    };
 
+    /** 单次结果处理范围内的字典标签缓存，处理后立即清理，不跨请求共享。 */
+    private static final ThreadLocal<Map<Dict, Map<String, String>>> DICT_LABEL_CACHE = new ThreadLocal<>();
 
     /**
-     * 获取实体类类型（解析子类继承时声明的泛型参数）。
-     * <p>
-     * 结果会按子类全限定名缓存，避免重复反射解析。
-     * </p>
+     * 获取实体类类型，运行期复用 MyBatis-Plus 对多层泛型的解析结果。
      *
-     * @return 实体类 Class；若无法解析返回 Object.class
+     * @return 实体类 Class；无 Mapper 的离线场景沿用直接父类解析，无法解析时返回 Object.class
      */
     @Override
     @SuppressWarnings("unchecked")
     public Class<T> getEntityClassType() {
-        if (entityClass != null) {
-            return entityClass;
+        if (baseMapper != null) {
+            return getEntityClass();
         }
-
-        String key = this.getClass().getName();
-        if (!entityClassTypeCache.containsKey(key)) {
-            entityClass = (Class<T>) MybatisPlusUtils.getClassByType(this.getClass(), 1);
-            entityClassTypeCache.put(key, entityClass);
-        }
-        return entityClassTypeCache.get(key);
+        return (Class<T>) MybatisPlusUtils.getClassByType(this.getClass(), 1);
     }
 
     /**
      * 根据条件查询单个实体。
-     * <p>内部调用 {@link #findList}，返回首条记录，无结果返回 {@code null}。</p>
+     * <p>只查询一页一条且不统计总数；业务排序之后追加主键升序作为稳定次序。</p>
      *
      * @param query 查询条件实体
      * @return 匹配的首条实体；无匹配返回 {@code null}
      */
     @Override
     public T findOne(T query) {
-        List<T> list = findList(query);
-        return list.isEmpty() ? null : list.get(0);
+        QueryWrapper<T> queryWrapper = buildQueryWrapper(query);
+        beforeQuery(queryWrapper, query);
+        queryWrapper.orderByAsc(resolvePrimaryKeyColumn());
+        Page<T> page = baseMapper.selectPage(new Page<>(1, 1, false), queryWrapper);
+        List<T> records = page.getRecords();
+        processResultList(records);
+        afterQuery(records, query);
+        return records.isEmpty() ? null : records.get(0);
     }
 
     /**
@@ -231,20 +263,31 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     @Override
     @Transactional(rollbackFor = Exception.class)
     public T addEntity(T entity) {
-        // 新增前处理
-        beforeAdd(entity);
+        save(entity);
+        return findById(getEntityId(entity));
+    }
 
-        // 计算数据完整性MD5
+    /**
+     * MyBatis-Plus 标准新增入口，与 {@link #addEntity} 共用加密、MD5 和审计链路。
+     * <p>方法不回查；输入实体会原地写入密文、MD5、主键及自动填充值。</p>
+     *
+     * @param entity 待新增实体
+     * @return 插入影响行数大于零时返回 {@code true}
+     * @throws BusinessException 前置校验、MD5 计算失败或插入影响行数为零时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean save(T entity) {
+        beforeAdd(entity);
         calculateAndSetDataMd5(entity);
 
-        // 执行新增
-        baseMapper.insert(entity);
+        int insertedRows = baseMapper.insert(entity);
+        if (insertedRows <= 0) {
+            throw new BusinessException("数据新增失败");
+        }
 
-        // 新增后处理
         afterAdd(entity);
-
-        // 查询返回完整数据
-        return findById(getEntityId(entity));
+        return true;
     }
 
     /**
@@ -255,23 +298,71 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * 插入成功后逐条触发 {@link #afterAdd}，与单条新增保持一致的变更记录语义。
      * </p>
      *
+     * 返回输入列表本身，不逐条回查或解密；实体保留写库后的密文、MD5、主键及自动填充值。
+     *
      * @param entityList 待新增实体列表
-     * @return 新增后的实体列表（含已生成的主键），不会为 {@code null}
+     * @return 输入实体列表（含已生成的主键），不会为 {@code null}
      */
     @Override
     @Transactional(rollbackFor = Exception.class)
     public List<T> addBatch(List<T> entityList) {
+        return doAddBatch(entityList, DEFAULT_BATCH_SIZE);
+    }
+
+    /**
+     * 按默认批次大小新增实体，并执行完整的单条前置、后置处理。
+     *
+     * @param entityList 待新增实体集合
+     * @return 集合非空且新增成功时返回 {@code true}；空集合返回 {@code false}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveBatch(Collection<T> entityList) {
+        if (entityList == null || entityList.isEmpty()) {
+            return false;
+        }
+        addBatch(new ArrayList<>(entityList));
+        return true;
+    }
+
+    /**
+     * 按指定批次大小新增实体，并执行加密、MD5 和数据变更记录链路。
+     * <p>输入实体会原地写入持久化值，方法不回查或解密。</p>
+     *
+     * @param entityList 待新增实体集合
+     * @param batchSize  每批写入条数，必须为正数
+     * @return 集合非空且新增成功时返回 {@code true}；空集合返回 {@code false}
+     * @throws BusinessException 批量新增失败时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveBatch(Collection<T> entityList, int batchSize) {
+        if (entityList == null || entityList.isEmpty()) {
+            return false;
+        }
+        doAddBatch(new ArrayList<>(entityList), batchSize);
+        return true;
+    }
+
+    /**
+     * 执行批量新增的公共实现，供自定义与标准 API 共用。
+     *
+     * @param entityList 待新增实体列表
+     * @param batchSize  每批写入条数
+     * @return 输入列表；空输入返回新的空列表
+     */
+    private List<T> doAddBatch(List<T> entityList, int batchSize) {
         if (entityList == null || entityList.isEmpty()) {
             return new ArrayList<>();
         }
-        // 前置处理：加密、MD5 计算
         for (T entity : entityList) {
             beforeAdd(entity);
             calculateAndSetDataMd5(entity);
         }
-        // 批量插入
-        saveBatch(entityList);
-        // 后置处理：与单条新增保持一致，逐条触发 afterAdd（默认记录 INSERT 变更）
+        boolean success = super.saveBatch(entityList, batchSize);
+        if (!success) {
+            throw new BusinessException("数据批量新增失败");
+        }
         for (T entity : entityList) {
             afterAdd(entity);
         }
@@ -282,7 +373,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * 修改实体（带前置/后置处理）。
      * <p>
      * 会先校验主键 ID 是否存在、原数据是否存在，并对原数据做完整性校验；
-     * 前置处理包括字段加密、MD5 计算与变更记录。
+     * 前置处理包括字段加密与 MD5 计算，变更记录在实际更新成功后采集。
      * </p>
      *
      * @param entity 待修改实体，必须包含主键 ID
@@ -292,36 +383,69 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     @Override
     @Transactional(rollbackFor = Exception.class)
     public T updateEntity(T entity) {
+        String id = doUpdateEntity(entity);
+        return findById(id);
+    }
+
+    /**
+     * MyBatis-Plus 标准更新入口，与 {@link #updateEntity} 共用完整处理链路。
+     * <p>方法不回查；输入实体保留加密、MD5 和自动填充后的持久化值。</p>
+     *
+     * @param entity 待更新实体，必须包含主键
+     * @return 更新影响行数大于零时返回 {@code true}
+     * @throws BusinessException 主键缺失、原数据不存在、完整性校验失败或更新影响行数为零时抛出
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateById(T entity) {
+        doUpdateEntity(entity);
+        return true;
+    }
+
+    /**
+     * 查询原数据后执行实体更新。
+     *
+     * @param entity 待更新实体
+     * @return 主键字符串
+     */
+    private String doUpdateEntity(T entity) {
+        return doUpdateEntity(entity, null);
+    }
+
+    /**
+     * 基于同一版本原数据执行完整性校验、前置处理、更新、审计和后置钩子。
+     *
+     * @param entity    待更新实体
+     * @param oldEntity 已查询的原数据；为 {@code null} 时按主键查询
+     * @return 主键字符串
+     */
+    private String doUpdateEntity(T entity, T oldEntity) {
         String id = getEntityId(entity);
         if (id == null) {
             log.error("更新操作必须包含ID，实体类型：{}", entity.getClass().getName());
             throw new BusinessException("更新操作必须包含ID");
         }
 
-        // 查询原数据
-        T oldEntity = baseMapper.selectById(id);
+        if (oldEntity == null) {
+            oldEntity = baseMapper.selectById(id);
+        }
         if (oldEntity == null) {
             log.error("数据不存在，ID：{}", id);
             throw new BusinessException("数据不存在");
         }
 
-        // 检查数据完整性（可选）
         checkDataIntegrityBeforeUpdate(oldEntity);
-
-        // 更新前处理(记录变更)
         beforeUpdate(oldEntity, entity);
+        calculateAndSetDataMd5(oldEntity, entity);
 
-        // 计算新的数据完整性MD5
-        calculateAndSetDataMd5(entity);
+        int updatedRows = baseMapper.updateById(entity);
+        if (updatedRows <= 0) {
+            throw new BusinessException("数据更新失败，数据可能已被修改或删除");
+        }
 
-        // 执行更新
-        baseMapper.updateById(entity);
-
-        // 更新后处理
+        recordDataChange(entity, OperationType.UPDATE, oldEntity, entity);
         afterUpdate(entity);
-
-        // 查询返回完整数据
-        return findById(id);
+        return id;
     }
 
     /**
@@ -334,21 +458,81 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     @Override
     @Transactional(rollbackFor = Exception.class)
     public T saveOrUpdateEntity(T entity) {
+        doSaveOrUpdate(entity);
+        return findById(getEntityId(entity));
+    }
+
+    /**
+     * 根据主键及数据库存在性选择新增或更新，已查原数据直接复用，避免重复 SELECT。
+     *
+     * @param entity 待保存实体
+     */
+    private void doSaveOrUpdate(T entity) {
         String id = getEntityId(entity);
         if (id == null || id.isEmpty()) {
-            // ID不存在，执行新增
-            return addEntity(entity);
-        } else {
-            // 检查ID是否存在
-            T existing = baseMapper.selectById(id);
-            if (existing == null) {
-                // ID不存在，执行新增
-                return addEntity(entity);
-            } else {
-                // ID存在，执行修改
-                return updateEntity(entity);
-            }
+            save(entity);
+            return;
         }
+        T existing = baseMapper.selectById(id);
+        if (existing == null) {
+            save(entity);
+        } else {
+            doUpdateEntity(entity, existing);
+        }
+    }
+
+    /**
+     * MyBatis-Plus 标准新增或更新入口，不回查保存后的实体。
+     *
+     * @param entity 待保存实体
+     * @return 新增或更新成功时返回 {@code true}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveOrUpdate(T entity) {
+        doSaveOrUpdate(entity);
+        return true;
+    }
+
+    /**
+     * 逐条执行完整实体更新链，保证每条记录独立进行完整性校验、MD5 合并和字段级审计。
+     * <p>{@code batchSize} 仅保留 MyBatis-Plus 方法签名兼容；当前实现不使用批量 SQL，
+     * 因此该参数不影响处理分组。</p>
+     *
+     * @param entityList 待更新实体集合
+     * @param batchSize  MyBatis-Plus 批次大小参数，当前不生效
+     * @return 集合非空且全部更新成功时返回 {@code true}；空集合返回 {@code false}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateBatchById(Collection<T> entityList, int batchSize) {
+        if (entityList == null || entityList.isEmpty()) {
+            return false;
+        }
+        for (T entity : entityList) {
+            doUpdateEntity(entity);
+        }
+        return true;
+    }
+
+    /**
+     * 逐条执行新增或更新，复用存在性查询结果且不额外回查完整实体。
+     * <p>{@code batchSize} 仅保留接口兼容，当前实现按实体逐条处理。</p>
+     *
+     * @param entityList 待保存实体集合
+     * @param batchSize  MyBatis-Plus 批次大小参数，当前不生效
+     * @return 集合非空且全部保存成功时返回 {@code true}；空集合返回 {@code false}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean saveOrUpdateBatch(Collection<T> entityList, int batchSize) {
+        if (entityList == null || entityList.isEmpty()) {
+            return false;
+        }
+        for (T entity : entityList) {
+            doSaveOrUpdate(entity);
+        }
+        return true;
     }
 
     /**
@@ -417,6 +601,120 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
+     * 根据主键删除实体，并按 MyBatis-Plus 语义控制逻辑删除时是否执行自动填充。
+     * <p>删除前查询原数据用于前后钩子和 DELETE 变更记录；原数据不存在时不触发钩子。</p>
+     *
+     * @param id      主键 ID
+     * @param useFill 是否启用删除时的字段自动填充
+     * @return 删除影响行数大于零时返回 {@code true}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeById(Serializable id, boolean useFill) {
+        T oldEntity = baseMapper.selectById(id);
+        if (oldEntity != null) {
+            beforeDelete(oldEntity);
+        }
+        boolean success = baseMapper.deleteById(id, useFill) > 0;
+        if (success && oldEntity != null) {
+            afterDelete(oldEntity);
+        }
+        return success;
+    }
+
+    /**
+     * 根据实体删除数据，保留实体中的乐观锁版本等删除条件。
+     * <p>删除前按主键查询原数据用于前后钩子和 DELETE 变更记录；实际删除使用完整实体，
+     * 不会退化为仅按主键删除。</p>
+     *
+     * @param entity 待删除实体，必须包含主键，可携带乐观锁版本
+     * @return 删除影响行数大于零时返回 {@code true}；实体或主键为 {@code null} 时返回 {@code false}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeById(T entity) {
+        if (entity == null) {
+            return false;
+        }
+        String id = getEntityId(entity);
+        if (id == null) {
+            return false;
+        }
+        T oldEntity = baseMapper.selectById(id);
+        if (oldEntity != null) {
+            beforeDelete(oldEntity);
+        }
+        boolean success = baseMapper.deleteById(entity) > 0;
+        if (success && oldEntity != null) {
+            afterDelete(oldEntity);
+        }
+        return success;
+    }
+
+    /**
+     * 按主键集合批量删除，并控制逻辑删除时是否执行自动填充。
+     * <p>删除前一次性查询原数据，删除成功后通过批量后置钩子统一汇总变更记录。</p>
+     *
+     * @param ids     主键集合，元素须为 MyBatis-Plus 支持的主键类型
+     * @param useFill 是否启用删除时的字段自动填充
+     * @return 删除影响行数大于零时返回 {@code true}；空集合返回 {@code false}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    @SuppressWarnings("unchecked")
+    public boolean removeByIds(Collection<?> ids, boolean useFill) {
+        if (ids == null || ids.isEmpty()) {
+            return false;
+        }
+        List<T> oldEntities = baseMapper.selectByIds((Collection<? extends Serializable>) ids);
+        boolean hasOld = oldEntities != null && !oldEntities.isEmpty();
+        if (hasOld) {
+            beforeDeleteBatch(oldEntities);
+        }
+        boolean success = baseMapper.deleteByIds(ids, useFill) > 0;
+        if (success && hasOld) {
+            afterDeleteBatch(oldEntities);
+        }
+        return success;
+    }
+
+    /**
+     * 按 Wrapper 条件删除实体，并保留批量删除前后钩子与 DELETE 变更记录。
+     * <p>删除前使用相同条件查询原数据；没有匹配数据时不触发钩子。</p>
+     *
+     * @param queryWrapper 删除条件
+     * @return MyBatis-Plus 删除成功时返回 {@code true}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean remove(Wrapper<T> queryWrapper) {
+        List<T> oldEntities = baseMapper.selectList(queryWrapper);
+        boolean hasOld = oldEntities != null && !oldEntities.isEmpty();
+        if (hasOld) {
+            beforeDeleteBatch(oldEntities);
+        }
+        boolean success = super.remove(queryWrapper);
+        if (success && hasOld) {
+            afterDeleteBatch(oldEntities);
+        }
+        return success;
+    }
+
+    /**
+     * 按数据库列等值条件批量删除，复用 {@link #remove(Wrapper)} 的完整处理链。
+     *
+     * @param columnMap 数据库列名与等值条件的映射
+     * @return 删除成功时返回 {@code true}
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public boolean removeByMap(Map<String, Object> columnMap) {
+        QueryWrapper<T> queryWrapper = new QueryWrapper<>();
+        queryWrapper.allEq(columnMap);
+        return remove(queryWrapper);
+    }
+
+    /**
      * 根据 ID 查询实体，并对结果进行解密、脱敏、字典标签填充。
      *
      * @param id 主键 ID
@@ -437,60 +735,223 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
+     * MyBatis-Plus 标准主键查询入口，复用 {@link #findById(String)} 的解密、脱敏和字典处理。
+     *
+     * @param id 主键 ID
+     * @return 处理后的实体；不存在或主键为 {@code null} 时返回 {@code null}
+     */
+    @Override
+    public T getById(Serializable id) {
+        return findById(id == null ? null : String.valueOf(id));
+    }
+
+    /**
+     * 按主键查询并返回 Optional，实体后处理规则与 {@link #getById(Serializable)} 一致。
+     *
+     * @param id 主键 ID
+     * @return 包含查询结果的 Optional；无结果时返回 {@link Optional#empty()}
+     */
+    @Override
+    public Optional<T> getOptById(Serializable id) {
+        return Optional.ofNullable(getById(id));
+    }
+
+    /**
+     * 查询全部实体，复用 {@link #findList(Object)} 的条件构建及查询前后钩子。
+     *
+     * @return 经过解密、脱敏、字典和业务后置处理的实体列表
+     */
+    @Override
+    public List<T> list() {
+        return findList(null);
+    }
+
+    /**
+     * 按调用方提供的 Wrapper 查询列表。
+     * <p>不根据实体注解重建条件，也不调用 {@link #beforeQuery}；查询后执行解密、脱敏、
+     * 字典处理及 {@link #afterQuery}，其中原始查询实体参数为 {@code null}。</p>
+     *
+     * @param queryWrapper 查询条件
+     * @return 处理后的实体列表
+     */
+    @Override
+    public List<T> list(Wrapper<T> queryWrapper) {
+        return processStandardQueryResult(baseMapper.selectList(queryWrapper));
+    }
+
+    /**
+     * 按主键集合批量查询，并执行统一的结果后处理和查询后置钩子。
+     *
+     * @param idList 主键集合
+     * @return 处理后的实体列表
+     */
+    @Override
+    public List<T> listByIds(Collection<? extends Serializable> idList) {
+        return processStandardQueryResult(baseMapper.selectByIds(idList));
+    }
+
+    /**
+     * 按数据库列等值条件查询，并执行统一的结果后处理和查询后置钩子。
+     *
+     * @param columnMap 数据库列名与等值条件的映射
+     * @return 处理后的实体列表
+     */
+    @Override
+    public List<T> listByMap(Map<String, Object> columnMap) {
+        return processStandardQueryResult(baseMapper.selectByMap(columnMap));
+    }
+
+    /**
+     * 按 Wrapper 分页查询并返回当前页记录列表。
+     * <p>分页大小超过 {@link #resolveMaxPageSize()} 时会原地截断分页参数。</p>
+     *
+     * @param page         分页参数
+     * @param queryWrapper 查询条件
+     * @return 当前页中经过统一后处理的实体列表
+     */
+    @Override
+    public List<T> list(IPage<T> page, Wrapper<T> queryWrapper) {
+        clampStandardPageSize(page);
+        return processStandardQueryResult(super.list(page, queryWrapper));
+    }
+
+    /**
+     * 按 Wrapper 查询分页结果，并处理当前页记录。
+     * <p>分页大小超过 {@link #resolveMaxPageSize()} 时会原地截断分页参数；
+     * 分页总数及其他分页属性保持 MyBatis-Plus 原始语义。</p>
+     *
+     * @param page         分页参数及结果载体
+     * @param queryWrapper 查询条件
+     * @param <E>          分页对象类型
+     * @return 当前页记录已处理后返回的分页对象
+     */
+    @Override
+    public <E extends IPage<T>> E page(E page, Wrapper<T> queryWrapper) {
+        clampStandardPageSize(page);
+        E resultPage = super.page(page, queryWrapper);
+        processStandardQueryResult(resultPage.getRecords());
+        return resultPage;
+    }
+
+    /**
+     * 按 Wrapper 查询单个实体，并执行统一的结果后处理和查询后置钩子。
+     *
+     * @param queryWrapper 查询条件
+     * @param throwEx      查询到多条记录时是否按 MyBatis-Plus 语义抛出异常
+     * @return 处理后的实体；无匹配记录时返回 {@code null}
+     */
+    @Override
+    public T getOne(Wrapper<T> queryWrapper, boolean throwEx) {
+        T entity = super.getOne(queryWrapper, throwEx);
+        if (entity != null) {
+            List<T> records = new ArrayList<>(1);
+            records.add(entity);
+            processStandardQueryResult(records);
+        }
+        return entity;
+    }
+
+    /**
+     * 按 Wrapper 查询单个实体并返回 Optional，处理规则与 {@link #getOne(Wrapper, boolean)} 一致。
+     *
+     * @param queryWrapper 查询条件
+     * @param throwEx      查询到多条记录时是否按 MyBatis-Plus 语义抛出异常
+     * @return 包含查询结果的 Optional；无结果时返回 {@link Optional#empty()}
+     */
+    @Override
+    public Optional<T> getOneOpt(Wrapper<T> queryWrapper, boolean throwEx) {
+        return Optional.ofNullable(getOne(queryWrapper, throwEx));
+    }
+
+    /**
+     * 将标准分页入口的页大小限制在框架上限内，并原地修改分页参数。
+     *
+     * @param page 分页参数，允许为 {@code null}
+     */
+    private void clampStandardPageSize(IPage<T> page) {
+        int maxPageSize = resolveMaxPageSize();
+        if (page != null && page.getSize() > maxPageSize) {
+            log.warn("pageSize={} 超过上限 {}，已按上限截断", page.getSize(), maxPageSize);
+            page.setSize(maxPageSize);
+        }
+    }
+
+    /**
+     * 对标准查询入口的记录执行框架后处理和业务查询后置钩子。
+     *
+     * @param records 查询记录集合
+     * @return 原记录集合，便于调用方直接返回
+     */
+    private List<T> processStandardQueryResult(List<T> records) {
+        processResultList(records);
+        afterQuery(records, null);
+        return records;
+    }
+
+    /**
      * 检查指定 ID 对应实体的数据完整性。
      * <p>
      * 通过对比存储的 MD5 与当前计算的 MD5 判断数据是否被篡改。
-     * 计算过程中的异常会被捕获并返回 {@code false}；当检测到篡改且
-     * {@link DataIntegrity#throwOnFailure()} 为 {@code true} 时，抛出
-     * {@link BusinessException} 以通知调用方。
+     * 启用校验后，MD5 字段不存在、MD5 为空、计算异常或摘要不一致均视为校验失败；
+     * 默认返回 {@code false}，{@link DataIntegrity#throwOnFailure()} 为 {@code true} 时抛出
+     * {@link BusinessException}。只有未启用校验时才直接通过。
      * </p>
      *
      * @param id 主键 ID
-     * @return {@code true} 表示完整/未启用校验/无 MD5；{@code false} 表示数据被篡改或校验过程异常
+     * @return {@code true} 表示完整或未启用校验；{@code false} 表示记录不存在、MD5 缺失、数据被篡改或校验异常
      * @throws BusinessException 当检测到篡改且配置为失败时抛出
      */
     @Override
     public boolean checkDataIntegrity(String id) {
-        DataIntegrity integrity;
-        String storedMd5;
-        String currentMd5;
         try {
-            Class<T> entityClass = getEntityClassType();
-            // 查询当前数据
-            T entity = baseMapper.selectById(id);
-            if (entity == null) {
-                return false;
-            }
-
-            integrity = entityClass.getAnnotation(DataIntegrity.class);
-            if (integrity == null || !integrity.enable()) {
-                return true; // 未启用完整性检查
-            }
-
-            // 获取存储的MD5值
-            storedMd5 = getDataMd5FromEntity(entity, integrity.md5Field());
-            if (storedMd5 == null || storedMd5.isEmpty()) {
-                return true; // 没有MD5值，认为通过
-            }
-
-            // 计算当前MD5（排除MD5字段本身，字段名按实体实际字段解析）
-            String md5FieldName = resolveMd5FieldName(entityClass, integrity.md5Field());
-            String excludes = md5FieldName == null
-                    ? integrity.excludeFields()
-                    : integrity.excludeFields() + "," + md5FieldName;
-            currentMd5 = calculateMd5(entity, excludes);
+            return checkDataIntegrity(baseMapper.selectById(id));
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
             log.error("检查数据完整性失败，ID：{}", id, e);
             return false;
         }
+    }
 
-        boolean isValid = currentMd5.equals(storedMd5);
-
-        if (!isValid && integrity.throwOnFailure()) {
-            log.error("数据完整性校验失败，数据可能已被篡改，ID：{}", id);
-            throw new BusinessException("数据完整性校验失败，数据可能已被篡改");
+    /**
+     * 直接校验已查询实体，更新链路复用本方法可避免按 ID 重复查询及跨版本检查。
+     *
+     * @param entity 数据库实体
+     * @return 是否通过完整性校验
+     */
+    protected boolean checkDataIntegrity(T entity) {
+        if (entity == null) {
+            return false;
+        }
+        DataIntegrity integrity = entity.getClass().getAnnotation(DataIntegrity.class);
+        if (integrity == null || !integrity.enable()) {
+            return true;
         }
 
+        String storedMd5;
+        String currentMd5;
+        try {
+            storedMd5 = getDataMd5FromEntity(entity, integrity.md5Field());
+            if (storedMd5 == null || storedMd5.isEmpty()) {
+                throw new BusinessException("数据完整性MD5为空");
+            }
+            String md5FieldName = resolveMd5FieldName(entity.getClass(), integrity.md5Field());
+            String excludes = integrity.excludeFields() + "," + md5FieldName;
+            currentMd5 = calculateMd5(entity, excludes);
+        } catch (Exception e) {
+            String id = getEntityId(entity);
+            log.error("检查数据完整性失败，ID：{}", id, e);
+            if (integrity.throwOnFailure()) {
+                throw new BusinessException("数据完整性校验失败：" + e.getMessage());
+            }
+            return false;
+        }
+
+        boolean isValid = currentMd5.equals(storedMd5);
+        if (!isValid && integrity.throwOnFailure()) {
+            log.error("数据完整性校验失败，数据可能已被篡改，ID：{}", getEntityId(entity));
+            throw new BusinessException("数据完整性校验失败，数据可能已被篡改");
+        }
         return isValid;
     }
 
@@ -801,9 +1262,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      */
     protected void checkDataIntegrityBeforeUpdate(T oldEntity) {
         try {
-            String id = getEntityId(oldEntity);
-            if (id != null) {
-                checkDataIntegrity(id);
+            if (oldEntity != null) {
+                checkDataIntegrity(oldEntity);
             }
         } catch (BusinessException e) {
             throw e;
@@ -819,24 +1279,40 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * @param entity 待处理实体
      */
     protected void calculateAndSetDataMd5(T entity) {
-        if (entity == null) {
+        calculateAndSetDataMd5(null, entity);
+    }
+
+    /**
+     * 根据最终持久化快照计算并设置 MD5。
+     * <p>更新时以数据库旧行为底，仅覆盖本次非空更新字段，与默认 {@code updateById} 策略保持一致；
+     * 主键、自动填充字段、不可查询字段及非持久化字段不参与摘要。</p>
+     *
+     * @param oldEntity 数据库旧实体；新增时传 {@code null}
+     * @param newEntity 待写库实体
+     */
+    protected void calculateAndSetDataMd5(T oldEntity, T newEntity) {
+        if (newEntity == null) {
             return;
         }
 
-        DataIntegrity integrity = entity.getClass().getAnnotation(DataIntegrity.class);
+        DataIntegrity integrity = newEntity.getClass().getAnnotation(DataIntegrity.class);
         if (integrity == null || !integrity.enable() || !integrity.autoCalculate()) {
             return;
         }
 
         try {
-            String md5FieldName = resolveMd5FieldName(entity.getClass(), integrity.md5Field());
+            String md5FieldName = resolveMd5FieldName(newEntity.getClass(), integrity.md5Field());
             if (md5FieldName == null) {
-                return;
+                throw new BusinessException("数据完整性MD5字段不存在：" + integrity.md5Field());
             }
-            String md5 = calculateMd5(entity, integrity.excludeFields() + "," + md5FieldName);
-            setDataMd5ToEntity(entity, md5FieldName, md5);
+            String excludes = integrity.excludeFields() + "," + md5FieldName;
+            String md5 = oldEntity == null
+                    ? calculateMd5(newEntity, excludes)
+                    : calculateMd5ForUpdate(oldEntity, newEntity, excludes);
+            setDataMd5ToEntity(newEntity, md5FieldName, md5);
+        } catch (BusinessException e) {
+            throw e;
         } catch (Exception e) {
-            // 计算失败仍继续写库会留下无指纹数据，必须中断并由事务回滚
             log.error("计算数据完整性MD5失败", e);
             throw new BusinessException("计算数据完整性MD5失败：" + e.getMessage());
         }
@@ -847,24 +1323,25 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      *
      * @param entity   实体对象
      * @param md5Field MD5 字段名
-     * @return MD5 值；字段不存在或读取失败返回 {@code null}
+     * @return MD5 值；字段值尚未写入时为 {@code null}
+     * @throws BusinessException 字段不存在或读取失败时抛出
      */
     protected String getDataMd5FromEntity(T entity, String md5Field) {
-        try {
-            String fieldName = resolveMd5FieldName(entity.getClass(), md5Field);
-            if (fieldName == null) {
-                return null;
-            }
-            Field field = findField(entity.getClass(), fieldName);
-            if (field != null) {
-                field.setAccessible(true);
-                Object value = field.get(entity);
-                return value != null ? value.toString() : null;
-            }
-        } catch (Exception e) {
-            log.error("获取数据MD5失败", e);
+        String fieldName = resolveMd5FieldName(entity.getClass(), md5Field);
+        if (fieldName == null) {
+            throw new BusinessException("数据完整性MD5字段不存在：" + md5Field);
         }
-        return null;
+        Field field = findField(entity.getClass(), fieldName);
+        if (field == null) {
+            throw new BusinessException("数据完整性MD5字段不存在：" + fieldName);
+        }
+        try {
+            field.setAccessible(true);
+            Object value = field.get(entity);
+            return value != null ? value.toString() : null;
+        } catch (Exception e) {
+            throw new BusinessException("获取数据完整性MD5失败：" + e.getMessage());
+        }
     }
 
     /**
@@ -873,20 +1350,22 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * @param entity   实体对象
      * @param md5Field MD5 字段名
      * @param md5Value MD5 值
+     * @throws BusinessException 字段不存在、类型不兼容或写入失败时抛出
      */
     protected void setDataMd5ToEntity(T entity, String md5Field, String md5Value) {
+        String fieldName = resolveMd5FieldName(entity.getClass(), md5Field);
+        if (fieldName == null) {
+            throw new BusinessException("数据完整性MD5字段不存在：" + md5Field);
+        }
+        Field field = findField(entity.getClass(), fieldName);
+        if (field == null || field.getType() != String.class) {
+            throw new BusinessException("数据完整性MD5字段必须为String：" + fieldName);
+        }
         try {
-            String fieldName = resolveMd5FieldName(entity.getClass(), md5Field);
-            if (fieldName == null) {
-                return;
-            }
-            Field field = findField(entity.getClass(), fieldName);
-            if (field != null) {
-                field.setAccessible(true);
-                field.set(entity, md5Value);
-            }
+            field.setAccessible(true);
+            field.set(entity, md5Value);
         } catch (Exception e) {
-            log.error("设置数据MD5失败", e);
+            throw new BusinessException("设置数据完整性MD5失败：" + e.getMessage());
         }
     }
 
@@ -900,7 +1379,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      *
      * @param entityClass 实体类
      * @param md5Field    注解声明的 MD5 字段名或列名
-     * @return 实体上的 Java 字段名；未配置返回 {@code null}，找不到对应字段时记录告警并返回 {@code null}
+     * @return 实体上的 Java 字段名；未配置或找不到对应字段时返回 {@code null}，由调用方按失败处理
      */
     protected String resolveMd5FieldName(Class<?> entityClass, String md5Field) {
         if (md5Field == null || md5Field.trim().isEmpty()) {
@@ -912,7 +1391,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                 return field.getName();
             }
         }
-        log.warn("数据完整性MD5字段在实体中不存在，本次跳过MD5处理 | entity={} | md5Field={}",
+        log.warn("数据完整性MD5字段在实体中不存在 | entity={} | md5Field={}",
                 entityClass.getName(), configured);
         return null;
     }
@@ -925,11 +1404,12 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * @return Field 对象；未找到返回 {@code null}
      */
     protected Field findField(Class<?> clazz, String fieldName) {
-        while (clazz != null && clazz != Object.class) {
-            try {
-                return clazz.getDeclaredField(fieldName);
-            } catch (NoSuchFieldException e) {
-                clazz = clazz.getSuperclass();
+        if (clazz == null || fieldName == null) {
+            return null;
+        }
+        for (Field field : ENTITY_FIELDS_CACHE.get(clazz)) {
+            if (field.getName().equals(fieldName)) {
+                return field;
             }
         }
         return null;
@@ -937,28 +1417,16 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
 
     /**
      * 获取类及其所有父类（不含 Object）声明的字段，子类同名字段优先。
-     * <p>会调用 {@link Field#setAccessible(boolean)} 以便后续直接读写。</p>
+     * <p>元数据按类缓存；每次返回独立列表，调用方修改列表不会污染缓存。</p>
      *
      * @param clazz 目标类
      * @return 字段列表；入参为 {@code null} 时返回空列表
      */
     protected List<Field> getAllFields(Class<?> clazz) {
-        List<Field> fields = new ArrayList<>();
         if (clazz == null) {
-            return fields;
+            return new ArrayList<>();
         }
-        Set<String> seen = new HashSet<>();
-        Class<?> current = clazz;
-        while (current != null && current != Object.class) {
-            for (Field field : current.getDeclaredFields()) {
-                if (seen.add(field.getName())) {
-                    field.setAccessible(true);
-                    fields.add(field);
-                }
-            }
-            current = current.getSuperclass();
-        }
-        return fields;
+        return new ArrayList<>(ENTITY_FIELDS_CACHE.get(clazz));
     }
 
     /**
@@ -1019,6 +1487,10 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                     continue;
                 }
 
+                if (encrypt.type() == EncryptType.MD5) {
+                    field.set(entity, null);
+                    continue;
+                }
                 String decrypted = EncryptUtil.decrypt(value.toString(), encrypt.type(), encrypt.key());
                 field.set(entity, decrypted);
             } catch (IllegalAccessException e) {
@@ -1068,8 +1540,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     /**
      * 处理字典字段。
      * <p>
-     * 扫描实体（含父类）所有带 {@link Dict} 注解的字段，获取其值，
-     * 调用 {@link DictUtils#getLabel(Dict, String)} 获取标签，并设置到目标字段
+     * 扫描实体（含父类）所有带 {@link Dict} 注解的字段并设置标签到目标字段
      * （目标字段名由 {@link DictUtils#getTargetField(Dict, String)} 决定，默认为字段名 + "Label"）。
      * </p>
      *
@@ -1093,7 +1564,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                     continue;
                 }
 
-                String label = DictUtils.getLabel(dict, value.toString());
+                String fieldValue = value.toString();
+                String label = resolveDictLabels(dict).getOrDefault(fieldValue, fieldValue);
                 String targetFieldName = DictUtils.getTargetField(dict, field.getName());
                 Field targetField = findField(entity.getClass(), targetFieldName);
                 if (targetField != null) {
@@ -1107,7 +1579,43 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
+     * 获取字典值到标签的映射；批量结果处理期间优先复用当前线程的临时缓存。
+     *
+     * @param dict 字典注解配置
+     * @return 字典值到显示标签的映射，不会为 {@code null}
+     */
+    private Map<String, String> resolveDictLabels(Dict dict) {
+        Map<Dict, Map<String, String>> cache = DICT_LABEL_CACHE.get();
+        if (cache != null) {
+            return cache.computeIfAbsent(dict, this::loadDictLabels);
+        }
+        return loadDictLabels(dict);
+    }
+
+    /**
+     * 从当前字典 Provider 加载标签映射，不建立跨请求缓存。
+     * <p>同一字典值出现多次时保留第一个非空标签，与字典工具默认查找语义一致。</p>
+     *
+     * @param dict 字典注解配置
+     * @return 字典值到显示标签的映射；无字典项时返回空映射
+     */
+    private Map<String, String> loadDictLabels(Dict dict) {
+        List<DictItem> items = DictUtils.getDictItems(dict);
+        if (items == null || items.isEmpty()) {
+            return Collections.emptyMap();
+        }
+        Map<String, String> labels = new HashMap<>();
+        for (DictItem item : items) {
+            if (item != null && item.getValue() != null && item.getLabel() != null) {
+                labels.putIfAbsent(item.getValue(), item.getLabel());
+            }
+        }
+        return labels;
+    }
+
+    /**
      * 处理结果列表：对每个实体依次执行解密、脱敏、字典处理。
+     * <p>同一批结果复用字典标签，不跨请求缓存，业务 Provider 的字典刷新语义不变。</p>
      *
      * @param list 实体列表
      */
@@ -1116,10 +1624,20 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             return;
         }
 
-        for (T entity : list) {
-            decryptEntity(entity);
-            desensitizeEntity(entity);
-            processDict(entity);
+        Map<Dict, Map<String, String>> previousCache = DICT_LABEL_CACHE.get();
+        if (previousCache == null) {
+            DICT_LABEL_CACHE.set(new HashMap<>());
+        }
+        try {
+            for (T entity : list) {
+                decryptEntity(entity);
+                desensitizeEntity(entity);
+                processDict(entity);
+            }
+        } finally {
+            if (previousCache == null) {
+                DICT_LABEL_CACHE.remove();
+            }
         }
     }
 
@@ -1218,9 +1736,11 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
             }
             field.setAccessible(true);
             try {
-                String oldValue = oldEntity != null ? toChangeValue(field.get(oldEntity), maxValueLength) : null;
-                String newValue = newEntity != null ? toChangeValue(field.get(newEntity), maxValueLength) : null;
-                if (!isChanged(operationType, oldValue, newValue)) {
+                Object oldRawValue = oldEntity != null ? field.get(oldEntity) : null;
+                Object newRawValue = newEntity != null ? field.get(newEntity) : null;
+                String oldComparisonValue = toChangeComparisonValue(field, oldRawValue);
+                String newComparisonValue = toChangeComparisonValue(field, newRawValue);
+                if (!isChanged(operationType, oldComparisonValue, newComparisonValue)) {
                     continue;
                 }
 
@@ -1232,8 +1752,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                 recordEntity.setFieldName(field.getName());
                 recordEntity.setFieldDesc(resolveChangeFieldDesc(field));
                 recordEntity.setFieldKey(field.getName());
-                recordEntity.setOldValue(oldValue);
-                recordEntity.setNewValue(newValue);
+                recordEntity.setOldValue(toChangeDisplayValue(field, oldRawValue, maxValueLength));
+                recordEntity.setNewValue(toChangeDisplayValue(field, newRawValue, maxValueLength));
                 recordEntity.setCreateTime(LocalDateTime.now());
                 records.add(recordEntity);
             } catch (IllegalAccessException e) {
@@ -1244,16 +1764,79 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 分发变更记录：{@code persistent()=true} 且容器中存在 {@link DataChangeRecordHandler}
-     * 时批量移交（处理异常仅记录日志，不影响业务）；否则打印 INFO 摘要日志。
+     * 获取变更判定值。可逆加密字段先解密，避免随机 IV 让相同明文被误判为变化；
+     * 不在这里截断，确保长字段仅尾部变化也能被识别。
      *
-     * @param annotation 变更记录注解
-     * @param records    变更记录列表
+     * @param field 实体字段，用于读取加密配置
+     * @param value 字段原始值，可为 {@code null}
+     * @return 用于完整比较的业务值字符串；原值为 {@code null} 时返回 {@code null}
+     */
+    protected String toChangeComparisonValue(Field field, Object value) {
+        Object plainValue = toPlainFieldValue(field, value);
+        return plainValue == null ? null : String.valueOf(plainValue);
+    }
+
+    /**
+     * 获取可写入审计的展示值。加密字段只保留非空标记，脱敏字段保存掩码，
+     * 其他字段沿用 {@link #toChangeValue(Object, int)} 的序列化与截断规则。
+     *
+     * @param field          实体字段，用于读取加密与脱敏配置
+     * @param value          字段原始值，可为 {@code null}
+     * @param maxValueLength 审计值最大长度
+     * @return 安全的审计展示值；原值为 {@code null} 时返回 {@code null}，非空加密值返回 {@code "***"}
+     */
+    protected String toChangeDisplayValue(Field field, Object value, int maxValueLength) {
+        if (value == null) {
+            return null;
+        }
+        Encrypt encrypt = field.getAnnotation(Encrypt.class);
+        if (encrypt != null) {
+            return "***";
+        }
+        Object plainValue = toPlainFieldValue(field, value);
+        Sensitive sensitive = field.getAnnotation(Sensitive.class);
+        if (sensitive != null) {
+            String masked = SensitiveUtil.desensitize(String.valueOf(plainValue), sensitive.type(),
+                    sensitive.rule(), sensitive.replaceChar());
+            return toChangeValue(masked, maxValueLength);
+        }
+        return toChangeValue(plainValue, maxValueLength);
+    }
+
+    /**
+     * 分发变更记录。事务存在时延迟到 {@code afterCommit}，回滚不会产生审计或日志；
+     * 无事务时保持直接分发，便于离线调用与非事务场景使用。
+     *
+     * @param annotation 实体生效的变更记录配置
+     * @param records    待分发记录；为 {@code null} 或空集合时直接返回
      */
     private void dispatchChangeRecords(DataChangeRecord annotation, List<DataChangeRecordEntity> records) {
         if (records == null || records.isEmpty()) {
             return;
         }
+        if (TransactionSynchronizationManager.isActualTransactionActive()
+                && TransactionSynchronizationManager.isSynchronizationActive()) {
+            List<DataChangeRecordEntity> committedRecords = new ArrayList<>(records);
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    dispatchChangeRecordsNow(annotation, committedRecords);
+                }
+            });
+            return;
+        }
+        dispatchChangeRecordsNow(annotation, records);
+    }
+
+    /**
+     * 立即分发一批变更记录。
+     * <p>启用持久化且存在处理器时交由业务处理器接管，并隔离处理器异常；
+     * 否则仅输出汇总日志，不逐条输出敏感字段值。</p>
+     *
+     * @param annotation 实体生效的变更记录配置
+     * @param records    待分发记录，调用前须确认非空
+     */
+    private void dispatchChangeRecordsNow(DataChangeRecord annotation, List<DataChangeRecordEntity> records) {
         DataChangeRecordHandler handler = changeRecordHandlerProvider != null
                 ? changeRecordHandlerProvider.getIfAvailable() : null;
         if (annotation.persistent() && handler != null) {
@@ -1334,7 +1917,8 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * @param annotation 变更记录注解
      * @return 排除的字段名集合，不会为 {@code null}
      */
-    protected Set<String> resolveAuditExcludedFields(DataChangeRecord annotation) {        String[] configured = annotation.excludeAuditFields();
+    protected Set<String> resolveAuditExcludedFields(DataChangeRecord annotation) {
+        String[] configured = annotation.excludeAuditFields();
         if (configured == null || configured.length == 0) {
             return DEFAULT_CHANGE_RECORD_AUDIT_FIELDS;
         }
@@ -1387,7 +1971,7 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 计算实体的 MD5（不排除任何字段）。
+     * 计算实体的 MD5（仅使用框架默认排除规则）。
      *
      * @param entity 实体对象
      * @return MD5 字符串
@@ -1398,49 +1982,258 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 计算实体的 MD5（排除指定字段）。
-     * <p>扫描实体（含父类）所有字段，按字段名=字段值拼接后计算 MD5。</p>
+     * 根据实体的持久化字段计算 MD5。
+     * <p>字段按 Java 字段名排序，字段名和值均使用长度前缀编码，避免分隔符或反射顺序影响结果。
+     * 主键、自动填充字段、不可查询字段、static/transient/非持久化字段及框架审计字段不参与摘要。</p>
      *
      * @param entity        实体对象
-     * @param excludeFields 需排除的字段名（多个用逗号分隔），为 {@code null} 时不排除
+     * @param excludeFields 额外排除的 Java 字段名（多个用逗号分隔）
      * @return MD5 字符串
      * @throws Exception 计算过程中发生异常时抛出
      */
     protected String calculateMd5(T entity, String excludeFields) throws Exception {
-        StringBuilder sb = new StringBuilder();
-        List<Field> fields = getAllFields(entity.getClass());
-
-        String[] excludes = excludeFields != null ? excludeFields.split(",") : new String[0];
-
-        for (Field field : fields) {
-            // 检查是否排除
-            boolean exclude = false;
-            for (String e : excludes) {
-                if (field.getName().equals(e.trim())) {
-                    exclude = true;
-                    break;
-                }
-            }
-            if (exclude) {
-                continue;
-            }
-
-            field.setAccessible(true);
-            Object value = field.get(entity);
-            sb.append(field.getName()).append("=").append(value).append("|");
-        }
-
-        return EncryptUtil.encrypt(sb.toString(), EncryptType.MD5, null);
+        return doCalculateMd5(null, entity, excludeFields);
     }
 
     /**
-     * 获取实体主键值（默认字段名 "id"）。
+     * 根据更新后的完整持久化快照计算 MD5。
+     * <p>默认以新实体的非空字段覆盖旧实体；{@code updateStrategy=ALWAYS} 的字段即使为
+     * {@code null} 也使用新值，与 MyBatis-Plus 更新策略保持一致。</p>
+     *
+     * @param oldEntity     数据库旧实体
+     * @param newEntity     待更新实体
+     * @param excludeFields 额外排除的 Java 字段名
+     * @return MD5 字符串
+     * @throws Exception 计算过程中发生异常时抛出
+     */
+    protected String calculateMd5ForUpdate(T oldEntity, T newEntity, String excludeFields) throws Exception {
+        if (oldEntity == null) {
+            return calculateMd5(newEntity, excludeFields);
+        }
+        return doCalculateMd5(oldEntity, newEntity, excludeFields);
+    }
+
+    /**
+     * 按字段名稳定排序并计算持久化快照的 MD5。
+     * <p>存在旧实体时，新实体中为 {@code null} 且非强制更新的字段继承旧值；
+     * 字段名和值均使用长度前缀编码，避免拼接歧义。</p>
+     *
+     * @param oldEntity     数据库旧实体；新增时传 {@code null}
+     * @param newEntity     待写库实体
+     * @param excludeFields 额外排除的 Java 字段名，多个字段用逗号分隔
+     * @return MD5 字符串
+     * @throws Exception 反射读取字段或摘要计算失败时抛出
+     */
+    private String doCalculateMd5(T oldEntity, T newEntity, String excludeFields) throws Exception {
+        Set<String> excludes = new HashSet<>();
+        if (excludeFields != null) {
+            for (String fieldName : excludeFields.split(",")) {
+                if (fieldName != null && !fieldName.trim().isEmpty()) {
+                    excludes.add(fieldName.trim());
+                }
+            }
+        }
+
+        List<Field> fields = getAllFields(newEntity.getClass());
+        fields.sort(Comparator.comparing(Field::getName));
+        StringBuilder content = new StringBuilder();
+        for (Field field : fields) {
+            if (!isMd5IncludedField(field, excludes)) {
+                continue;
+            }
+            Object newValue = field.get(newEntity);
+            Object value = newValue;
+            if (oldEntity != null && newValue == null && !isAlwaysUpdateField(field)) {
+                value = field.get(oldEntity);
+            }
+            appendMd5Token(content, field.getName());
+            appendMd5Token(content, toMd5Value(value));
+        }
+        return EncryptUtil.encrypt(content.toString(), EncryptType.MD5, null);
+    }
+
+    /**
+     * 判断字段是否配置为即使值为 {@code null} 也参与 UPDATE。
+     *
+     * @param field 实体字段
+     * @return {@code @TableField(updateStrategy=ALWAYS)} 时返回 {@code true}
+     */
+    private boolean isAlwaysUpdateField(Field field) {
+        TableField tableField = field.getAnnotation(TableField.class);
+        return tableField != null && tableField.updateStrategy() == FieldStrategy.ALWAYS;
+    }
+
+    /**
+     * 判断字段是否属于可稳定读取的持久化摘要字段。
+     *
+     * @param field    实体字段
+     * @param excludes 额外排除的 Java 字段名
+     * @return true 表示参与 MD5
+     */
+    protected boolean isMd5IncludedField(Field field, Set<String> excludes) {
+        int modifiers = field.getModifiers();
+        if (Modifier.isStatic(modifiers) || Modifier.isTransient(modifiers) || field.isSynthetic()) {
+            return false;
+        }
+        String fieldName = field.getName();
+        if (excludes.contains(fieldName) || DEFAULT_CHANGE_RECORD_AUDIT_FIELDS.contains(fieldName)
+                || field.isAnnotationPresent(TableId.class) || "id".equals(fieldName)) {
+            return false;
+        }
+        TableField tableField = field.getAnnotation(TableField.class);
+        return tableField == null || tableField.exist() && tableField.select() && tableField.fill() == FieldFill.DEFAULT;
+    }
+
+    /**
+     * 将字段值转换为稳定的摘要文本。业务自定义持久化类型可覆写本方法提供规范序列化。
+     *
+     * @param value 字段值
+     * @return 规范文本；{@code null} 保持为 {@code null}
+     */
+    protected String toMd5Value(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal) {
+            return ((BigDecimal) value).stripTrailingZeros().toPlainString();
+        }
+        if (value instanceof Double || value instanceof Float) {
+            double number = ((Number) value).doubleValue();
+            if (!Double.isNaN(number) && !Double.isInfinite(number)) {
+                return BigDecimal.valueOf(number).stripTrailingZeros().toPlainString();
+            }
+        } else if (value instanceof Number) {
+            try {
+                return new BigDecimal(value.toString()).stripTrailingZeros().toPlainString();
+            } catch (NumberFormatException ignored) {
+                return value.toString();
+            }
+        }
+        if (value instanceof Date) {
+            return String.valueOf(((Date) value).getTime());
+        }
+        if (value instanceof Enum) {
+            return ((Enum<?>) value).name();
+        }
+        if (value.getClass().isArray()) {
+            List<Object> items = new ArrayList<>();
+            for (int i = 0, length = Array.getLength(value); i < length; i++) {
+                items.add(Array.get(value, i));
+            }
+            return toMd5Sequence(items);
+        }
+        if (value instanceof Collection) {
+            return toMd5Sequence((Collection<?>) value);
+        }
+        if (value instanceof Map) {
+            List<String> entries = new ArrayList<>();
+            for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+                StringBuilder item = new StringBuilder();
+                appendMd5Token(item, toMd5Value(entry.getKey()));
+                appendMd5Token(item, toMd5Value(entry.getValue()));
+                entries.add(item.toString());
+            }
+            Collections.sort(entries);
+            return toMd5Sequence(entries);
+        }
+        return String.valueOf(value);
+    }
+
+    /**
+     * 按集合迭代顺序拼接元素的规范化摘要文本。
+     *
+     * @param values 待编码元素集合
+     * @return 各元素经长度前缀编码后的拼接结果
+     */
+    private String toMd5Sequence(Collection<?> values) {
+        StringBuilder result = new StringBuilder();
+        for (Object value : values) {
+            appendMd5Token(result, toMd5Value(value));
+        }
+        return result.toString();
+    }
+
+    /**
+     * 向摘要内容追加一个长度前缀令牌，{@code null} 使用独立标记以区别于空字符串。
+     *
+     * @param target 摘要内容构建器
+     * @param value  待编码文本，可为 {@code null}
+     */
+    private static void appendMd5Token(StringBuilder target, String value) {
+        if (value == null) {
+            target.append("-1:");
+        } else {
+            target.append(value.length()).append(':').append(value);
+        }
+    }
+
+    /**
+     * 获取实体主键值，主键属性优先取 MyBatis-Plus TableInfo，其次识别 {@link TableId}，最后回退到 "id"。
      *
      * @param entity 实体对象
      * @return 主键值字符串；不存在或为 {@code null} 时返回 {@code null}
      */
     protected String getEntityId(T entity) {
-        return getEntityId(entity, "id");
+        return getEntityId(entity, resolvePrimaryKeyProperty());
+    }
+
+    /**
+     * 解析主键数据库列名，用于框架内部稳定排序。
+     *
+     * @return 主键列名；无法解析实体元数据时回退到 "id"
+     */
+    protected String resolvePrimaryKeyColumn() {
+        Class<T> entityType = getEntityClassType();
+        TableInfo tableInfo = entityType == null ? null : TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo != null && tableInfo.getKeyColumn() != null && !tableInfo.getKeyColumn().isEmpty()) {
+            return tableInfo.getKeyColumn();
+        }
+        Field idField = resolvePrimaryKeyField(entityType);
+        if (idField != null) {
+            TableId tableId = idField.getAnnotation(TableId.class);
+            if (tableId != null && !tableId.value().isEmpty()) {
+                return tableId.value();
+            }
+            TableField tableField = idField.getAnnotation(TableField.class);
+            if (tableField != null && !tableField.value().isEmpty()) {
+                return tableField.value();
+            }
+            return camelToUnderline(idField.getName());
+        }
+        return "id";
+    }
+
+    /**
+     * 解析实体主键对应的 Java 属性名。
+     *
+     * @return MyBatis-Plus 元数据中的主键属性；无元数据时读取 {@link TableId} 字段，最终回退到 {@code "id"}
+     */
+    private String resolvePrimaryKeyProperty() {
+        Class<T> entityType = getEntityClassType();
+        TableInfo tableInfo = entityType == null ? null : TableInfoHelper.getTableInfo(entityType);
+        if (tableInfo != null && tableInfo.getKeyProperty() != null && !tableInfo.getKeyProperty().isEmpty()) {
+            return tableInfo.getKeyProperty();
+        }
+        Field idField = resolvePrimaryKeyField(entityType);
+        return idField == null ? "id" : idField.getName();
+    }
+
+    /**
+     * 沿实体父类链查找标注 {@link TableId} 的主键字段，子类同名字段优先。
+     *
+     * @param entityType 实体类型，可为 {@code null}
+     * @return 主键字段；类型为 {@code null} 或未标注 {@link TableId} 时返回 {@code null}
+     */
+    private Field resolvePrimaryKeyField(Class<?> entityType) {
+        if (entityType == null) {
+            return null;
+        }
+        for (Field field : getAllFields(entityType)) {
+            if (field.getAnnotation(TableId.class) != null) {
+                return field;
+            }
+        }
+        return null;
     }
 
     /**
@@ -1480,6 +2273,9 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      *   saveOrUpdateEntity   透传到 addEntity / updateEntity，钩子同上
      *   removeById           beforeDelete → 删库 → afterDelete
      *   removeByIds          beforeDeleteBatch → 删库 → afterDeleteBatch
+     *
+     * 业务后置钩子在 SQL 成功后、当前事务提交前执行，不代表 afterCommit；
+     * 仅数据变更记录的分发会延迟到事务提交后，回滚不分发。
      ================================================================================ */
 
     /**
@@ -1541,7 +2337,9 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 更新前钩子：默认对新值加密并记录字段级变更。
+     * 更新前钩子：默认还原脱敏回显并对新值加密。
+     * <p>UPDATE 变更记录由 {@link #updateEntity} 在确认影响行数后统一采集，
+     * 避免后续业务校验失败或更新影响 0 行时留下假记录。</p>
      *
      * @param oldEntity 原数据
      * @param newEntity 新数据
@@ -1549,20 +2347,16 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     protected void beforeUpdate(T oldEntity, T newEntity) {
         restoreDesensitizedFields(oldEntity, newEntity);
         encryptEntity(newEntity);
-        recordDataChange(newEntity, OperationType.UPDATE, oldEntity, newEntity);
     }
 
     /**
      * 更新前还原脱敏字段，防止把查询结果里的掩码值写回数据库。
-     * <p>
-     * 查询返回阶段 {@link #desensitizeEntity} 会就地脱敏（如 {@code 138****1234}），
-     * 前端若把该结果原样回传更新，掩码会被当作真实值写库。
-     * 对标注 {@link Sensitive#ignoreOnUpdate()} 的字段，当新值含脱敏占位符而原值不含时，
-     * 判定为脱敏回显并用原值覆盖；客户端传入不含占位符的完整新值不受影响。
-     * </p>
+     * <p>使用旧明文按字段规则计算真实脱敏结果，只有新值与该结果精确相等时才判定为回显；
+     * 还原的是旧明文，后续加密流程会且只会再加密一次。旧值本身包含占位符或客户端合法提交
+     * 含占位符的其他值，均不影响判断。</p>
      *
-     * @param oldEntity 原数据
-     * @param newEntity 新数据
+     * @param oldEntity 数据库原数据（加密字段尚未解密）
+     * @param newEntity 待修改新数据
      */
     protected void restoreDesensitizedFields(T oldEntity, T newEntity) {
         if (oldEntity == null || newEntity == null) {
@@ -1584,15 +2378,39 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
                 if (!(newValue instanceof String) || !(oldValue instanceof String)) {
                     continue;
                 }
-                String newText = (String) newValue;
-                String oldText = (String) oldValue;
-                if (newText.contains(replaceChar) && !oldText.contains(replaceChar)) {
-                    field.set(newEntity, oldValue);
+                Encrypt encrypt = field.getAnnotation(Encrypt.class);
+                if (encrypt != null && encrypt.type() == EncryptType.MD5) {
+                    continue;
+                }
+                String oldPlainText = (String) toPlainFieldValue(field, oldValue);
+                String expectedMasked = SensitiveUtil.desensitize(
+                        oldPlainText, sensitive.type(), sensitive.rule(), replaceChar);
+                if (newValue.equals(expectedMasked)) {
+                    field.set(newEntity, oldPlainText);
                 }
             } catch (IllegalAccessException e) {
                 log.error("还原脱敏字段失败", e);
             }
         }
+    }
+
+    /**
+     * 将字段持久化值转换为业务明文值。
+     * <p>普通字段和 MD5 单向摘要字段保持原值；可逆加密字段按字段注解解密。</p>
+     *
+     * @param field 实体字段，用于读取加密配置
+     * @param value 字段原始值，可为 {@code null}
+     * @return 解密后的业务值或原始值；入参为 {@code null} 时返回 {@code null}
+     */
+    private Object toPlainFieldValue(Field field, Object value) {
+        if (value == null) {
+            return null;
+        }
+        Encrypt encrypt = field.getAnnotation(Encrypt.class);
+        if (encrypt == null || encrypt.type() == EncryptType.MD5) {
+            return value;
+        }
+        return EncryptUtil.decrypt(value.toString(), encrypt.type(), encrypt.key());
     }
 
     /**

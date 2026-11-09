@@ -12,6 +12,7 @@ import java.lang.annotation.Target;
  * 字段加密注解，标注于实体字段上，声明该字段在持久化前需加密、读取时需解密。
  * <p>
  * 支持自定义加密算法与密钥，配合 {@link com.dream.common.data.enums.EncryptType} 枚举使用。
+ * {@link EncryptType#MD5} 是单向摘要，读取时不会尝试解密，实体查询结果中的该字段统一置空。
  * </p>
  *
  * <p>使用示例：</p>

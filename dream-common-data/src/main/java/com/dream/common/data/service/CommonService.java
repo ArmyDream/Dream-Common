@@ -14,6 +14,12 @@ import java.util.List;
  * 分页查询、带审计与加解密脱敏的增删改查、数据完整性校验等能力。
  * 实现类参考 {@link com.dream.common.data.service.impl.CommonServiceImpl}。
  * </p>
+ * <p>自定义 {@code findXxx/addXxx/updateEntity/saveOrUpdateEntity} 与已重写的标准实体 CRUD
+ * 共用加密、脱敏、MD5 和变更记录链路。任意 Wrapper 更新、链式更新（含 Kotlin 链式 API）以及
+ * {@code listMaps/pageMaps/listObjs/getMap/getObj} 等投影仍是 MyBatis-Plus 原始入口：
+ * 它们没有逐行实体上下文，不承诺自动 MD5、字段级变更记录或实体加解密，敏感业务应使用实体入口。</p>
+ * <p>实体写入会原地写入密文、MD5 与自动填充值；{@code addBatch} 返回输入列表且不回查，
+ * 布尔型标准写入也不回查。业务后置钩子在事务提交前执行，只有变更记录分发延迟到提交后。</p>
  *
  * <p>使用示例：</p>
  * <pre>{@code
@@ -101,7 +107,7 @@ public interface CommonService<T> extends IService<T> {
      * 检查数据完整性（MD5 校验）。
      *
      * @param id 主键ID
-     * @return true-数据完整未被篡改，false-数据已被篡改
+     * @return true-数据完整或未启用校验；false-记录不存在、MD5 缺失、校验异常或数据已被篡改
      */
     boolean checkDataIntegrity(String id);
 

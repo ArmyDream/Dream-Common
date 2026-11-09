@@ -11,8 +11,11 @@ import java.lang.annotation.Target;
  * <p>
  * 记录内容写入 {@link com.dream.common.data.entity.DataChangeRecordEntity}，
  * 可选择仅记录日志或持久化入库。新增（INSERT）默认不记录，
- * 需要时通过 {@link #recordInsert()} 显式打开。
+ * 需要时通过 {@link #recordInsert()} 显式打开。有实际事务时，记录只在提交成功后分发，
+ * 回滚不分发；无事务调用时直接分发。业务后置钩子本身仍在事务提交前执行。
  * </p>
+ * <p>加密字段只保存 {@code ***}，脱敏字段只保存掩码；变更判断使用完整明文，
+ * 不会因随机密文或展示截断而误报、漏报。</p>
  *
  * <p>使用示例：</p>
  * <pre>{@code
