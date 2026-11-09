@@ -24,22 +24,12 @@ public final class ChinaHolidayUtils {
     // ==================== 常量 ====================
 
     /**
-     * API 接口地址模板
-     */
-    private static final String API_URL = "https://timor.tech/api/holiday/year/%d/";
-
-    /**
      * 日期格式化器
      */
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     /**
-     * 超时时间（毫秒）
-     */
-    private static final int CONNECT_TIMEOUT = 10000;
-
-    /**
-     * 缓存各年份数据
+     * 缓存各年份数据，由 {@link #registerYearData(YearHolidayData)} 填充
      */
     private static final Map<Integer, YearHolidayData> CACHE = new ConcurrentHashMap<>();
 
@@ -353,6 +343,50 @@ public final class ChinaHolidayUtils {
     }
 
     // ==================== 缓存管理 ====================
+
+    /**
+     * 注册某一年度的节假日数据。
+     * <p>
+     * 框架不内置外部 HTTP 依赖，节假日与调休数据由业务从国务院公告、第三方 API 或数据库获取后，
+     * 组装为 {@link YearHolidayData} 注册进来（建议应用启动时加载、定期刷新）。
+     * 未注册年份的日期判断会退化为「仅按周末」，见 {@link #getDateType(LocalDate)}。
+     * </p>
+     * <pre>{@code
+     * YearHolidayData data = new YearHolidayData(2026);
+     * data.getLegalHolidays().add("2026-01-01");
+     * data.getWorkWeekends().add("2026-02-14");
+     * ChinaHolidayUtils.registerYearData(data);
+     * }</pre>
+     *
+     * @param data 年度节假日数据，为 null 时忽略
+     */
+    public static void registerYearData(YearHolidayData data) {
+        if (data == null) {
+            return;
+        }
+        CACHE.put(data.getYear(), data);
+    }
+
+    /**
+     * 判断指定日期的类型。
+     * <p>已调用 {@link #registerYearData(YearHolidayData)} 注册该年份数据时，
+     * 会区分法定节假日、调休工作日；未注册时退化为仅按周末判断，并输出一次告警提示。</p>
+     *
+     * @param date 日期，为 null 时返回 null
+     * @return 日期类型
+     */
+    public static DateType getDateType(LocalDate date) {
+        if (date == null) {
+            return null;
+        }
+        YearHolidayData holidayData = CACHE.get(date.getYear());
+        if (holidayData == null) {
+            log.warn("{} 年节假日数据未注册，日期类型仅按周末判断，请先调用 registerYearData", date.getYear());
+            WeekDay weekDay = WeekDay.fromLocalDate(date);
+            return weekDay.isWeekend() ? DateType.WEEKEND_REST : DateType.WORKDAY;
+        }
+        return getDateType(date, holidayData);
+    }
 
     /**
      * 清除指定年份的缓存

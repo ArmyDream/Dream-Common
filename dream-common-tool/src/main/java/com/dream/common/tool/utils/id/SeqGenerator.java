@@ -1,6 +1,7 @@
 package com.dream.common.tool.utils.id;
 
 import com.dream.common.tool.utils.StringUtils;
+import lombok.extern.slf4j.Slf4j;
 
 /**
  * 序号生成器（无状态工具类）
@@ -24,6 +25,7 @@ import com.dream.common.tool.utils.StringUtils;
  *
  * @author dream
  */
+@Slf4j
 public final class SeqGenerator {
 
     private SeqGenerator() {
@@ -31,9 +33,9 @@ public final class SeqGenerator {
     }
 
     /**
-     * 默认序号位数
+     * 默认序号位数，{@link IdUtils} 共用本常量，避免两处各写一份
      */
-    private static final int DEFAULT_SEQ_LEN = 5;
+    public static final int DEFAULT_SEQ_LEN = 5;
 
     /**
      * 生成下一个序号（使用默认5位）
@@ -107,6 +109,8 @@ public final class SeqGenerator {
         try {
             return Integer.parseInt(numStr);
         } catch (NumberFormatException e) {
+            // 脏单号被当成「无历史」会把序号重置为 0，进而产生重复单号，必须留痕
+            log.warn("序号解析失败，已按 0 处理，请检查历史单号数据 | serialNo={} | prefix={}", serialNo, prefix);
             return 0;
         }
     }

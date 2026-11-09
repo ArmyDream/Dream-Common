@@ -52,9 +52,13 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
     private static final String[] FRACTION = {"角", "分"};
     private static final String[] DIGIT = {"零", "壹", "贰", "叁", "肆", "伍", "陆", "柒", "捌", "玖"};
     private static final String[][] UNIT = {{"元", "万", "亿"}, {"", "拾", "佰", "仟"}};
-    /** 金额最大值（亿元） */
-    private static final double MAX_MONEY = 999999999.99;
-    private static final double MIN_MONEY = -999999999.99;
+    /**
+     * 金额大写转换的上下限（亿元）。
+     * <p>上限由 {@link #UNIT} 的单位表决定（只到「亿」），不是可随意调大的配置项；
+     * 需要更大金额时应先扩充单位表，故不提供放开上限的重载。</p>
+     */
+    public static final double MAX_MONEY = 999999999.99;
+    public static final double MIN_MONEY = -999999999.99;
 
     private StringUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");
@@ -1444,8 +1448,22 @@ public final class StringUtils extends org.apache.commons.lang3.StringUtils {
      * @return 6位随机数字字符串
      */
     public static String generateVerifyCode() {
-        StringBuilder code = new StringBuilder(VERIFY_CODE_LENGTH);
-        for (int i = 0; i < VERIFY_CODE_LENGTH; i++) {
+        return generateVerifyCode(VERIFY_CODE_LENGTH);
+    }
+
+    /**
+     * 生成指定长度的数字验证码。
+     *
+     * @param length 位数，必须大于 0
+     * @return 指定长度的随机数字字符串
+     * @throws IllegalArgumentException length 小于 1 时抛出
+     */
+    public static String generateVerifyCode(int length) {
+        if (length < 1) {
+            throw new IllegalArgumentException("验证码位数必须大于 0");
+        }
+        StringBuilder code = new StringBuilder(length);
+        for (int i = 0; i < length; i++) {
             code.append(SECURE_RANDOM.nextInt(10));
         }
         return code.toString();

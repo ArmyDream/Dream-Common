@@ -44,10 +44,13 @@ import java.util.stream.Collectors;
  *
  * <h2>使用示例</h2>
  * <pre>
- * // 1. 创建配置（使用 ChinaHolidayUtils 的静态数据）
+ * // 1. 创建配置（节假日数据由业务组装后注册到 ChinaHolidayUtils，或直接用 Supplier 动态提供）
+ * ChinaHolidayUtils.YearHolidayData holidayData = new ChinaHolidayUtils.YearHolidayData(2026);
+ * holidayData.getLegalHolidays().add("2026-01-01");
+ * ChinaHolidayUtils.registerYearData(holidayData);
  * OverdueConfig config = OverdueConfig.builder()
- *     .holidays(ChinaHolidayUtils.getHolidayDates())
- *     .adjustmentWorkdays(ChinaHolidayUtils.getWorkdayDates())
+ *     .holidays(holidayData.getLegalHolidays())
+ *     .adjustmentWorkdays(holidayData.getWorkWeekends())
  *     .build();
  *
  * // 2. 检查超期（返回完整结果）

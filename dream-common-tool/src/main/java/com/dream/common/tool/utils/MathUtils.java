@@ -797,6 +797,46 @@ public final class MathUtils {
     }
 
     /**
+     * 格式化金额（含货币符号），指定区域。
+     * <p>单参版本使用服务器缺省 Locale，货币符号随部署环境变化（¥/$）；
+     * 需要跨环境稳定输出时用本重载显式指定。</p>
+     *
+     * @param value  数值，为 null 时返回空串
+     * @param locale 区域，如 {@link java.util.Locale#CHINA}；为 null 时等价于单参版本
+     */
+    public static String formatCurrency(Object value, java.util.Locale locale) {
+        if (value == null) {
+            return "";
+        }
+        if (locale == null) {
+            return formatCurrency(value);
+        }
+        NumberFormat nf = NumberFormat.getCurrencyInstance(locale);
+        nf.setMaximumFractionDigits(DEF_SCALE);
+        nf.setMinimumFractionDigits(DEF_SCALE);
+        return nf.format(toBigDecimal(value));
+    }
+
+    /**
+     * 格式化百分比，指定区域。
+     *
+     * @param value  数值，为 null 时返回空串
+     * @param locale 区域；为 null 时等价于单参版本
+     */
+    public static String formatPercent(Object value, java.util.Locale locale) {
+        if (value == null) {
+            return "";
+        }
+        if (locale == null) {
+            return formatPercent(value);
+        }
+        NumberFormat nf = NumberFormat.getPercentInstance(locale);
+        nf.setMaximumFractionDigits(DEF_SCALE);
+        nf.setMinimumFractionDigits(DEF_SCALE);
+        return nf.format(toBigDecimal(value));
+    }
+
+    /**
      * 去掉小数尾随零，返回普通字符串（避免科学计数法）
      * <pre>
      * toPlainString("100.000") → "100"

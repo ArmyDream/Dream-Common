@@ -417,8 +417,11 @@ public class GlobalExceptionHandler {
         if (isDuplicateKeyConflict(ex)) {
             log.warn("数据唯一键冲突: uri={}", getRequestUri(request));
 
-           handleWithDelegate(delegate, ex, request,false,
-                    (e, r) -> delegate.handleUnknownException( e, r));
+            R<?> conflictResult = handleWithDelegate(delegate, ex, request, true,
+                    (e, r) -> delegate.handleUnknownException(e, r));
+            if (conflictResult != null) {
+                return conflictResult;
+            }
 
             return R.fail(ResponseCode.CONFLICT, "数据重复，请检查唯一性约束");
         }
@@ -552,7 +555,14 @@ public class GlobalExceptionHandler {
                 activeProfiles, showStackTraceProfiles);
     }
 
-    private String extractValidationMessage(List<FieldError> fieldErrors) {
+    /**
+     * 组装参数校验错误文案，默认「字段: 消息」多项以 {@code "; "} 连接。
+     * <p>业务需要自定义格式或国际化文案时，在子类覆写本方法。</p>
+     *
+     * @param fieldErrors 校验失败字段列表
+     * @return 返回给前端的错误消息
+     */
+    protected String extractValidationMessage(List<FieldError> fieldErrors) {
         if (fieldErrors == null || fieldErrors.isEmpty()) {
             return "参数校验失败";
         }

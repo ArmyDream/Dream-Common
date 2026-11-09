@@ -192,8 +192,10 @@ public final class TreeUtils {
                 node.put(key, value);
             }
 
-            // 校验核心字段
+            // 校验核心字段：被 include/excludeFields 屏蔽时整棵树会是空的，必须显式告警而非静默返回
             if (!node.containsKey(idField) || !node.containsKey(parentIdField)) {
+                log.warn("构建树失败：核心字段被字段过滤排除 | entity={} | id={} | parentId={} | includeFields={} | excludeFields={}",
+                        obj.getClass().getName(), idField, parentIdField, includeFields, excludeFields);
                 return new ArrayList<>();
             }
 
@@ -325,9 +327,9 @@ public final class TreeUtils {
         String expandField = tree.expand();
         String checkedField = tree.checked();
 
-        root.put(idField, "root");
-        root.put(nameField, "全部");
-        root.put(labelField, "全部");
+        root.put(idField, tree.virtualRootId());
+        root.put(nameField, tree.virtualRootName());
+        root.put(labelField, tree.virtualRootName());
         root.put(childrenField, roots);
         root.put(levelField, 0);
         root.put(disabledField, false);
@@ -376,12 +378,19 @@ public final class TreeUtils {
         }
 
         if (childToParent) {
-            // 子查父：向上遍历
+            // 子查父：向上遍历，visitedIds 防止脏数据父子互指导致死循环
             Object currentParentId = curNode.get(parentIdField);
+            Set<String> visitedIds = new LinkedHashSet<>();
+            visitedIds.add(idStr);
 
             while (!isRootNode(currentParentId, rootNodeValue)) {
                 TreeNode found = null;
                 String currentParentIdStr = String.valueOf(currentParentId);
+
+                if (!visitedIds.add(currentParentIdStr)) {
+                    log.warn("向上遍历检测到父子引用成环，已中断 | id={} | cycleAt={}", id, currentParentIdStr);
+                    break;
+                }
 
                 for (TreeNode node : nodes) {
                     if (nodeIdEquals(currentParentIdStr, node.get(idField))) {

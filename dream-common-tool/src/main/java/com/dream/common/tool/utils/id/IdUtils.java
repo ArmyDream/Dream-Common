@@ -25,8 +25,11 @@ public final class IdUtils {
 
     // ==================== 常量 ====================
 
-    /** 默认序号位数 */
-    private static final int DEFAULT_SEQ_LEN = 5;
+    /** 默认序号位数，统一取自 {@link SeqGenerator#DEFAULT_SEQ_LEN} */
+    private static final int DEFAULT_SEQ_LEN = SeqGenerator.DEFAULT_SEQ_LEN;
+
+    /** 默认日期格式：yyyyMMdd */
+    private static final String DEFAULT_DATE_PATTERN = "yyyyMMdd";
 
     /** 默认时间格式：yyyyMMddHHmmss */
     private static final String DEFAULT_TIME_PATTERN = "yyyyMMddHHmmss";
@@ -131,12 +134,22 @@ public final class IdUtils {
     }
 
     public static String dateSeq(String prefix, int currentSeq, int seqLen) {
+        return dateSeq(prefix, currentSeq, seqLen, DEFAULT_DATE_PATTERN);
+    }
+
+    /**
+     * 日期序号，可自定义日期格式（与 {@code timeSeq} 的 pattern 重载对齐）。
+     *
+     * @param datePattern 日期格式，如 {@code yyyyMMdd}；空白时使用 {@link #DEFAULT_DATE_PATTERN}
+     */
+    public static String dateSeq(String prefix, int currentSeq, int seqLen, String datePattern) {
         if (seqLen <= 0) {
             throw new IllegalArgumentException("seqLen 必须大于0");
         }
 
         String resultPrefix = StringUtils.isBlank(prefix) ? "" : prefix;
-        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
+        String pattern = StringUtils.isBlank(datePattern) ? DEFAULT_DATE_PATTERN : datePattern;
+        String dateStr = LocalDate.now().format(DateTimeFormatter.ofPattern(pattern));
 
         return resultPrefix + dateStr + StringUtils.pads(currentSeq + 1, seqLen);
     }

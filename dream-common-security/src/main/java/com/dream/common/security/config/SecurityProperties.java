@@ -113,7 +113,7 @@ public class SecurityProperties {
          * <pre>{@code
          * dream:
          *   security:
-         *     sa-token:
+         *     filter:
          *       exclude-paths:
          *         - /actuator/health    # 只放行健康检查
          * }</pre>

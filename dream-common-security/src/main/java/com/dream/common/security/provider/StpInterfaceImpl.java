@@ -93,7 +93,8 @@ public class StpInterfaceImpl implements StpInterface {
     /**
      * 从缓存加载用户档案。
      * <p>
-     * 缓存读取异常时返回 {@code null}，由调用方降级为空权限/角色列表，不阻断鉴权流程。
+     * 缓存未命中时交给 {@link #onCacheMiss(String)} 处理；缓存读取异常时返回 {@code null}，
+     * 由调用方降级为空权限/角色列表（即鉴权不通过），不阻断鉴权流程。
      * </p>
      *
      * @param userId 用户ID
@@ -101,10 +102,31 @@ public class StpInterfaceImpl implements StpInterface {
      */
     private UserProfileVo loadLoginUser(String userId) {
         try {
-            return CachesUtils.get(Security.CACHE_PREFIX_USER + userId);
+            UserProfileVo profile = CachesUtils.get(Security.CACHE_PREFIX_USER + userId);
+            if (profile == null) {
+                return onCacheMiss(userId);
+            }
+            return profile;
         } catch (Exception e) {
             log.warn("[StpInterface] 从缓存加载用户失败 | userId={} | err={}", userId, e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * 用户档案缓存缺失时的回源钩子，默认返回 {@code null}。
+     * <p>
+     * 默认实现下，缓存过期或被清理后，token 仍有效的用户会因拿不到权限/角色而全部鉴权失败。
+     * 需要自动恢复的业务可提供自定义 {@code StpInterface} Bean 继承本类并覆写本方法，
+     * 从数据库重建用户档案并回写缓存（本类带 {@code @ConditionalOnMissingBean}，自定义 Bean 优先）。
+     * 注意本方法在每次鉴权回调中都可能被触发，回源实现必须自行控制开销。
+     * </p>
+     *
+     * @param userId 用户ID
+     * @return 重建后的用户档案；返回 {@code null} 表示按空权限/角色处理
+     */
+    protected UserProfileVo onCacheMiss(String userId) {
+        log.warn("[StpInterface] 用户档案缓存缺失，本次鉴权按空权限/角色处理 | userId={}", userId);
+        return null;
     }
 }

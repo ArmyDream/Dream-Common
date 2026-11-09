@@ -286,7 +286,8 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
             if (isValidAddress(addr)) {
                 return addr;
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("[SnowFlake] 通过 getLocalHost 获取本机地址失败，改为遍历网卡", e);
         }
 
         try {
@@ -303,9 +304,11 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
                     }
                 }
             }
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            log.warn("[SnowFlake] 遍历网卡获取本机地址失败", e);
         }
 
+        log.warn("[SnowFlake] 未能获取有效本机地址，回退 127.0.0.1；多实例部署可能撞号，请显式配置 dream.snowflake.worker-id/datacenter-id");
         try {
             return InetAddress.getByName("127.0.0.1");
         } catch (Exception e) {
@@ -321,9 +324,10 @@ public final class SnowFlakeIdGenerator implements IdGenerator<Long> {
             return false;
         }
         String name = address.getHostAddress();
-        return name != null
-                && !"0.0.0.0".equals(name)
-                && !"127.0.0.1".equals(name)
-                && IP_PATTERN.matcher(name).matches();
+        if (name == null || address.isAnyLocalAddress()) {
+            return false;
+        }
+        // 兼容 IPv6 主机：地址仅用于定位网卡，ID 实际由 MAC + PID 推导，不要求 IPv4 形态
+        return IP_PATTERN.matcher(name).matches() || name.indexOf(':') > 0;
     }
 }

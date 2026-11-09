@@ -7,10 +7,11 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * 数据变更记录注解，标注于实体类上，声明该实体在新增/修改/删除时需记录字段级变更明细。
+ * 数据变更记录注解，标注于实体类上，声明该实体在修改/删除时需记录字段级变更明细。
  * <p>
  * 记录内容写入 {@link com.dream.common.data.entity.DataChangeRecordEntity}，
- * 可选择仅记录日志或持久化入库。
+ * 可选择仅记录日志或持久化入库。新增（INSERT）默认不记录，
+ * 需要时通过 {@link #recordInsert()} 显式打开。
  * </p>
  *
  * <p>使用示例：</p>
@@ -50,6 +51,16 @@ public @interface DataChangeRecord {
      * 是否入库
      */
     boolean persistent() default false;
+
+    /**
+     * 是否记录新增（INSERT）变更，默认 {@code false}。
+     * <p>
+     * 新增的旧值恒为空，字段级记录等于把整行非空字段抄一遍，行数多、信噪比低；
+     * 「谁在什么时候新增了这条」已由操作日志覆盖，因此默认只记录 UPDATE / DELETE。
+     * 需要对新增做全量留痕的业务可显式打开。
+     * </p>
+     */
+    boolean recordInsert() default false;
 
     /**
      * 字段值写入变更记录前的截断长度，默认 2000。

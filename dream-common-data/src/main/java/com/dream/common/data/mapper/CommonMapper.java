@@ -50,6 +50,14 @@ public interface CommonMapper<T> extends BaseMapper<T> {
      * 调用方必须确保 SQL 语句中不包含用户可控的输入，或已进行充分的转义/校验。
      * </p>
      *
+     * <h3>关于 fetchSize</h3>
+     * <p>
+     * 实际生效的抓取行数固定为 {@code @Options(fetchSize = 1000)}：该注解值是编译期常量，
+     * 无法在运行时读取方法参数，因此下面的 {@code fetchSize} 形参<b>不会生效</b>，
+     * 仅为保持既有方法签名而保留。需要其他抓取行数时，请在业务 Mapper 中自行声明
+     * 带对应 {@code @Options(fetchSize = ...)} 的查询方法。
+     * </p>
+     *
      * <h3>使用示例</h3>
      * <pre>{@code
      * mapper.dynamicSelectOfLargeData(
@@ -58,13 +66,13 @@ public interface CommonMapper<T> extends BaseMapper<T> {
      *         Map<String, Object> row = resultContext.getResultObject();
      *         // 逐行处理
      *     },
-     *     5000
+     *     null   // fetchSize 形参不生效，传 null 即可
      * );
      * }</pre>
      *
      * @param sql       动态 SQL 语句（调用方自行确保安全）
      * @param handler   结果处理器（每行数据回调一次）
-     * @param fetchSize 每次从数据库获取的行数（推荐 1000-5000，null 时使用默认值 1000）
+     * @param fetchSize 预留参数，不生效；实际抓取行数固定为 1000，见上方说明
      */
     @Select("${sql}")
     @Options(resultSetType = ResultSetType.FORWARD_ONLY, fetchSize = 1000)

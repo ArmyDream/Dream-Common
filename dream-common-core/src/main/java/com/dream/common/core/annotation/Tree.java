@@ -160,6 +160,19 @@ public @interface Tree {
     boolean includeRoot() default false;
 
     /**
+     * 虚拟根节点的 ID 值，仅 {@link #includeRoot()} 为 true 时使用
+     * <p>默认值：root。多棵树同页展示或前端对节点 ID 有约定时可按需修改。</p>
+     */
+    String virtualRootId() default "root";
+
+    /**
+     * 虚拟根节点的显示名称，同时写入 {@link #name()} 与 {@link #label()} 字段，
+     * 仅 {@link #includeRoot()} 为 true 时使用
+     * <p>默认值：全部。</p>
+     */
+    String virtualRootName() default "全部";
+
+    /**
      * 树的最大深度（0 表示不限制）
      * <p>
      * 超过深度的子节点将被截断，不再展开

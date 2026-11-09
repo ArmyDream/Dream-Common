@@ -62,8 +62,10 @@ public @interface Sensitive {
     /**
      * 更新时是否忽略该字段(防止将脱敏数据更新到数据库)
      * <p>
-     * 说明：当前脱敏仅在查询返回阶段执行，更新链路由业务侧决定字段是否写回，
-     * 本属性为写回过滤预留，暂不参与处理。
+     * 为 {@code true}（默认）时，{@code updateEntity} 在写库前会识别「脱敏回显」：
+     * 新值含 {@link #replaceChar()} 而原值不含时，判定为查询结果被原样回传，自动用原值覆盖，
+     * 避免把 {@code 138****1234} 之类的掩码写库；客户端传入不含占位符的完整新值仍可正常更新。
+     * 设为 {@code false} 则完全交给业务自行处理。
      * </p>
      */
     boolean ignoreOnUpdate() default true;

@@ -47,7 +47,7 @@ import java.util.List;
  * </p>
  * <p>
  * 可通过 {@code dream.advice.response.include-metadata} 控制是否为响应补充
- * {@code timestamp}、{@code path} 元数据。
+ * {@code path} 元数据（{@code timestamp} 由 {@code R} 自身在创建时生成，不受本开关控制）。
  * </p>
  *
  * @author dream
@@ -59,10 +59,10 @@ import java.util.List;
 public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
 
     /**
-     * 内置不包装路径（文档端点与健康检查），Ant 风格通配
+     * 内置不包装路径的默认值（文档端点与健康检查），Ant 风格通配，逗号分隔
      */
-    private static final List<String> DEFAULT_IGNORE_PATHS = Arrays.asList(
-            "/v3/api-docs**", "/swagger-ui**", "/swagger-resources**", "/doc.html**", "/webjars**", "/actuator**");
+    private static final String DEFAULT_IGNORE_PATHS =
+            "/v3/api-docs**,/swagger-ui**,/swagger-resources**,/doc.html**,/webjars**,/actuator**";
 
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
@@ -79,6 +79,14 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
      */
     @Value("${dream.advice.response.ignore-response-path:}")
     private String ignoreResponsePath;
+
+    /**
+     * 内置不包装路径，Ant 风格、逗号分隔，默认为 {@link #DEFAULT_IGNORE_PATHS}。
+     * <p>本项是<b>整体替换</b>：需要包装某个内置端点（如 {@code /actuator}）时，
+     * 用本项覆盖默认名单；只想追加例外路径时请用 {@code ignore-response-path}。</p>
+     */
+    @Value("${dream.advice.response.built-in-ignore-path:" + DEFAULT_IGNORE_PATHS + "}")
+    private String builtInIgnorePath;
 
 
     public GlobalResponseHandler(@Nullable ObjectMapper objectMapper) {
@@ -185,24 +193,26 @@ public class GlobalResponseHandler implements ResponseBodyAdvice<Object> {
      * @return 命中返回 {@code true}
      */
     private boolean isIgnoredPath(String uri) {
-        for (String pattern : DEFAULT_IGNORE_PATHS) {
-            if (PATH_MATCHER.match(pattern, uri)) {
+        return matchesAnyPath(builtInIgnorePath, uri) || matchesAnyPath(ignoreResponsePath, uri);
+    }
+
+    /**
+     * 逗号分隔的 Ant 风格路径匹配；不含通配符时同时放行其子路径，如 /export 命中 /export/file。
+     */
+    private boolean matchesAnyPath(String patterns, String uri) {
+        if (patterns == null || patterns.trim().isEmpty()) {
+            return false;
+        }
+        for (String pattern : patterns.split(",")) {
+            String trimmed = pattern.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (PATH_MATCHER.match(trimmed, uri)) {
                 return true;
             }
-        }
-        if (ignoreResponsePath != null && !ignoreResponsePath.trim().isEmpty()) {
-            for (String pattern : ignoreResponsePath.split(",")) {
-                String trimmed = pattern.trim();
-                if (trimmed.isEmpty()) {
-                    continue;
-                }
-                if (PATH_MATCHER.match(trimmed, uri)) {
-                    return true;
-                }
-                // 不含通配符时同时放行其子路径，如 /export 命中 /export/file
-                if (trimmed.indexOf('*') < 0 && PATH_MATCHER.match(trimmed + "/**", uri)) {
-                    return true;
-                }
+            if (trimmed.indexOf('*') < 0 && PATH_MATCHER.match(trimmed + "/**", uri)) {
+                return true;
             }
         }
         return false;

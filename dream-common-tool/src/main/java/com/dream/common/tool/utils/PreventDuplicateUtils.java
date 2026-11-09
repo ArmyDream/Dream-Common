@@ -30,8 +30,8 @@ import java.util.concurrent.TimeUnit;
 @SuppressWarnings("all")
 public final class PreventDuplicateUtils {
 
-    /** 默认防重复提示信息 */
-    private static final String DEFAULT_MESSAGE = "请勿重复提交！";
+    /** 默认防重复提示信息，统一取自注解定义，避免两处文案漂移 */
+    private static final String DEFAULT_MESSAGE = PreventDuplicate.DEFAULT_MESSAGE;
 
     private PreventDuplicateUtils() {
         throw new UnsupportedOperationException("This is a utility class and cannot be instantiated");

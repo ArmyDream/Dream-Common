@@ -207,6 +207,28 @@ public final class DesensitizeUtils {
             "password", "passwd", "pwd", "token", "secret", "authorization", "credential", "code", "captcha"
     };
 
+    /** 业务追加的敏感参数名关键字，与内置清单叠加生效 */
+    private static final java.util.Set<String> EXTRA_SENSITIVE_PARAM_KEYWORDS =
+            java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    /**
+     * 追加业务自定义的敏感参数名关键字（小写包含匹配），与内置清单叠加生效。
+     * <p>内置清单不含业务自命名的凭据参数时（如 {@code smsCode}、{@code apiKey}），
+     * 在应用启动时调用本方法注册，访问日志/异常日志/操作日志会一并掩码。</p>
+     *
+     * @param keywords 关键字，自动转小写并去除首尾空白，空值忽略
+     */
+    public static void registerSensitiveParamKeywords(String... keywords) {
+        if (keywords == null) {
+            return;
+        }
+        for (String keyword : keywords) {
+            if (keyword != null && !keyword.trim().isEmpty()) {
+                EXTRA_SENSITIVE_PARAM_KEYWORDS.add(keyword.trim().toLowerCase(java.util.Locale.ROOT));
+            }
+        }
+    }
+
     /**
      * 判断参数名是否属于敏感参数（不区分大小写的包含匹配）
      *
@@ -219,6 +241,11 @@ public final class DesensitizeUtils {
         }
         String lower = paramName.toLowerCase(java.util.Locale.ROOT);
         for (String keyword : SENSITIVE_PARAM_KEYWORDS) {
+            if (lower.contains(keyword)) {
+                return true;
+            }
+        }
+        for (String keyword : EXTRA_SENSITIVE_PARAM_KEYWORDS) {
             if (lower.contains(keyword)) {
                 return true;
             }

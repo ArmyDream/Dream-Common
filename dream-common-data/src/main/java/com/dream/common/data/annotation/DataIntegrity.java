@@ -44,7 +44,9 @@ public @interface DataIntegrity {
     String excludeFields() default "deleted,version,dataMd5";
 
     /**
-     * MD5字段名，默认data_md5
+     * MD5字段名，默认data_md5。
+     * <p>既可填数据库列名（{@code data_md5}），也可填 Java 字段名（{@code dataMd5}），
+     * 框架会解析为实体上真实存在的字段；两者都匹配不到时记录告警并跳过 MD5 处理。</p>
      */
     String md5Field() default "data_md5";
 

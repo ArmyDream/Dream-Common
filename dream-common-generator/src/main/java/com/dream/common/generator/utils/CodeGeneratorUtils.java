@@ -3,6 +3,9 @@ package com.dream.common.generator.utils;
 import com.baomidou.mybatisplus.generator.FastAutoGenerator;
 import com.baomidou.mybatisplus.generator.config.DataSourceConfig;
 import com.baomidou.mybatisplus.generator.config.OutputFile;
+import com.baomidou.mybatisplus.generator.config.builder.Entity;
+import com.baomidou.mybatisplus.generator.config.builder.Mapper;
+import com.baomidou.mybatisplus.generator.config.builder.Service;
 import com.baomidou.mybatisplus.generator.config.rules.DateType;
 import com.baomidou.mybatisplus.generator.engine.VelocityTemplateEngine;
 import com.dream.common.data.controller.CommonController;
@@ -145,7 +148,7 @@ public class CodeGeneratorUtils {
                     .addTablePrefix(config.getTablePrefix());
 
             // 实体策略
-            builder.entityBuilder()
+            Entity.Builder entityBuilder = builder.entityBuilder()
                     .superClass(config.getSuperEntityClass())
                     .enableLombok()                     // 启用 Lombok 注解
 //                    .enableTableFieldAnnotation()      // 启用 @TableField 注解
@@ -153,27 +156,37 @@ public class CodeGeneratorUtils {
                     .versionColumnName(config.getVersionColumnName())
                     .logicDeleteColumnName(config.getLogicDeleteColumnName())
                     .formatFileName("%s");             // 实体类文件名格式（不添加后缀）
+            // 显式指定模板，避免与 mybatis-plus-generator jar 内同名默认模板按 classpath 顺序互相遮蔽
+            if (config.getEntityTemplate() != null && !config.getEntityTemplate().trim().isEmpty()) {
+                entityBuilder.javaTemplate(config.getEntityTemplate());
+            }
 
             // Mapper 策略
             if (config.isGenerateMapper()) {
-                builder.mapperBuilder()
+                Mapper.Builder mapperBuilder = builder.mapperBuilder()
                         .superClass(config.getSuperMapperClass())
                         .enableBaseResultMap()          // 生成 BaseResultMap
                         .enableBaseColumnList()         // 生成 Base_Column_List
                         .formatMapperFileName("%sMapper")
                         .formatXmlFileName("%sMapper");
+                if (config.getMapperTemplate() != null && !config.getMapperTemplate().trim().isEmpty()) {
+                    mapperBuilder.mapperTemplate(config.getMapperTemplate());
+                }
             } else {
                 builder.mapperBuilder().disable();
             }
 
             // Service 策略
             if (config.isGenerateService()) {
-                builder.serviceBuilder()
+                Service.Builder serviceBuilder = builder.serviceBuilder()
                         .superServiceClass(config.getSuperServiceClass())
                         .superServiceImplClass(config.getSuperServiceImplClass())
                         .serviceImplTemplate(config.getServiceImplTemplate())
                         .formatServiceFileName("%sService")
                         .formatServiceImplFileName("%sServiceImpl");
+                if (config.getServiceTemplate() != null && !config.getServiceTemplate().trim().isEmpty()) {
+                    serviceBuilder.serviceTemplate(config.getServiceTemplate());
+                }
             } else {
                 builder.serviceBuilder().disable();
             }
@@ -210,6 +223,8 @@ public class CodeGeneratorUtils {
         customMap.put("basePermissionPrefix", config.getBasePermissionPrefix());
         customMap.put("logEnabled", config.isLogEnabled());
         customMap.put("dataChangeRecordPersistent", config.isDataChangeRecordPersistent());
+        // 模板据此决定是否 import/implements 服务接口（serviceImpl.java.vm、controller.java.vm）
+        customMap.put("generateService", config.isGenerateService());
 
         // ⚠️ 注入父类全限定名（用于模板中判断）
         Class<?> superControllerClass = config.getSuperControllerClass();
@@ -467,9 +482,10 @@ public class CodeGeneratorUtils {
         // ==================== 扩展配置 ====================
 
         /**
-         * 实体类自定义模板路径（{@code null} 表示使用默认模板）
+         * 实体类自定义模板路径（默认 {@code /templates/entity.java.vm}，即本模块内置的
+         * 带 {@code @DataChangeRecord} 的模板；置空则回退 MyBatis-Plus 默认模板）
          */
-        private String entityTemplate;
+        private String entityTemplate = "/templates/entity.java.vm";
 
         /**
          * Mapper 自定义模板路径（{@code null} 表示使用默认模板）

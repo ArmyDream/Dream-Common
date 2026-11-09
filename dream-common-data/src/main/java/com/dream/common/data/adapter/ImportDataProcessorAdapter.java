@@ -125,11 +125,15 @@ public class ImportDataProcessorAdapter<T> implements ImportDataProcessor<T> {
             Field idField = ReflectionUtils.findField(data.getClass(), "id");
             if (idField != null) {
                 idField.setAccessible(true);
-                String id = (String) idField.get(data);
-                return id != null && !id.isEmpty() && service.getById(id) != null;
+                // 主键不一定是 String（Long/Integer 等），强转 String 会抛 CCE 并被吞成「不存在」导致重复插入
+                Object id = idField.get(data);
+                if (id == null || (id instanceof String && ((String) id).isEmpty())) {
+                    return false;
+                }
+                return service.getById((java.io.Serializable) id) != null;
             }
         } catch (Exception e) {
-            log.debug("获取ID失败，可能为新增数据", e);
+            log.warn("按ID判断数据是否已存在失败，按新增处理 | type={} | err={}", data.getClass().getName(), e.getMessage());
         }
 
         return false;

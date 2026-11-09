@@ -81,8 +81,15 @@ public final class SqlUtils {
 
     /**
      * 限制最大分页大小（防止恶意超大分页）
+     * <p>注意：本常量作用于 {@code SqlUtils} 的动态 SQL 分页；实体分页走
+     * {@code CommonServiceImpl#findPage}，上限由 {@code resolveMaxPageSize()} 单独控制。</p>
      */
-    private static final int MAX_PAGE_SIZE = 10000;
+    public static final int MAX_PAGE_SIZE = 10000;
+
+    /**
+     * pageSize 非法（&lt;1）时的兜底每页条数
+     */
+    public static final int DEFAULT_PAGE_SIZE = 10;
 
     // ==================== 私有构造器 ====================
 
@@ -530,7 +537,7 @@ public final class SqlUtils {
             pageNum = 1;
         }
         if (pageSize < 1) {
-            pageSize = 10;
+            pageSize = DEFAULT_PAGE_SIZE;
         }
         if (pageSize > MAX_PAGE_SIZE) {
             log.warn("pageSize={} exceeds max limit {}, truncated to {}", pageSize, MAX_PAGE_SIZE, MAX_PAGE_SIZE);

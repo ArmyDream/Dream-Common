@@ -32,10 +32,26 @@
     #set($isCommonController = true)
 #end
 
+## ==================== 判断是否生成 Service 接口 ====================
+## 未生成接口时，Controller 直接依赖 ServiceImpl，避免 import 不存在的类导致编译失败
+#set($hasServiceInterface = false)
+#if(${generateService})
+    #set($hasServiceInterface = true)
+#end
+#if($hasServiceInterface)
+    #set($baseServiceType = $table.serviceName)
+#else
+    #set($baseServiceType = $table.serviceImplName)
+#end
+
 ## ==================== 包声明 ====================
 package ${package.Controller};
 
+#if($hasServiceInterface)
 import ${package.Service}.${table.serviceName};
+#else
+import ${package.ServiceImpl}.${table.serviceImplName};
+#end
 import ${package.Entity}.${entity};
 #if($hasSuper)
 import ${superControllerClassPackage};
@@ -72,12 +88,12 @@ import lombok.extern.slf4j.Slf4j;
 #end
 @RequestMapping("${finalPath}")
 #if(${kotlin})
-        class ${table.controllerName}#if($hasSuper) : ${superControllerClass}<${table.serviceName}, ${entity}>#end {
+        class ${table.controllerName}#if($hasSuper) : ${superControllerClass}<${baseServiceType}, ${entity}>#end {
 #else
-public class ${table.controllerName}#if($hasSuper) extends ${superControllerClass}<${table.serviceName}, ${entity}>#end {
+public class ${table.controllerName}#if($hasSuper) extends ${superControllerClass}<${baseServiceType}, ${entity}>#end {
 #if($isCommonController)
     @Autowired
-    public ${table.controllerName}(${table.serviceName} baseService) {
+    public ${table.controllerName}(${baseServiceType} baseService) {
         super(baseService);
     }
 

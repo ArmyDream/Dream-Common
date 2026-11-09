@@ -118,7 +118,6 @@ public class PreventDuplicateAspect {
             return joinPoint.proceed();
         }
         warnIfNonDistributed(cacheOperations);
-        warnIfNonDistributed(cacheOperations);
 
         Method targetMethod = resolveTargetMethod(joinPoint);
         String key = buildKey(annotation, targetMethod, joinPoint);

@@ -136,8 +136,9 @@ public class SensitiveUtil {
             int suffixLen = Integer.parseInt(parts[1].trim());
             return DesensitizeUtils.desensitize(value, prefixLen, suffixLen, replaceChar);
         } catch (Exception e) {
-            // 规则解析失败时记录日志并原样返回，避免影响主流程
-            log.warn("自定义脱敏规则处理失败，value=\"{}\", rule=\"{}\"", value, rule, e);
+            // 规则解析失败时记录日志并原样返回，避免影响主流程；日志不得打印未脱敏原文
+            log.warn("自定义脱敏规则处理失败，已原样返回 | rule={} | valueLength={}",
+                    rule, value == null ? 0 : value.length(), e);
             return value;
         }
     }

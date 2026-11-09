@@ -126,9 +126,14 @@ public @interface PreventDuplicate {
     Strategy strategy() default Strategy.ERROR;
 
     /**
+     * 默认防重复提示信息，防重工具类共用本常量，避免两处各写一份漂移。
+     */
+    String DEFAULT_MESSAGE = "请勿重复提交！";
+
+    /**
      * 防重复提交提示信息（strategy = ERROR 时生效）
      */
-    String message() default "请勿重复提交！";
+    String message() default DEFAULT_MESSAGE;
 
     /**
      * 拦截策略枚举
