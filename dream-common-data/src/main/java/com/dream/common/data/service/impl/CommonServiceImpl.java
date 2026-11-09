@@ -78,13 +78,14 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     /**
      * 变更记录字段值的最大长度（对齐 sys_data_change_record 表 VARCHAR(2000)），超出截断
      */
-    private static final int MAX_CHANGE_VALUE_LENGTH = 2000;
+    private static final int DEFAULT_MAX_CHANGE_VALUE_LENGTH = 2000;
 
     /**
-     * 变更记录中排除的框架审计字段（变更记录行自身已携带 createBy/createTime 等审计信息）
+     * 变更记录默认排除的框架审计字段（变更记录行自身已携带 createBy/createTime 等审计信息），
+     * 实体可用 {@link DataChangeRecord#excludeAuditFields()} 整体覆盖
      */
-    private static final Set<String> CHANGE_RECORD_AUDIT_FIELDS =
-            new HashSet<>(Arrays.asList("createBy", "createTime", "updateBy", "updateTime"));
+    private static final Set<String> DEFAULT_CHANGE_RECORD_AUDIT_FIELDS =
+            Collections.unmodifiableSet(new HashSet<>(Arrays.asList("createBy", "createTime", "updateBy", "updateTime")));
 
     /**
      * 数据变更记录处理器（可选依赖）。
@@ -1101,8 +1102,12 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
      * 构建字段级变更记录列表。
      * <p>
      * 字段过滤规则：排除 static / transient 字段、{@code @TableField(exist=false)} 非持久化字段、
-     * 主键字段（{@code dataId} 已承载）、框架审计字段（createBy/createTime/updateBy/updateTime，
-     * 变更记录行自身已带审计信息）、{@link DataIntegrity} 声明的 MD5 派生字段。
+     * 主键字段（{@code dataId} 已承载）、审计字段（默认 createBy/createTime/updateBy/updateTime，
+     * 变更记录行自身已带审计信息；实体可用 {@link DataChangeRecord#excludeAuditFields()} 覆盖）、
+     * {@link DataIntegrity} 声明的 MD5 派生字段。
+     * </p>
+     * <p>
+     * 变更值按 {@link DataChangeRecord#maxValueLength()} 截断（默认 2000，与落库列宽一致）。
      * </p>
      * <p>
      * 变更判定规则：INSERT 记录全部非空新值；DELETE 记录全部非空旧值；
@@ -1125,16 +1130,18 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
         }
         String dataId = newEntity != null ? getEntityId(newEntity) : (oldEntity != null ? getEntityId(oldEntity) : null);
         String md5Field = resolveMd5Field(entityClass);
+        Set<String> auditFields = resolveAuditExcludedFields(annotation);
+        int maxValueLength = resolveMaxChangeValueLength(annotation);
 
         List<Field> fields = getAllFields(entityClass);
         for (Field field : fields) {
-            if (isSkippedChangeField(field, md5Field)) {
+            if (isSkippedChangeField(field, md5Field, auditFields)) {
                 continue;
             }
             field.setAccessible(true);
             try {
-                String oldValue = oldEntity != null ? toChangeValue(field.get(oldEntity)) : null;
-                String newValue = newEntity != null ? toChangeValue(field.get(newEntity)) : null;
+                String oldValue = oldEntity != null ? toChangeValue(field.get(oldEntity), maxValueLength) : null;
+                String newValue = newEntity != null ? toChangeValue(field.get(newEntity), maxValueLength) : null;
                 if (!isChanged(operationType, oldValue, newValue)) {
                     continue;
                 }
@@ -1204,13 +1211,14 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     }
 
     /**
-     * 字段是否无需记录（静态 / 非持久化 / 主键 / 框架审计字段 / MD5 派生字段）。
+     * 字段是否无需记录（静态 / 非持久化 / 主键 / 审计字段 / MD5 派生字段）。
      *
-     * @param field    字段对象
-     * @param md5Field {@link DataIntegrity} 声明的 MD5 字段名，可为 {@code null}
+     * @param field       字段对象
+     * @param md5Field    {@link DataIntegrity} 声明的 MD5 字段名，可为 {@code null}
+     * @param auditFields 本实体生效的审计字段排除集合，见 {@link #resolveAuditExcludedFields}
      * @return true 表示跳过
      */
-    private boolean isSkippedChangeField(Field field, String md5Field) {
+    private boolean isSkippedChangeField(Field field, String md5Field, Set<String> auditFields) {
         int modifiers = field.getModifiers();
         if (Modifier.isStatic(modifiers) || Modifier.isTransient(modifiers)) {
             return true;
@@ -1223,10 +1231,41 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
         if (field.isAnnotationPresent(TableId.class) || "id".equals(name)) {
             return true;
         }
-        if (CHANGE_RECORD_AUDIT_FIELDS.contains(name)) {
+        if (auditFields.contains(name)) {
             return true;
         }
         return md5Field != null && md5Field.equals(name);
+    }
+
+    /**
+     * 解析实体生效的审计字段排除集合：{@link DataChangeRecord#excludeAuditFields()} 非空时整体替换，
+     * 未配置时用框架默认集合。
+     *
+     * @param annotation 变更记录注解
+     * @return 排除的字段名集合，不会为 {@code null}
+     */
+    private Set<String> resolveAuditExcludedFields(DataChangeRecord annotation) {
+        String[] configured = annotation.excludeAuditFields();
+        if (configured == null || configured.length == 0) {
+            return DEFAULT_CHANGE_RECORD_AUDIT_FIELDS;
+        }
+        Set<String> auditFields = new HashSet<>(configured.length * 2);
+        for (String field : configured) {
+            if (field != null && !field.trim().isEmpty()) {
+                auditFields.add(field.trim());
+            }
+        }
+        return auditFields;
+    }
+
+    /**
+     * 解析字段值截断长度：注解配置值非正数时退回框架默认长度。
+     *
+     * @param annotation 变更记录注解
+     * @return 截断长度
+     */
+    private int resolveMaxChangeValueLength(DataChangeRecord annotation) {
+        return annotation.maxValueLength() > 0 ? annotation.maxValueLength() : DEFAULT_MAX_CHANGE_VALUE_LENGTH;
     }
 
     /**
@@ -1247,15 +1286,16 @@ public abstract class CommonServiceImpl<M extends CommonMapper<T>, T> extends Se
     /**
      * 字段值转字符串（null 安全 + 超长截断）。
      *
-     * @param value 字段值
+     * @param value          字段值
+     * @param maxValueLength 截断长度，见 {@link #resolveMaxChangeValueLength(DataChangeRecord)}
      * @return 字符串形式；入参为 {@code null} 时返回 {@code null}
      */
-    private String toChangeValue(Object value) {
+    private String toChangeValue(Object value, int maxValueLength) {
         if (value == null) {
             return null;
         }
         String str = String.valueOf(value);
-        return str.length() > MAX_CHANGE_VALUE_LENGTH ? str.substring(0, MAX_CHANGE_VALUE_LENGTH) : str;
+        return str.length() > maxValueLength ? str.substring(0, maxValueLength) : str;
     }
 
     /**
